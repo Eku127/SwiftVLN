@@ -17,34 +17,23 @@ from PIL import Image
 try:
     from swiftvln.common import (
         BaseVLNEvaluator,
+        DEFAULT_CONJUNCTIONS,
         EnvWrapper,
         DEFAULT_IMAGE_TOKEN,
+        PROMPT_TEMPLATE_HABITAT,
+        PROMPT_TEMPLATE_SATNAV,
         TrajectoryRecorder,
     )
 except ImportError:
     from ..common import (
         BaseVLNEvaluator,
+        DEFAULT_CONJUNCTIONS,
         EnvWrapper,
         DEFAULT_IMAGE_TOKEN,
+        PROMPT_TEMPLATE_HABITAT,
+        PROMPT_TEMPLATE_SATNAV,
         TrajectoryRecorder,
     )
-
-# Environment-specific prompt templates
-# Forward distance differs by environment: habitat=0.25m, satnav=10m
-PROMPT_TEMPLATE_HABITAT = (
-    "You are an autonomous navigation assistant. Your task is to {instruction}. "
-    "Based on your observations, output a sequence of actions using: "
-    "↑ (forward 0.25m), ← (turn left), → (turn right), or STOP (when goal is reached). "
-    "Output actions directly without explanation."
-)
-
-PROMPT_TEMPLATE_SATNAV = (
-    "You are an autonomous navigation assistant. Your task is to {instruction}. "
-    "Based on your observations, output a sequence of actions using: "
-    "↑ (forward 10m), ← (turn left), → (turn right), or STOP (when goal is reached). "
-    "Output actions directly without explanation."
-)
-
 
 class CompressVLNEvaluator(BaseVLNEvaluator):
     """
@@ -69,15 +58,7 @@ class CompressVLNEvaluator(BaseVLNEvaluator):
         self.compress_stride = getattr(self.args, 'compress_stride', 2)
         
         # Prompt templates (same as dataset.py)
-        self.conjunctions = [
-            'you can see ',
-            'in front of you is ',
-            'there is ',
-            'you can spot ',
-            'you are toward the ',
-            'ahead of you is ',
-            'in your sight is '
-        ]
+        self.conjunctions = DEFAULT_CONJUNCTIONS.copy()
 
     def build_system_prompt(self, instruction: str, num_history_images: int = 0) -> str:
         """

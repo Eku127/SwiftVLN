@@ -12,38 +12,16 @@ Usage:
     python src/swiftvln/models/uninavid/trainer.py --custom_register_path src/swiftvln/models/uninavid ...
 """
 
-import os
-import sys
 from dataclasses import dataclass, field
 from typing import Optional, List, Union
-
-# Add paths for direct script execution
-if __name__ == '__main__':
-    _current_dir = os.path.dirname(os.path.abspath(__file__))
-    # Add ms-swift root to path
-    _msswift_root = os.path.dirname(os.path.dirname(os.path.dirname(_current_dir)))
-    if _msswift_root not in sys.path:
-        sys.path.insert(0, _msswift_root)
-    # Add vln directory to path
-    _vln_dir = os.path.dirname(_current_dir)
-    if _vln_dir not in sys.path:
-        sys.path.insert(0, _vln_dir)
-    # Add current directory to path
-    if _current_dir not in sys.path:
-        sys.path.insert(0, _current_dir)
 
 from swift.llm.train.sft import SwiftSft
 from swift.llm import TrainArguments
 from swift.llm.dataset import LazyLLMDataset
 from swift.utils import get_logger
 
-# Use imports that work both as module and direct script
-try:
-    from .arguments import UniNaVidArguments
-    from .dataset import UniNaVidDataset
-except ImportError:
-    from arguments import UniNaVidArguments
-    from dataset import UniNaVidDataset
+from swiftvln.models.uninavid.arguments import UniNaVidArguments
+from swiftvln.models.uninavid.dataset import UniNaVidDataset
 
 logger = get_logger()
 

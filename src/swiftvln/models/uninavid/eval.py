@@ -32,25 +32,7 @@ Usage:
 import os
 os.environ.setdefault('__EGL_VENDOR_LIBRARY_FILENAMES', '/usr/share/glvnd/egl_vendor.d/10_nvidia.json')
 
-import sys
-
-# Setup paths for both module and direct execution
-_current_dir = os.path.dirname(os.path.abspath(__file__))
-_msswift_root = os.path.dirname(os.path.dirname(os.path.dirname(_current_dir)))
-_vln_dir = os.path.dirname(_current_dir)
-
-if _msswift_root not in sys.path:
-    sys.path.insert(0, _msswift_root)
-if _vln_dir not in sys.path:
-    sys.path.insert(0, _vln_dir)
-if _current_dir not in sys.path:
-    sys.path.insert(0, _current_dir)
-
-# Import base eval class
-try:
-    from swiftvln.common import BaseVLNEval
-except ImportError:
-    from common import BaseVLNEval
+from swiftvln.common import BaseVLNEval
 
 
 class UniNaVidEval(BaseVLNEval):
@@ -75,10 +57,7 @@ class UniNaVidEval(BaseVLNEval):
     
     def register_module(self):
         """Import UniNaVid module to register model."""
-        try:
-            import swiftvln.models.uninavid
-        except ImportError:
-            pass
+        import swiftvln.models.uninavid  # noqa: F401
     
     def load_template(self, processor):
         """Load UniNaVid template with eval_mode enabled."""
@@ -98,12 +77,8 @@ class UniNaVidEval(BaseVLNEval):
     @property
     def evaluator_class(self):
         """Lazy load evaluator class to avoid circular imports."""
-        try:
-            from swiftvln.models.uninavid.evaluator import UniNaVidEvaluator
-            return UniNaVidEvaluator
-        except ImportError:
-            from evaluator import UniNaVidEvaluator
-            return UniNaVidEvaluator
+        from swiftvln.models.uninavid.evaluator import UniNaVidEvaluator
+        return UniNaVidEvaluator
 
 
 def main():

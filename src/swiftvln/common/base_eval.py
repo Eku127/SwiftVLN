@@ -34,6 +34,13 @@ import tqdm
 from abc import ABC, abstractmethod
 from typing import Type, Optional, Dict, Any, List
 
+from .eval_reporting import (
+    clean_results_for_output,
+    compute_trajectory_type_stats,
+    get_swanlab_url,
+    save_timing_stats,
+)
+
 # ============================================================================
 # Default random seed for reproducible evaluation
 # ============================================================================
@@ -454,13 +461,13 @@ class BaseVLNEval(ABC):
         summary.update(self.get_summary_extras())
         
         # Try to get SwanLab run URL if available
-        swanlab_url = self._get_swanlab_url()
+        swanlab_url = get_swanlab_url()
         if swanlab_url:
             summary["swanlab_url"] = swanlab_url
         
         # For SatNav, compute per-trajectory_type statistics
         if self.args.env_type == "satnav":
-            trajectory_type_stats = self._compute_trajectory_type_stats(all_results_merged)
+            trajectory_type_stats = compute_trajectory_type_stats(all_results_merged)
             if trajectory_type_stats:
                 summary["by_trajectory_type"] = trajectory_type_stats
         
@@ -495,7 +502,7 @@ class BaseVLNEval(ABC):
             json.dump(summary, f, indent=2)
         
         # Clean all_results: remove timing data, save one result per line (JSONL format)
-        cleaned_results = self._clean_results_for_output(all_results_merged)
+        cleaned_results = clean_results_for_output(all_results_merged)
         # Sort by episode_id descending before saving
         cleaned_results = sorted(cleaned_results, key=lambda x: int(x.get('episode_id', 0)), reverse=True)
         with open(os.path.join(self.args.output_dir, "all_results.jsonl"), "w") as f:
@@ -504,7 +511,8 @@ class BaseVLNEval(ABC):
         
         # Save timing statistics
         if len(timing_stats_list) > 0:
-            self._save_timing_stats(timing_stats_list)
+            timing_summary_path = save_timing_stats(self.args.output_dir, timing_stats_list)
+            print(f"Timing statistics summary saved to {timing_summary_path}")
         
         print(f"Results saved to {self.args.output_dir}")
         
@@ -515,142 +523,6 @@ class BaseVLNEval(ABC):
                 compress_videos(self.args.output_dir, cleaned_results, chunk_size=400)
             except ImportError:
                 pass
-    
-    def _compute_trajectory_type_stats(self, results: List[Dict]) -> Dict[str, Dict[str, Any]]:
-        """Compute statistics grouped by trajectory_type for SatNav.
-        
-        Args:
-            results: List of episode results
-            
-        Returns:
-            Dictionary mapping trajectory_type to its statistics
-        """
-        # Group results by trajectory_type
-        grouped = {}
-        for r in results:
-            ttype = r.get("trajectory_type", "unknown")
-            if ttype not in grouped:
-                grouped[ttype] = []
-            grouped[ttype].append(r)
-        
-        # Compute statistics for each type
-        stats = {}
-        for ttype, type_results in grouped.items():
-            n = len(type_results)
-            if n == 0:
-                continue
-            
-            successes = sum(r.get("success", 0) for r in type_results)
-            spls = sum(r.get("spl", 0) for r in type_results)
-            oss = sum(r.get("oracle_success", 0) for r in type_results)
-            
-            # Filter valid navigation errors (< 1000m)
-            nes = [r.get("distance_to_goal", float('inf')) for r in type_results]
-            valid_nes = [ne for ne in nes if ne < 1000]
-            mean_ne = sum(valid_nes) / len(valid_nes) if valid_nes else 0
-            
-            # Compute average steps
-            steps = [r.get("steps", 0) for r in type_results]
-            avg_steps = sum(steps) / len(steps) if steps else 0
-            
-            stats[ttype] = {
-                "success_rate": successes / n,
-                "mean_spl": spls / n,
-                "oracle_success": oss / n,
-                "navigation_error": mean_ne,
-                "avg_steps": round(avg_steps, 2),
-                "total_episodes": n,
-            }
-        
-        return stats
-    
-    def _clean_results_for_output(self, results: List[Dict]) -> List[Dict]:
-        """Remove timing data from results for output.
-        
-        Args:
-            results: List of episode results
-            
-        Returns:
-            Cleaned list with timing data removed
-        """
-        cleaned = []
-        timing_keys = {'_timing_stats', '_total_time', '_step_count'}
-        
-        for r in results:
-            cleaned_result = {k: v for k, v in r.items() if k not in timing_keys}
-            cleaned.append(cleaned_result)
-        
-        return cleaned
-    
-    def _get_swanlab_url(self) -> Optional[str]:
-        """Try to get the SwanLab run URL if SwanLab is active.
-        
-        Returns:
-            SwanLab run URL string if available, None otherwise
-        """
-        try:
-            import swanlab
-            # Check if swanlab has an active run
-            run = swanlab.get_run()
-            if run is not None:
-                # Try common attributes for URL
-                if hasattr(run, 'url'):
-                    return run.url
-                elif hasattr(run, 'get_url'):
-                    return run.get_url()
-                elif hasattr(run, 'public_url'):
-                    return run.public_url
-                # Try to construct URL from project and run info
-                elif hasattr(run, 'project') and hasattr(run, 'name'):
-                    # SwanLab cloud URL format: https://swanlab.cn/@{username}/{project}/runs/{run_name}
-                    username = getattr(run, 'username', None) or getattr(run, 'user', None)
-                    if username:
-                        return f"https://swanlab.cn/@{username}/{run.project}/runs/{run.name}"
-        except ImportError:
-            pass
-        except Exception as e:
-            # Silently fail if SwanLab is not available or has no active run
-            pass
-        return None
-    
-    def _save_timing_stats(self, timing_stats_list):
-        """Save timing statistics summary."""
-        num_episodes = len(timing_stats_list)
-        avg_total_time = sum(t.get('_total_time', 0) for t in timing_stats_list) / num_episodes
-        avg_step_count = sum(t.get('_step_count', 0) for t in timing_stats_list) / num_episodes
-        
-        # Aggregate timing stats by component
-        component_totals = {}
-        for episode_stats in timing_stats_list:
-            for component, elapsed_time in episode_stats.get('_timing_stats', {}).items():
-                if component not in component_totals:
-                    component_totals[component] = []
-                component_totals[component].append(elapsed_time)
-        
-        # Calculate averages for each component
-        avg_timing_stats = {}
-        for component, times in component_totals.items():
-            avg_timing_stats[component] = sum(times) / len(times)
-        
-        timing_summary = {
-            "num_episodes": num_episodes,
-            "avg_episode_time": round(avg_total_time, 3),
-            "avg_steps": round(avg_step_count, 1),
-            "breakdown_by_component": {}
-        }
-        
-        sorted_components = sorted(avg_timing_stats.items(), key=lambda x: x[1], reverse=True)
-        for component, avg_time in sorted_components:
-            percentage = (avg_time / avg_total_time * 100) if avg_total_time > 0 else 0.0
-            timing_summary["breakdown_by_component"][component] = {
-                "avg_time": round(avg_time, 3),
-                "percentage": round(percentage, 1)
-            }
-        
-        timing_summary_path = os.path.join(self.args.output_dir, "timing_summary.json")
-        with open(timing_summary_path, "w") as f:
-            json.dump(timing_summary, f, indent=2)
-        print(f"Timing statistics summary saved to {timing_summary_path}")
     
     def run(self):
         """Main evaluation entry point."""

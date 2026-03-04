@@ -31,25 +31,7 @@ Usage:
 import os
 os.environ.setdefault('__EGL_VENDOR_LIBRARY_FILENAMES', '/usr/share/glvnd/egl_vendor.d/10_nvidia.json')
 
-import sys
-
-# Setup paths for both module and direct execution
-_current_dir = os.path.dirname(os.path.abspath(__file__))
-_msswift_root = os.path.dirname(os.path.dirname(os.path.dirname(_current_dir)))
-_vln_dir = os.path.dirname(_current_dir)
-
-if _msswift_root not in sys.path:
-    sys.path.insert(0, _msswift_root)
-if _vln_dir not in sys.path:
-    sys.path.insert(0, _vln_dir)
-if _current_dir not in sys.path:
-    sys.path.insert(0, _current_dir)
-
-# Import base eval class
-try:
-    from swiftvln.common import BaseVLNEval
-except ImportError:
-    from common import BaseVLNEval
+from swiftvln.common import BaseVLNEval
 
 
 class MonoVLNEval(BaseVLNEval):
@@ -63,10 +45,7 @@ class MonoVLNEval(BaseVLNEval):
     
     def register_module(self):
         """Import MonoVLN module to register model."""
-        try:
-            import swiftvln.models.monovln
-        except ImportError:
-            pass
+        import swiftvln.models.monovln  # noqa: F401
     
     def load_template(self, processor):
         """Load MonoVLN template."""
@@ -82,12 +61,8 @@ class MonoVLNEval(BaseVLNEval):
     @property
     def evaluator_class(self):
         """Lazy load evaluator class to avoid circular imports."""
-        try:
-            from swiftvln.models.monovln.evaluator import MonoVLNEvaluator
-            return MonoVLNEvaluator
-        except ImportError:
-            from evaluator import MonoVLNEvaluator
-            return MonoVLNEvaluator
+        from swiftvln.models.monovln.evaluator import MonoVLNEvaluator
+        return MonoVLNEvaluator
 
 
 def main():

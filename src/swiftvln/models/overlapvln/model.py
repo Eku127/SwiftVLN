@@ -19,11 +19,10 @@ import os
 
 import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLConfig
+from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
 
 # Special tokens (must match dataset.py and template.py)
 HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
-HISTORY_MEMORY_TOKEN = "<history_memory>"  # New: unified memory token
-CURRENT_IMAGE_TOKEN = "<current_image>"
 
 
 class OverlapVLNQwen25VLConfig(Qwen2_5_VLConfig):

@@ -14,21 +14,12 @@ import numpy as np
 from typing import Any, Dict, List, Tuple
 from PIL import Image
 
-# Import from common module
-try:
-    from swiftvln.common import (
-        BaseVLNEvaluator,
-        EnvWrapper,
-        DEFAULT_IMAGE_TOKEN,
-        TrajectoryRecorder,
-    )
-except ImportError:
-    from ..common import (
-        BaseVLNEvaluator,
-        EnvWrapper,
-        DEFAULT_IMAGE_TOKEN,
-        TrajectoryRecorder,
-    )
+from swiftvln.common import (
+    BaseVLNEvaluator,
+    EnvWrapper,
+    DEFAULT_IMAGE_TOKEN,
+    TrajectoryRecorder,
+)
 
 
 class MonoVLNEvaluator(BaseVLNEvaluator):

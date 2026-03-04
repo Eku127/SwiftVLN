@@ -23,6 +23,7 @@ from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.llm.template.utils import Context, findall
 from swift.llm.template.base import to_device
 
+from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
 from swiftvln.common.history_processors import (
     HistoryProcessor,
     create_history_processor,
@@ -32,8 +33,6 @@ from swiftvln.common.history_processors import (
 
 # Special tokens (must match dataset.py and model.py)
 HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
-HISTORY_MEMORY_TOKEN = "<history_memory>"  # New: unified memory token
-CURRENT_IMAGE_TOKEN = "<current_image>"
 
 # Debug flag - set to True to see detailed GTC/SGTC processing info
 DEBUG_COMPRESSION = False

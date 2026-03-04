@@ -36,6 +36,7 @@ from habitat.config.default_structured_configs import (
 from habitat.utils.visualizations.utils import images_to_video, observations_to_image
 
 # Import from common module
+from .constants import DEFAULT_ACTION_MAP, DEFAULT_IMAGE_TOKEN
 from .env_wrapper import EnvWrapper
 from .habitat_wrapper import HabitatEnvWrapper
 from .satnav_wrapper import SatNavEnvWrapper
@@ -46,10 +47,6 @@ try:
     from swiftvln import habitat_extensions  # noqa: F401
 except ImportError:
     pass
-
-# Constants
-DEFAULT_IMAGE_TOKEN = "<image>"
-
 
 class BaseVLNEvaluator(ABC):
     """
@@ -92,12 +89,7 @@ class BaseVLNEvaluator(ABC):
             raise ValueError(f"Unknown env_type: {env_type}. Must be 'habitat' or 'satnav'.")
 
         # Action mapping (same across all VLN models)
-        self.idx2actions = {
-            0: 'STOP',
-            1: "↑",  # MOVE_FORWARD
-            2: "←",  # TURN_LEFT
-            3: "→",  # TURN_RIGHT
-        }
+        self.idx2actions = DEFAULT_ACTION_MAP.copy()
         self.actions2idx = {v: k for k, v in self.idx2actions.items()}
         
         # VLN parameters (from args)

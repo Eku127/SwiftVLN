@@ -19,8 +19,12 @@ from typing import Dict, List, Optional, Any
 from PIL import Image
 from torch.utils.data import Dataset
 
-# Constants
-DEFAULT_IMAGE_TOKEN = "<image>"
+from swiftvln.common.constants import (
+    DEFAULT_ACTION_MAP,
+    DEFAULT_CONJUNCTIONS,
+    DEFAULT_IMAGE_TOKEN,
+    format_navigation_prompt,
+)
 
 
 class StreamVLNDataset(Dataset):
@@ -120,24 +124,9 @@ class StreamVLNDataset(Dataset):
             self.data_list = self.data_list[:self.max_samples]
             print(f"Limited dataset from {original_len} to {len(self.data_list)} samples (max_samples={self.max_samples})")
         
-        # Action vocabulary
-        self.idx2actions = {
-            0: 'STOP',
-            1: "↑",  # MOVE_FORWARD
-            2: "←",  # TURN_LEFT
-            3: "→",  # TURN_RIGHT
-        }
-        
-        # Prompt templates
-        self.conjunctions = [
-            'you can see ',
-            'in front of you is ',
-            'there is ',
-            'you can spot ',
-            'you are toward the ',
-            'ahead of you is ',
-            'in your sight is '
-        ]
+        # Action vocabulary / prompt conjunctions
+        self.idx2actions = DEFAULT_ACTION_MAP.copy()
+        self.conjunctions = DEFAULT_CONJUNCTIONS.copy()
         
         print(f"StreamVLNDataset initialized: {len(self.data_list)} samples from {len(self.nav_data)} episodes")
         print(f"  env_type={self.env_type}, forward_distance={self.forward_distance}")
@@ -256,12 +245,7 @@ class StreamVLNDataset(Dataset):
         
         # Build conversation in ms-swift format
         # System prompt with environment-specific forward distance
-        system_prompt = (
-            f"You are an autonomous navigation assistant. Your task is to {instruction}. "
-            f"Based on your observations, output a sequence of actions using: "
-            f"↑ (forward {self.forward_distance}), ← (turn left), → (turn right), or STOP (when goal is reached). "
-            f"Output actions directly without explanation."
-        )
+        system_prompt = format_navigation_prompt(instruction, self.env_type)
         
         # Add history description if has history
         if has_history:

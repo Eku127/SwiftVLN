@@ -19,19 +19,11 @@ import numpy as np
 from typing import Any, Dict, List, Tuple, Optional
 from PIL import Image
 
-# Import from common module
-try:
-    from swiftvln.common import (
-        BaseVLNEvaluator,
-        EnvWrapper,
-        TrajectoryRecorder,
-    )
-except ImportError:
-    from ..common import (
-        BaseVLNEvaluator,
-        EnvWrapper,
-        TrajectoryRecorder,
-    )
+from swiftvln.common import (
+    BaseVLNEvaluator,
+    EnvWrapper,
+    TrajectoryRecorder,
+)
 
 
 class UniNaVidEvaluator(BaseVLNEvaluator):

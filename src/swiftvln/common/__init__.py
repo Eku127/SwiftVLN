@@ -26,16 +26,21 @@ from .history_processors import (
     create_history_processor,
 )
 from .base_arguments import BaseVLNTrainArguments
-from .mixed_dataset import MixedVLNQADataset
-from .trainer_mixin import VLNMixedTrainingMixin
-from .base_dataset import (
-    BaseVLNDataset,
-    DEFAULT_IMAGE_TOKEN,
-    HISTORY_MEMORY_TOKEN,
+from .base_sft import BaseVLNSft
+from .constants import (
     CURRENT_IMAGE_TOKEN,
     DEFAULT_ACTION_MAP,
     DEFAULT_CONJUNCTIONS,
+    DEFAULT_IMAGE_TOKEN,
+    HISTORY_MEMORY_TOKEN,
+    PROMPT_TEMPLATE_HABITAT,
+    PROMPT_TEMPLATE_SATNAV,
+    format_navigation_prompt,
+    get_navigation_prompt_template,
 )
+from .mixed_dataset import MixedVLNQADataset
+from .trainer_mixin import VLNMixedTrainingMixin
+from .base_dataset import BaseVLNDataset
 
 # Lazy imports for simulator-dependent components
 # These will only be imported when actually accessed
@@ -43,7 +48,6 @@ _lazy_imports = {
     'HabitatEnvWrapper': '.habitat_wrapper',
     'SatNavEnvWrapper': '.satnav_wrapper',
     'BaseVLNEvaluator': '.base_evaluator',
-    'DEFAULT_IMAGE_TOKEN': '.base_evaluator',
     'BaseVLNEval': '.base_eval',
     'append_text_to_image': '.utils',
     'init_distributed': '.utils',
@@ -65,6 +69,7 @@ def __getattr__(name):
 __all__ = [
     # Training components
     'BaseVLNTrainArguments',
+    'BaseVLNSft',
     'MixedVLNQADataset',
     'VLNMixedTrainingMixin',
     # Dataset components
@@ -74,13 +79,16 @@ __all__ = [
     'CURRENT_IMAGE_TOKEN',
     'DEFAULT_ACTION_MAP',
     'DEFAULT_CONJUNCTIONS',
+    'PROMPT_TEMPLATE_HABITAT',
+    'PROMPT_TEMPLATE_SATNAV',
+    'get_navigation_prompt_template',
+    'format_navigation_prompt',
     # Environment wrappers
     'EnvWrapper',
     'HabitatEnvWrapper',
     'SatNavEnvWrapper',
     # Base evaluator
     'BaseVLNEvaluator',
-    'DEFAULT_IMAGE_TOKEN',
     # Base eval entry point
     'BaseVLNEval',
     # Compressor (legacy, used internally by PerFrameCompressor)

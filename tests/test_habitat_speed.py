@@ -7,8 +7,8 @@ bypassing VLN task registration issues.
 
 Usage:
     conda activate swift-vln-eval
-    cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln
-    python test_habitat_speed.py
+    cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+    python tests/test_habitat_speed.py
 """
 
 import os
@@ -23,9 +23,10 @@ os.environ['HABITAT_SIM_LOG'] = 'quiet'
 
 # Add project paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
-msswift_root = os.path.dirname(os.path.dirname(current_dir))
-sys.path.insert(0, msswift_root)
-sys.path.insert(0, current_dir)
+repo_root = os.path.dirname(current_dir)
+src_root = os.path.join(repo_root, "src")
+if src_root not in sys.path:
+    sys.path.insert(0, src_root)
 
 
 def print_system_info():

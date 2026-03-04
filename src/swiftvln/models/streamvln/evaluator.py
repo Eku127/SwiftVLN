@@ -30,38 +30,27 @@ from PIL import Image
 try:
     from swiftvln.common import (
         BaseVLNEvaluator,
+        DEFAULT_CONJUNCTIONS,
         EnvWrapper,
         DEFAULT_IMAGE_TOKEN,
+        PROMPT_TEMPLATE_HABITAT,
+        PROMPT_TEMPLATE_SATNAV,
         TrajectoryRecorder,
         append_text_to_image,
     )
 except ImportError:
     from ..common import (
         BaseVLNEvaluator,
+        DEFAULT_CONJUNCTIONS,
         EnvWrapper,
         DEFAULT_IMAGE_TOKEN,
+        PROMPT_TEMPLATE_HABITAT,
+        PROMPT_TEMPLATE_SATNAV,
         TrajectoryRecorder,
         append_text_to_image,
     )
 
 from habitat.utils.visualizations.utils import observations_to_image
-
-# Environment-specific prompt templates
-# Forward distance differs by environment: habitat=0.25m, satnav=10m
-PROMPT_TEMPLATE_HABITAT = (
-    "You are an autonomous navigation assistant. Your task is to {instruction}. "
-    "Based on your observations, output a sequence of actions using: "
-    "↑ (forward 0.25m), ← (turn left), → (turn right), or STOP (when goal is reached). "
-    "Output actions directly without explanation."
-)
-
-PROMPT_TEMPLATE_SATNAV = (
-    "You are an autonomous navigation assistant. Your task is to {instruction}. "
-    "Based on your observations, output a sequence of actions using: "
-    "↑ (forward 10m), ← (turn left), → (turn right), or STOP (when goal is reached). "
-    "Output actions directly without explanation."
-)
-
 
 class StreamVLNEvaluator(BaseVLNEvaluator):
     """
@@ -82,15 +71,7 @@ class StreamVLNEvaluator(BaseVLNEvaluator):
         self.num_frames = getattr(self.args, 'num_frames', 32)
         
         # Prompt templates (same as dataset.py)
-        self.conjunctions = [
-            'you can see ',
-            'in front of you is ',
-            'there is ',
-            'you can spot ',
-            'you are toward the ',
-            'ahead of you is ',
-            'in your sight is '
-        ]
+        self.conjunctions = DEFAULT_CONJUNCTIONS.copy()
 
     def build_system_prompt(self, instruction: str, num_history_images: int = 0) -> str:
         """

@@ -40,8 +40,13 @@ import math as math_module
 try:
     from swiftvln.common import (
         BaseVLNEvaluator,
+        CURRENT_IMAGE_TOKEN,
+        DEFAULT_CONJUNCTIONS,
         EnvWrapper,
         DEFAULT_IMAGE_TOKEN,
+        HISTORY_MEMORY_TOKEN,
+        PROMPT_TEMPLATE_HABITAT,
+        PROMPT_TEMPLATE_SATNAV,
         TrajectoryRecorder,
         HistoryTokenCompressor,
     )
@@ -55,8 +60,13 @@ try:
 except ImportError:
     from ..common import (
         BaseVLNEvaluator,
+        CURRENT_IMAGE_TOKEN,
+        DEFAULT_CONJUNCTIONS,
         EnvWrapper,
         DEFAULT_IMAGE_TOKEN,
+        HISTORY_MEMORY_TOKEN,
+        PROMPT_TEMPLATE_HABITAT,
+        PROMPT_TEMPLATE_SATNAV,
         TrajectoryRecorder,
         HistoryTokenCompressor,
     )
@@ -67,27 +77,6 @@ except ImportError:
         PerFrameCompressor,
     )
     from ..common.embedding_enhancement import reconstruct_pose_from_actions
-
-# Special tokens (must match dataset.py, template.py, model.py)
-HISTORY_MEMORY_TOKEN = "<history_memory>"  # Unified history memory token
-CURRENT_IMAGE_TOKEN = "<current_image>"    # Current observation token
-
-# Environment-specific prompt templates (same as dataset.py)
-# Forward distance differs by environment: habitat=0.25m, satnav=10m
-PROMPT_TEMPLATE_HABITAT = (
-    "You are an autonomous navigation assistant. Your task is to {instruction}. "
-    "Based on your observations, output a sequence of actions using: "
-    "↑ (forward 0.25m), ← (turn left), → (turn right), or STOP (when goal is reached). "
-    "Output actions directly without explanation."
-)
-
-PROMPT_TEMPLATE_SATNAV = (
-    "You are an autonomous navigation assistant. Your task is to {instruction}. "
-    "Based on your observations, output a sequence of actions using: "
-    "↑ (forward 10m), ← (turn left), → (turn right), or STOP (when goal is reached). "
-    "Output actions directly without explanation."
-)
-
 
 @dataclass
 class OverlapContext:
@@ -192,15 +181,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         # ==========================================================================
         # Prompt templates (must match dataset.py)
         # ==========================================================================
-        self.conjunctions = [
-            'you can see ',
-            'in front of you is ',
-            'there is ',
-            'you can spot ',
-            'you are toward the ',
-            'ahead of you is ',
-            'in your sight is '
-        ]
+        self.conjunctions = DEFAULT_CONJUNCTIONS.copy()
         
         # ==========================================================================
         # Token IDs and visual processor config

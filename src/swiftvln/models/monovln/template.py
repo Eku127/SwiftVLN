@@ -15,7 +15,6 @@ Key features:
 """
 
 import os
-import sys
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
@@ -26,12 +25,6 @@ from swift.llm.template import register_template
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.llm.template.utils import Context, findall
 from swift.llm.template.base import to_device
-
-# Add parent directory to path for imports
-_current_dir = os.path.dirname(os.path.abspath(__file__))
-_vln_dir = os.path.dirname(_current_dir)
-if _vln_dir not in sys.path:
-    sys.path.insert(0, _vln_dir)
 
 from swiftvln.common.compressor import HistoryTokenCompressor
 

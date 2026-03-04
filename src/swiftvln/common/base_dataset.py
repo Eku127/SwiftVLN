@@ -13,35 +13,13 @@ from typing import Dict, List, Optional, Any
 from PIL import Image
 from torch.utils.data import Dataset
 
-# ============================================================================
-# Constants (shared across all VLN variants)
-# ============================================================================
-
-# Standard image token (ms-swift compatible)
-DEFAULT_IMAGE_TOKEN = "<image>"
-
-# Special tokens for compression variants
-HISTORY_MEMORY_TOKEN = "<history_memory>"  # Unified history memory
-CURRENT_IMAGE_TOKEN = "<current_image>"    # Current observation
-
-# Action vocabulary
-DEFAULT_ACTION_MAP = {
-    0: 'STOP',
-    1: "↑",  # MOVE_FORWARD
-    2: "←",  # TURN_LEFT
-    3: "→",  # TURN_RIGHT
-}
-
-# Prompt templates
-DEFAULT_CONJUNCTIONS = [
-    'you can see ',
-    'in front of you is ',
-    'there is ',
-    'you can spot ',
-    'you are toward the ',
-    'ahead of you is ',
-    'in your sight is '
-]
+from .constants import (
+    CURRENT_IMAGE_TOKEN,
+    DEFAULT_ACTION_MAP,
+    DEFAULT_CONJUNCTIONS,
+    DEFAULT_IMAGE_TOKEN,
+    HISTORY_MEMORY_TOKEN,
+)
 
 
 # ============================================================================

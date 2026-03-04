@@ -18,7 +18,8 @@ import torch
 from functools import lru_cache
 from typing import Dict, Any, List, Optional, Tuple
 
-from swiftvln.models.streamvln.dataset import StreamVLNDataset, DEFAULT_IMAGE_TOKEN
+from swiftvln.common.constants import DEFAULT_IMAGE_TOKEN
+from swiftvln.models.streamvln.dataset import StreamVLNDataset
 
 
 class CompressVLNDataset(StreamVLNDataset):

@@ -19,12 +19,14 @@ import random
 import numpy as np
 from typing import Dict, Any, List, Optional
 
-from swiftvln.models.streamvln.dataset import StreamVLNDataset, DEFAULT_IMAGE_TOKEN
+from swiftvln.common.constants import (
+    DEFAULT_ACTION_MAP,
+    DEFAULT_CONJUNCTIONS,
+    DEFAULT_IMAGE_TOKEN,
+    HISTORY_MEMORY_TOKEN,
+)
+from swiftvln.models.streamvln.dataset import StreamVLNDataset
 from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
-
-# Special tokens (must match model.py and template.py)
-HISTORY_MEMORY_TOKEN = "<history_memory>"  # Unified history memory
-CURRENT_IMAGE_TOKEN = "<current_image>"    # Current observation
 
 
 class OverlapVLNDataset(StreamVLNDataset):
@@ -196,24 +198,9 @@ class OverlapVLNDataset(StreamVLNDataset):
             else:
                 print(f"[OverlapVLN] Requested max_samples={self.max_samples} >= available {original_len}, using all samples")
         
-        # Action vocabulary
-        self.idx2actions = {
-            0: 'STOP',
-            1: "↑",  # MOVE_FORWARD
-            2: "←",  # TURN_LEFT
-            3: "→",  # TURN_RIGHT
-        }
-        
-        # Prompt templates
-        self.conjunctions = [
-            'you can see ',
-            'in front of you is ',
-            'there is ',
-            'you can spot ',
-            'you are toward the ',
-            'ahead of you is ',
-            'in your sight is '
-        ]
+        # Action vocabulary / prompt conjunctions
+        self.idx2actions = DEFAULT_ACTION_MAP.copy()
+        self.conjunctions = DEFAULT_CONJUNCTIONS.copy()
         
         # Statistics
         if self.num_overlap > 0:
