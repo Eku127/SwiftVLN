@@ -895,7 +895,8 @@ register_template(
     QwenTemplateMeta(
         'overlapvln_qwen2_5_vl',
         template_cls=OverlapVLNQwen25VLTemplate,
-    )
+    ),
+    exist_ok=True,
 )
 
 print("[OverlapVLNTemplate] Template 'overlapvln_qwen2_5_vl' registered successfully!")
