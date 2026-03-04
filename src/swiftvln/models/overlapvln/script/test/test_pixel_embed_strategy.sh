@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 
 cd "$SWIFTVLN_ROOT"

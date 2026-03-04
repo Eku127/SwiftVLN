@@ -105,9 +105,9 @@ export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
 # ============================================================================
 # Calculate ms-swift root directory
 # Script is at: src/swiftvln/models/streamvln/script/eval/eval_streamvln_qwen2_5_vl_distributed.sh
-# Need to go up 5 levels to reach ms-swift root
+# Need to go up 6 levels to reach SwiftVLN repo root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 VLN_DIR="${SWIFTVLN_ROOT}/src/swiftvln"
 STREAMVLN_DIR="${SWIFTVLN_ROOT}/src/swiftvln/models/streamvln"

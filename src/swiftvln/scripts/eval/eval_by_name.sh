@@ -491,7 +491,7 @@ if [ "$CHECK_ONLY" == "true" ]; then
     print_info "预期模型目录: $MODEL_DIR"
     
     # 检查eval脚本是否存在
-    EVAL_SCRIPT="${VLN_ROOT}/${MODEL_ARCH}/script/eval/eval_${MODEL_ARCH}_qwen2_5_vl_distributed.sh"
+    EVAL_SCRIPT="${VLN_ROOT}/models/${MODEL_ARCH}/script/eval/eval_${MODEL_ARCH}_qwen2_5_vl_distributed.sh"
     if [ ! -f "$EVAL_SCRIPT" ]; then
         print_error "找不到eval脚本: $EVAL_SCRIPT"
         exit 1
@@ -669,7 +669,7 @@ print_success "Checkpoint完整性检查通过"
 # ============================================================================
 # 确定eval脚本路径
 # ============================================================================
-EVAL_SCRIPT="${VLN_ROOT}/${MODEL_ARCH}/script/eval/eval_${MODEL_ARCH}_qwen2_5_vl_distributed.sh"
+EVAL_SCRIPT="${VLN_ROOT}/models/${MODEL_ARCH}/script/eval/eval_${MODEL_ARCH}_qwen2_5_vl_distributed.sh"
 
 if [ ! -f "$EVAL_SCRIPT" ]; then
     print_error "找不到eval脚本: $EVAL_SCRIPT"

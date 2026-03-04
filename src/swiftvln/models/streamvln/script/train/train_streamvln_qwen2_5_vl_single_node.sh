@@ -63,7 +63,7 @@ HABITAT_DATA_PATHS=(
     # "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/ScaleVLN"
 )
 SATNAV_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260202/trajectory_data"
+    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260228/trajectory_data"
 )
 
 # Select data paths based on VLN_ENV_TYPE (using nameref)
@@ -87,7 +87,7 @@ MAX_SAMPLES="0"  # 0 = use all samples
 # ============================================================================
 # Set USE_QA_MIXED_TRAINING=true to enable mixed training with VLN + QA data
 USE_QA_MIXED_TRAINING=false
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260202/data/qa_swift.jsonl"
+QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260228/data/qa_swift.jsonl"
 QA_RATIO=0.15             # Ratio of QA samples (0.15 = 15% QA, 85% VLN)
 QA_MAX_SAMPLES=0          # Max QA samples (0 = use all available)
 
@@ -250,11 +250,11 @@ echo "=========================================="
 # ============================================================================
 # Build Arguments
 # ============================================================================
-# Calculate ms-swift root directory
+# Calculate SwiftVLN root directory
 # Script is at: src/swiftvln/models/streamvln/script/train/train_streamvln_qwen2_5_vl_single_node.sh
-# Need to go up 5 levels to reach ms-swift root
+# Need to go up 6 levels to reach SwiftVLN repo root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 
 # DeepSpeed argument

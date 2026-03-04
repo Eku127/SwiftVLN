@@ -19,7 +19,7 @@ set +e
 # 配置
 # ============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/streamvln"
 RESULTS_EVAL_DIR="${SWIFTVLN_ROOT}/results/eval"
