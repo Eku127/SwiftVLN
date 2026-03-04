@@ -68,9 +68,9 @@ Prefer this file over generic defaults when making decisions.
   - SSH is only needed for process/GPU/container status checks and remote process launch/kill.
   - **No SSH is required for file operations** (reading queue files, writing eval_todo, etc.).
 - Eval execution hosts: `98` and `73` only.
-- Recommended eval mode: run a long-lived worker via `src/swiftvln/scripts/eval/start_eval_worker.sh` and feed model names through `src/swiftvln/scripts/eval/eval_todo.txt`.
-- Train→eval bridge: after successful checkpoint save, **directly append** model name to `src/swiftvln/scripts/eval/eval_todo.txt` (local file write, no wrapper script, no SSH).
-- Eval queue lifecycle: success moves model name to `src/swiftvln/scripts/eval/eval_done.txt`; failure moves to `src/swiftvln/scripts/eval/eval_failed_todo.txt`.
+- Recommended eval mode: run a long-lived worker via `src/swiftvln/scripts/eval/start_eval_worker.sh` and feed model names through `runtime/eval_queue/eval_todo.txt`.
+- Train→eval bridge: after successful checkpoint save, **directly append** model name to `runtime/eval_queue/eval_todo.txt` (local file write, no wrapper script, no SSH).
+- Eval queue lifecycle: success moves model name to `runtime/eval_queue/eval_done.txt`; failure moves to `runtime/eval_queue/eval_failed_todo.txt`.
 - Queue scripts should try automatic fixes/retries on common runtime failures before final failure.
 - Send webhook notifications for retry/failure events and final completion summaries (train and eval).
 - Eval auto-fix must not downgrade to single-GPU on OOM unless user explicitly requests.

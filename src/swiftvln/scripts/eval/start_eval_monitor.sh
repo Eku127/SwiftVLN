@@ -7,8 +7,12 @@ set -euo pipefail
 # - If all three hosts are idle, stops monitoring.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
 EVAL_QUEUE_SCRIPT="${SCRIPT_DIR}/eval_queue.sh"
-TODO_FILE="${SCRIPT_DIR}/eval_todo.txt"
+EVAL_QUEUE_DIR="${EVAL_QUEUE_DIR:-${SWIFTVLN_ROOT}/runtime/eval_queue}"
+TODO_FILE="${EVAL_QUEUE_DIR}/eval_todo.txt"
+mkdir -p "${EVAL_QUEUE_DIR}"
+touch "${TODO_FILE}"
 
 HOST_98="${HOST_98:-10.246.132.98}"
 HOST_73="${HOST_73:-10.246.152.73}"

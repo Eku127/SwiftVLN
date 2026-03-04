@@ -697,6 +697,11 @@ def main():
     print(f"[Config] Device: {device}")
     print(f"[Config] Model: {args.model_path}")
     print(f"[Config] Compression stride: {args.compression_stride}")
+
+    if not os.path.isdir(args.test_data_dir):
+        print(f"[Error] Test data directory not found: {args.test_data_dir}")
+        print("[Hint] Provide --test_data_dir pointing to external feature_test fixtures.")
+        return
     
     # Load model
     print("\n[Loading] Model and processor...")

@@ -188,7 +188,7 @@ This is **not** a background script or cron job. It is Codex executing shell com
 1. For each completed run, parse logs for `Model saved to: <path>`.
 2. Verify checkpoint: directory exists and is non-empty.
 3. Generate **run summary**: model, config deltas, data version, output path, duration, status.
-4. **Enqueue to eval** — append to `src/swiftvln/scripts/eval/eval_todo.txt`:
+4. **Enqueue to eval** — append to `runtime/eval_queue/eval_todo.txt`:
    - One model name per line.
    - This is a **local file write** on the current host (shared workspace mount).
    - No SSH required. No enqueue wrapper scripts. No remote target host assumption.
@@ -217,7 +217,7 @@ This is **not** a background script or cron job. It is Codex executing shell com
 |---|---|
 | Training queue | `src/swiftvln/scripts/train/train_queue.sh` |
 | OverlapVLN single run | `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh` |
-| Eval todo queue | `src/swiftvln/scripts/eval/eval_todo.txt` |
+| Eval todo queue | `runtime/eval_queue/eval_todo.txt` |
 | Webhook helper | `.codex/skills/overlapvln-train/scripts/send_wecom_webhook.sh` |
 
 ---

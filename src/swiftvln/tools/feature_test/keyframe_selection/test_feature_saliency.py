@@ -714,6 +714,11 @@ def main():
     print(f"[Config] Device: {device}")
     print(f"[Config] Target tokens for ToMe: {args.target_tokens}")
     print(f"[Config] Output: {output_dir}")
+
+    if not os.path.isdir(args.data_dir):
+        print(f"[Error] Test data directory not found: {args.data_dir}")
+        print("[Hint] Provide --data_dir pointing to external feature_test fixtures.")
+        return
     
     # Load model
     print("\n[Step 1] Loading model...")

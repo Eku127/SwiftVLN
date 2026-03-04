@@ -9,7 +9,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
-TODO_FILE="${SCRIPT_DIR}/eval_todo.txt"
+EVAL_QUEUE_DIR="${EVAL_QUEUE_DIR:-${SWIFTVLN_ROOT}/runtime/eval_queue}"
+TODO_FILE="${EVAL_QUEUE_DIR}/eval_todo.txt"
 LOCK_FILE="${TODO_FILE}.lock"
 SKIP_CHECKPOINT=false
 MODEL_NAME="${1:-}"
@@ -109,4 +110,3 @@ else
     echo "$MODEL_NAME" >> "$TODO_FILE"
     print_ok "Queued for eval: $MODEL_NAME"
 fi
-

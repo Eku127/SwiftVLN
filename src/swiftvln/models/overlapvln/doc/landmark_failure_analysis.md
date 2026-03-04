@@ -157,5 +157,4 @@ Boundary任务的闭环特性使得模型可以"大致跟随边界"就能成功�
   - 每个episode的详细报告: `debug_landmark/{episode_id}/debug_report.json`
   - 关键帧: `debug_landmark/{episode_id}/frame_*.jpg`
   - 导航视频: `videos/`
-- Debug评估脚本: `src/swiftvln/models/overlapvln/script/eval/eval_debug_landmark.sh`
 - 评估代码中的debug功能: `src/swiftvln/models/overlapvln/evaluator.py` (使用 `--debug_landmark` 开关)

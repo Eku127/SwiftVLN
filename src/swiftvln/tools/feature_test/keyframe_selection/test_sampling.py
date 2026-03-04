@@ -1318,6 +1318,11 @@ def main():
     print(f"[Config] Centering: {args.use_centering}")
     print(f"[Config] Data dir: {args.data_dir}")
     print(f"[Config] Output dir: {output_dir}")
+
+    if not os.path.isdir(args.data_dir):
+        print(f"[Error] Test data directory not found: {args.data_dir}")
+        print("[Hint] Provide --data_dir pointing to external feature_test fixtures.")
+        return
     
     # Load model
     print("\n[Step 1] Loading model...")

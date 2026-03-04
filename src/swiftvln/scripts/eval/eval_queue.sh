@@ -28,6 +28,7 @@
 #   CUDA_DEVICES - GPU设备 (default: 0,1,2,3,4,5,6,7)
 #   SAVE_VIDEO   - 保存视频 (true/false)
 #   MAX_EPISODES - 限制episode数量 (用于调试)
+#   EVAL_QUEUE_DIR - 评测队列状态目录 (default: ${SWIFTVLN_ROOT}/runtime/eval_queue)
 #   DYNAMIC_TODO - 启用动态模式 (true/false, 非交互模式下使用)
 #   AUTO_TODO    - 无交互从 eval_todo.txt 启动 (true/false)
 #   WAIT_FOR_NEW_TASKS - 动态模式下队列空时持续等待新任务 (true/false)
@@ -65,10 +66,14 @@ SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 EVAL_BY_NAME_SCRIPT="${SCRIPT_DIR}/eval_by_name.sh"
 COLLECT_SCRIPT="${SCRIPT_DIR}/collect_eval_results.py"
-TODO_FILE="${SCRIPT_DIR}/eval_todo.txt"
-DONE_FILE="${SCRIPT_DIR}/eval_done.txt"
-FAILED_FILE="${SCRIPT_DIR}/eval_failed_todo.txt"
+EVAL_QUEUE_DIR="${EVAL_QUEUE_DIR:-${SWIFTVLN_ROOT}/runtime/eval_queue}"
+TODO_FILE="${EVAL_QUEUE_DIR}/eval_todo.txt"
+DONE_FILE="${EVAL_QUEUE_DIR}/eval_done.txt"
+FAILED_FILE="${EVAL_QUEUE_DIR}/eval_failed_todo.txt"
 TODO_LOCK_FILE="${TODO_FILE}.lock"
+
+mkdir -p "$EVAL_QUEUE_DIR"
+touch "$TODO_FILE" "$DONE_FILE" "$FAILED_FILE"
 
 # ============================================================================
 # 全局变量

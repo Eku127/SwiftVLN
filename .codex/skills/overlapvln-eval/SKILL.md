@@ -129,8 +129,8 @@ bash src/swiftvln/scripts/eval/enqueue_eval.sh <model_name> --skip-checkpoint
 
 ```bash
 model="<model_name>"
-todo="src/swiftvln/scripts/eval/eval_todo.txt"
-done="src/swiftvln/scripts/eval/eval_done.txt"
+todo="runtime/eval_queue/eval_todo.txt"
+done="runtime/eval_queue/eval_done.txt"
 if ! grep -Fxq "$model" "$todo" 2>/dev/null && ! grep -Fxq "$model" "$done" 2>/dev/null; then
   echo "$model" >> "$todo"
 fi
@@ -226,9 +226,9 @@ This is **not** a background script. It is Codex executing shell commands intera
 | Auto-stop monitor | `src/swiftvln/scripts/eval/start_eval_monitor.sh` |
 | Local enqueue helper | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
 | CSV collector | `src/swiftvln/scripts/eval/collect_eval_results.py` |
-| Eval todo queue | `src/swiftvln/scripts/eval/eval_todo.txt` |
-| Eval done list | `src/swiftvln/scripts/eval/eval_done.txt` |
-| Eval failed list | `src/swiftvln/scripts/eval/eval_failed_todo.txt` |
+| Eval todo queue | `runtime/eval_queue/eval_todo.txt` |
+| Eval done list | `runtime/eval_queue/eval_done.txt` |
+| Eval failed list | `runtime/eval_queue/eval_failed_todo.txt` |
 
 ---
 

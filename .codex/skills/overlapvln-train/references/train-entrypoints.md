@@ -4,7 +4,6 @@
 
 - Queue mode: `src/swiftvln/scripts/train/train_queue.sh`
 - OverlapVLN single run: `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
-- OverlapVLN debug (special use): `src/swiftvln/models/overlapvln/script/train/train_overlapvln_gtc_debug.sh`
 
 ## Important Variables in `train_overlapvln_qwen2_5_vl.sh`
 

@@ -36,9 +36,9 @@ description: Monitor training/evaluation status across servers 98, 73, and 17 (D
   - Read `logs/train_queue_*.log` and parse `实验列表 (共 X 个实验)` and latest `进度: a / b`.
 - Eval queue totals:
   - Check:
-    - `src/swiftvln/scripts/eval/eval_todo.txt`
-    - `src/swiftvln/scripts/eval/eval_done.txt`
-    - `src/swiftvln/scripts/eval/eval_failed_todo.txt`
+    - `runtime/eval_queue/eval_todo.txt`
+    - `runtime/eval_queue/eval_done.txt`
+    - `runtime/eval_queue/eval_failed_todo.txt`
   - Report counts and key model names (first few lines).
 
 5. For each active training task, report progress.
