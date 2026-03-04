@@ -1,0 +1,4 @@
+interface:
+  display_name: "Server Train/Eval Monitor"
+  short_description: "巡检98/73/17三机GPU训练评估任务进度与总组数并统一汇报"
+  default_prompt: "巡检 98、73、17 三台服务器，汇总 GPU 使用、训练/评估任务、当前进度、总实验组数与 eval 队列计数。"

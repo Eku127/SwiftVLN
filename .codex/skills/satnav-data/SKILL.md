@@ -1,0 +1,100 @@
+---
+name: satnav-data
+description: "Process SatNav dataset versions end to end, including unzip data.zip, inspect and classify city/type changes, generate episodes and QA outputs, run trajectory generation, and sync/verify across servers. Use when the user asks to process SatNav data, process data, 处理数据, 处理 SatNav 数据, or mentions SatNav dataset preparation."
+---
+
+# Process SatNav Data
+
+Execute a 4-step pipeline **continuously without pausing between steps**. Only stop if a step fails or if a decision requires user input (e.g., new city/type classification). Otherwise, proceed automatically through all steps.
+
+## Inputs
+
+- Require a dataset version string, e.g. `ver_260211`.
+- Assume dataset root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/`.
+
+## Step 1: Data Processing
+
+1. Unzip `<version>/data.zip` into `<version>/data/`.
+2. Inspect available cities and episode statistics.
+3. If new cities or episode types appear, ask user how to classify them:
+- New city to `train` or `eval`.
+- New episode type to include or skip.
+4. Update data process configs accordingly.
+5. Run episodes processing to produce grouped outputs under `episodes/train` and `episodes/eval`.
+6. Convert `qa.json` to Swift-compatible JSONL (`qa_swift.jsonl`).
+7. Report summary and **proceed to Step 2 automatically**.
+
+## Step 2: Trajectory Generation
+
+Use SatNav repository application, not a copied `trajectory_data`.
+
+1. Build a temporary config from:
+- `/mnt/data1/home/jiangjiajun/workspace/SatNav/configs/satnav_task.yaml`
+- Set `DATASET.DATA_PATH` to:
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/episodes/train/all_episodes.json`
+2. Run in `satnav` conda env:
+- `cd /mnt/data1/home/jiangjiajun/workspace/SatNav`
+- `python -m applications.trajectory_generation.generate_parallel --config <temp_config> --output_dir /mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/trajectory_data --num_workers 64`
+3. Verify outputs exist:
+- `trajectory_data/images/`
+- `trajectory_data/annotations.json`
+- `trajectory_data/summary.json`
+4. Verify quality stats:
+- `summary.json` line count == generated trajectory count
+- `annotations.json` count matches `summary.json` lines
+- Record failed/discarded counts from generator log
+5. Report runtime and throughput estimate, then **proceed to Step 3 automatically**.
+
+## Step 3: Sync and Verify
+
+Sync the **entire version directory** (`ver_<version>/`) to both remote servers — this includes `episodes/`, `data/`, and `trajectory_data/`.
+
+Use the existing script:
+
+```bash
+bash src/swiftvln/scripts/data_sync/sync_and_verify.sh <version>
+```
+
+The script handles:
+1. `rsync -avP --update` of the full `ver_<version>/` to `10.246.152.73`.
+2. `rsync -avP --update` of the full `ver_<version>/` to `10.246.132.17`.
+3. Verification across local + both remote servers:
+   - Total file counts (98 vs 73 vs 17)
+   - Key file sizes:
+     - `episodes/train/all_episodes.json`
+     - `trajectory_data/annotations.json`
+   - `trajectory_data/images/` subdirectory counts
+4. Report verification result and any mismatch details.
+
+## Step 4: Sync Training Config Paths
+
+After Step 3 is successful, synchronize latest SatNav dataset paths in project configs:
+
+1. Update `src/swiftvln/configs/satnav_task.yaml`:
+- `DATASET.DATA_PATH` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/episodes/eval/all_episodes.json`
+2. Update `src/swiftvln/scripts/train/train_queue.sh`:
+- `QA_DATASET` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/data/qa_swift.jsonl`
+- `default_satnav_path` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/trajectory_data`
+3. Print changed lines and **proceed automatically** (no confirmation needed).
+
+## Default Script Paths
+
+- `src/swiftvln/scripts/data_process/inspect_data.py`
+- `src/swiftvln/scripts/data_process/run_all.py`
+- `src/swiftvln/scripts/data_process/process_episodes.py`
+- `src/swiftvln/scripts/data_process/convert_qa_to_swift.py`
+- `src/swiftvln/scripts/data_process/config.py`
+- `/mnt/data1/home/jiangjiajun/workspace/SatNav/applications/trajectory_generation/generate_parallel.py`
+- `/mnt/data1/home/jiangjiajun/workspace/SatNav/configs/satnav_task.yaml`
+- `src/swiftvln/scripts/data_sync/sync_and_verify.sh`
+- `src/swiftvln/scripts/data_sync/sync_data.sh`
+
+## Operating Rules
+
+- **Run all steps continuously without pausing for confirmation.** Only stop and ask the user if:
+  - A step fails with an unrecoverable error.
+  - A decision is genuinely ambiguous (e.g., new city or episode type discovered that has no precedent).
+- After each step, report a brief summary and immediately proceed to the next step.
+- Prefer existing project scripts over ad-hoc one-off logic.
+- Preserve and restore temporary config edits when possible.
+- Fail fast on missing files or SSH permission issues; show exact blocking command and path.
