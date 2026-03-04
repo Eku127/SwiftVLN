@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store
+*.swp
+
+logs/
+output/
+results/
+reports/*.tmp
+runtime/
+
+# Generated analysis artifacts
+src/swiftvln/scripts/analysis/trajectory_analysis/*.png
+
+# Feature test generated assets / heavy fixtures
+src/swiftvln/tools/feature_test/keyframe_selection/results/
+src/swiftvln/tools/feature_test/keyframe_selection/test_data/
+src/swiftvln/tools/feature_test/mem_test/results/
+src/swiftvln/tools/feature_test/mem_test/analysis_results/
+src/swiftvln/tools/feature_test/tome/test_data/
+src/swiftvln/tools/feature_test/tome/test_results.json
+src/swiftvln/tools/feature_test/tome/*comparison.png
