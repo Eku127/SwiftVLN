@@ -34,7 +34,7 @@ import tqdm
 from abc import ABC, abstractmethod
 from typing import Type, Optional, Dict, Any, List
 
-from .eval_reporting import (
+from .reporting import (
     clean_results_for_output,
     compute_trajectory_type_stats,
     get_swanlab_url,
@@ -99,7 +99,9 @@ class BaseVLNEval(ABC):
         
         # Paths
         self._current_dir = os.path.dirname(os.path.abspath(__file__))
-        self._package_root = os.path.dirname(self._current_dir)
+        self._common_root = os.path.dirname(self._current_dir)
+        self._package_root = os.path.dirname(self._common_root)
+        # package_root: <repo>/src/swiftvln -> repo_root: <repo>
         self._repo_root = os.path.dirname(os.path.dirname(self._package_root))
     
     @staticmethod
@@ -182,7 +184,7 @@ class BaseVLNEval(ABC):
             return _init_distributed()
         except ImportError:
             try:
-                from .utils import init_distributed as _init_distributed
+                from ..utils import init_distributed as _init_distributed
                 return _init_distributed()
             except ImportError:
                 return 0, 1, 0
@@ -400,7 +402,7 @@ class BaseVLNEval(ABC):
             from swiftvln.common import gather_metrics
         except ImportError:
             try:
-                from .utils import gather_metrics
+                from ..utils import gather_metrics
             except ImportError:
                 gather_metrics = None
         

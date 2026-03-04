@@ -95,7 +95,7 @@ if 'monovln_qwen2_5_vl' not in MODEL_MAPPING:
 
 from .dataset import MonoVLNDataset
 from .arguments import MonoVLNTrainArguments
-from swiftvln.common.compressor import HistoryTokenCompressor
+from swiftvln.common.history_processors.compressor import HistoryTokenCompressor
 
 __all__ = [
     # Model

@@ -62,7 +62,7 @@ class PerFrameCompressor(HistoryProcessor):
             grid_size: Grid size for ToMe method
         """
         # Lazy import to avoid circular dependency
-        from ..compressor import HistoryTokenCompressor
+        from .compressor import HistoryTokenCompressor
         
         self.stride = stride
         self.method = method

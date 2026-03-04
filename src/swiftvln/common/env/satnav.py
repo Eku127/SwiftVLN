@@ -9,7 +9,7 @@ import numpy as np
 
 from satnav.core.env import Env as SatNavEnv
 
-from .env_wrapper import EnvWrapper
+from .base import EnvWrapper
 
 
 class SatNavEnvWrapper(EnvWrapper):

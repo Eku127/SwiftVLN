@@ -8,7 +8,7 @@ Inherits from BaseVLNTrainArguments which includes QA mixed training support.
 
 from dataclasses import dataclass
 
-from swiftvln.common.base_arguments import BaseVLNTrainArguments
+from swiftvln.common.training.arguments import BaseVLNTrainArguments
 
 
 @dataclass

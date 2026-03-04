@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Any
 from PIL import Image
 from torch.utils.data import Dataset
 
-from .constants import (
+from ..constants import (
     CURRENT_IMAGE_TOKEN,
     DEFAULT_ACTION_MAP,
     DEFAULT_CONJUNCTIONS,

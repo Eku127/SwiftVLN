@@ -8,7 +8,7 @@ Usage:
 
 from typing import List, Optional, Union
 
-from swiftvln.common.base_sft import BaseVLNSft
+from swiftvln.common.training.base_sft import BaseVLNSft
 from swiftvln.models.streamvln.arguments import StreamVLNTrainArguments
 from swiftvln.models.streamvln.dataset import StreamVLNDataset
 

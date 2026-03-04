@@ -47,6 +47,7 @@ from .base import HistoryProcessor, HistoryProcessorConfig
 from .per_frame import PerFrameCompressor
 from .gtc import GlobalTokenClustering
 from .segment_gtc import SegmentGTC
+from .compressor import HistoryTokenCompressor
 
 
 # =============================================================================
@@ -173,4 +174,5 @@ __all__ = [
     'PerFrameCompressor',
     'GlobalTokenClustering',
     'SegmentGTC',
+    'HistoryTokenCompressor',
 ]

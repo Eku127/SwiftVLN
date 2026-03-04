@@ -12,7 +12,7 @@ from typing import List, Optional, Union
 import torch
 from swift.utils import get_logger
 
-from swiftvln.common.base_sft import BaseVLNSft
+from swiftvln.common.training.base_sft import BaseVLNSft
 from swiftvln.models.overlapvln.arguments import OverlapVLNTrainArguments
 from swiftvln.models.overlapvln.dataset import OverlapVLNDataset
 

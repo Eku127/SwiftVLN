@@ -36,11 +36,11 @@ from habitat.config.default_structured_configs import (
 from habitat.utils.visualizations.utils import images_to_video, observations_to_image
 
 # Import from common module
-from .constants import DEFAULT_ACTION_MAP, DEFAULT_IMAGE_TOKEN
-from .env_wrapper import EnvWrapper
-from .habitat_wrapper import HabitatEnvWrapper
-from .satnav_wrapper import SatNavEnvWrapper
-from .utils import append_text_to_image, TrajectoryRecorder, ErrorAnalyzer
+from ..constants import DEFAULT_ACTION_MAP, DEFAULT_IMAGE_TOKEN
+from ..env.base import EnvWrapper
+from ..env.habitat import HabitatEnvWrapper
+from ..env.satnav import SatNavEnvWrapper
+from ..utils import append_text_to_image, TrajectoryRecorder, ErrorAnalyzer
 
 # Trigger registration of measures
 try:

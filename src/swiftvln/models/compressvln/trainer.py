@@ -10,7 +10,7 @@ from typing import List, Optional, Union
 
 from swift.utils import get_logger
 
-from swiftvln.common.base_sft import BaseVLNSft
+from swiftvln.common.training.base_sft import BaseVLNSft
 from swiftvln.models.compressvln.arguments import CompressVLNTrainArguments
 from swiftvln.models.compressvln.dataset import CompressVLNDataset
 

@@ -9,7 +9,7 @@ import numpy as np
 
 from habitat import Env as HabitatEnv
 
-from .env_wrapper import EnvWrapper
+from .base import EnvWrapper
 
 
 class HabitatEnvWrapper(EnvWrapper):

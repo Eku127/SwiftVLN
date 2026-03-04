@@ -8,7 +8,7 @@ QA mixed training parameters are inherited from BaseVLNTrainArguments.
 
 from dataclasses import dataclass, field
 
-from swiftvln.common.base_arguments import BaseVLNTrainArguments
+from swiftvln.common.training.arguments import BaseVLNTrainArguments
 
 
 @dataclass

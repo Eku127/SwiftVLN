@@ -8,7 +8,7 @@ Extends StreamVLN training arguments with compression-specific parameters.
 from dataclasses import dataclass, field
 from typing import Optional
 
-from swiftvln.common.base_arguments import BaseVLNTrainArguments
+from swiftvln.common.training.arguments import BaseVLNTrainArguments
 
 
 @dataclass
