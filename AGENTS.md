@@ -1,10 +1,19 @@
 # AGENTS.md
 
-## Startup Context
+## Startup Context (Mandatory)
 
-- At the beginning of each new task in this repository, read:
+- **每次启动一个新的 agent 时，必须先阅读：**
   - `.codex/CODEX_CONTEXT.md`
-- Treat that file as the default project background and workflow context.
+- 把该文件视为当前仓库的默认事实来源（路径、脚本、环境、约定）。
+
+## Context Maintenance Rule (Mandatory)
+
+- 若本次任务包含**重大改动**，必须在结束前同步更新 `.codex/CODEX_CONTEXT.md`。
+- 重大改动包括但不限于：
+  - 目录/包结构重构
+  - 训练或评测主流程变化
+  - 队列路径、关键脚本路径变化
+  - 默认数据版本或关键环境约定变化
 
 ## Repo Skills
 
@@ -16,6 +25,8 @@
   - `.codex/skills/overlapvln-eval/SKILL.md`
 - If user asks for cross-server status巡检, use:
   - `.codex/skills/server-train-eval-monitor/SKILL.md`
+- If task is smoke test / 冒烟测试 for train+eval validation, use:
+  - `.codex/skills/swiftvln-smoke-test/SKILL.md`
 
 ## Execution Rules
 
