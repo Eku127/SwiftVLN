@@ -1,0 +1,899 @@
+#!/bin/bash
+# ============================================================================
+# Unified VLN Model Evaluation Script
+# ============================================================================
+# 
+# 支持的模型架构: streamvln, monovln, compressvln, uninavid, overlapvln
+#
+# 使用方法:
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh <model_name> [options]
+#
+# 示例:
+#   # Habitat 评估 (默认)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh streamvln-3b-2ep-f32h8s4-bs64-lr2e-5-20260119-140611
+#   
+#   # 新格式 (自动识别 env_type 和 stage)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh streamvln-habitat-stage1-3b-1ep-f32h8s4-bs64-lr2e-5-20260129-123456
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh streamvln-satnav-stage2-3b-1ep-f32h8s4-bs64-lr2e-5-20260129-123456
+#   
+#   # SatNav 评估 (手动指定 ENV_TYPE 会覆盖模型名中解析的值)
+#   ENV_TYPE=satnav bash src/swiftvln/scripts/eval/eval_by_name.sh monovln-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611
+#   
+#   # 指定评估集
+#   EVAL_SPLIT=val_seen bash src/swiftvln/scripts/eval/eval_by_name.sh compressvln-3b-1ep-f32h8s4-stride2-bs64-lr2e-5-20260119-140611
+#
+#   # UniNaVid 评估
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh uninavid-3b-1ep-st32-sim0.985-ststride3-imgstride1.5-hstride2-bs64-lr2e-5-20260121-100838
+#
+#   # OverlapVLN 评估 (per_frame, no embedding)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456
+#   
+#   # OverlapVLN 评估 (per_frame with tome, no embedding)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-noembed-bs64-lr2e-5-20260204-123456
+#   
+#   # OverlapVLN 评估 (GTC, no embedding)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-20260204-123456
+#
+#   # OverlapVLN 评估 (Pixel Embed)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-initial-pixel-bs64-lr2e-5-20260212-123456
+#
+#   # OverlapVLN 评估 (Pose Embed, additive)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pose-bs64-lr2e-5-20260302-123456
+#
+#   # OverlapVLN 评估 (Pixel + Pose Embed)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pixel+pose-bs64-lr2e-5-20260302-123456
+#
+#   # OverlapVLN 评估 (SegmentGTC, no embedding)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-20260204-123456
+#
+# 环境变量:
+#   ENV_TYPE     - habitat (默认) 或 satnav (如果模型名包含 env_type，会自动解析)
+#   EVAL_SPLIT   - val_unseen (默认), val_seen, test 等
+#   CUDA_DEVICES - GPU设备 (default: 0,1,2,3,4,5,6,7)
+#   MASTER_PORT  - 分布式端口 (default: 29600)
+#   MAX_EPISODES - 限制episode数量 (用于调试)
+#   SAVE_VIDEO   - 保存视频 (true/false)
+#   DRY_RUN      - 仅解析参数，不运行评估 (true/false)
+#
+# ============================================================================
+
+set -e
+
+# ============================================================================
+# 颜色输出
+# ============================================================================
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# ============================================================================
+# 路径配置
+# ============================================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
+export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
+VLN_ROOT="${SWIFTVLN_ROOT}/src/swiftvln"
+OUTPUT_ROOT="${SWIFTVLN_ROOT}/output"
+
+# ============================================================================
+# 参数检查
+# ============================================================================
+if [ $# -lt 1 ]; then
+    print_error "请提供模型名称!"
+    echo ""
+    echo "使用方法: bash $0 <model_name> [options]"
+    echo ""
+    echo "示例:"
+    echo "  bash $0 streamvln-3b-2ep-f32h8s4-bs64-lr2e-5-20260119-140611"
+    echo "  ENV_TYPE=satnav bash $0 monovln-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611"
+    exit 1
+fi
+
+MODEL_NAME="$1"
+
+# 检查是否为 dry-run 模式
+DRY_RUN="${DRY_RUN:-false}"
+CHECK_ONLY="${CHECK_ONLY:-false}"
+if [ "$DRY_RUN" == "true" ]; then
+    print_info "DRY-RUN 模式: 仅解析参数，不运行评估"
+fi
+if [ "$CHECK_ONLY" == "true" ]; then
+    print_info "CHECK-ONLY 模式: 检查eval脚本和参数配置，不运行评估"
+fi
+
+# ============================================================================
+# 解析模型架构
+# ============================================================================
+parse_model_arch() {
+    local name="$1"
+    
+    if [[ "$name" == streamvln-* ]]; then
+        echo "streamvln"
+    elif [[ "$name" == monovln-* ]]; then
+        echo "monovln"
+    elif [[ "$name" == compressvln-* ]]; then
+        echo "compressvln"
+    elif [[ "$name" == uninavid-* ]]; then
+        echo "uninavid"
+    elif [[ "$name" == overlapvln-* ]]; then
+        echo "overlapvln"
+    else
+        echo ""
+    fi
+}
+
+MODEL_ARCH=$(parse_model_arch "$MODEL_NAME")
+
+if [ -z "$MODEL_ARCH" ]; then
+    print_error "无法解析模型架构! 模型名称必须以 streamvln-, monovln-, compressvln-, uninavid- 或 overlapvln- 开头"
+    print_error "输入的模型名称: $MODEL_NAME"
+    exit 1
+fi
+
+print_info "检测到模型架构: ${MODEL_ARCH}"
+
+# ============================================================================
+# 解析模型参数 (基于EXP_NAME格式)
+# ============================================================================
+# 新格式 (带 env_type 和 stage):
+# StreamVLN:   streamvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# CompressVLN: compressvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}-stride{compress_stride}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# 注: qa参数(混合训练比例)不影响eval，解析时会被忽略
+# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# OverlapVLN (gtc):         overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# OverlapVLN (segment_gtc): overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+#   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
+#
+# 旧格式 (兼容，默认 env_type=habitat):
+# StreamVLN:   streamvln-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}-bs{batch_size}-lr{learning_rate}-{timestamp}
+# MonoVLN:     monovln-{model_size}-{epochs}ep-h{num_history}s{num_future_steps}-spe{samples_per_episode}-stride{compress_stride}-bs{batch_size}-lr{learning_rate}-{timestamp}
+# CompressVLN: compressvln-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}-stride{compress_stride}-bs{batch_size}-lr{learning_rate}-{timestamp}
+# UniNaVid:    uninavid-{model_size}-{epochs}ep-st{short_term_frames}-sim{similarity_threshold}-ststride{compress_stride}-imgstride{image_resize_stride}-hstride{history_frame_stride}-bs{batch_size}-lr{learning_rate}-{timestamp}
+
+# ============================================================================
+# 解析环境类型 (从模型名中提取 env_type，兼容新旧格式)
+# ============================================================================
+parse_env_type() {
+    local name="$1"
+    local arch="$2"
+    
+    # 新格式: {arch}-{env_type}-{stage}-{model_size}-...
+    # 检测是否为新格式 (第二个字段是 habitat 或 satnav)
+    local second_field=$(echo "$name" | cut -d'-' -f2)
+    
+    if [[ "$second_field" == "habitat" ]] || [[ "$second_field" == "satnav" ]]; then
+        echo "$second_field"
+    else
+        # 旧格式，默认 habitat
+        echo "habitat"
+    fi
+}
+
+parse_streamvln_params() {
+    local name="$1"
+    # 新格式: streamvln-habitat-stage1-3b-1ep-f32h8s4[-qa{ratio}]-bs64-lr2e-5-20260129-123456
+    # 旧格式: streamvln-3b-2ep-f32h8s4-bs64-lr2e-5-20260119-140611
+    # 注意: qa参数不影响eval，解析时会被忽略
+    
+    # 提取参数 - 支持新旧两种格式
+    # model_size: 匹配 -{数字}b- 或 -{数字}B- 的模式
+    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
+    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
+    local frames_history_steps=$(echo "$name" | grep -oP 'f\d+h\d+s\d+')
+    local num_frames=$(echo "$frames_history_steps" | sed -n 's/f\([0-9]*\)h.*/\1/p')
+    local num_history=$(echo "$frames_history_steps" | sed -n 's/.*h\([0-9]*\)s.*/\1/p')
+    local num_future_steps=$(echo "$frames_history_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
+    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
+    # 学习率格式: lr2e-5 需要提取 2e-5 (包含科学计数法中的负号)
+    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
+    
+    echo "MODEL_SIZE=$model_size"
+    echo "NUM_EPOCHS=$epochs"
+    echo "NUM_FRAMES=$num_frames"
+    echo "NUM_HISTORY=$num_history"
+    echo "NUM_FUTURE_STEPS=$num_future_steps"
+    echo "BATCH_SIZE=$batch_size"
+    echo "LEARNING_RATE=$learning_rate"
+}
+
+parse_monovln_params() {
+    local name="$1"
+    # 新格式: monovln-habitat-stage1-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611
+    # 旧格式: monovln-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611
+    
+    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
+    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
+    local history_steps=$(echo "$name" | grep -oP 'h\d+s\d+' | head -1)
+    local num_history=$(echo "$history_steps" | sed -n 's/h\([0-9]*\)s.*/\1/p')
+    local num_future_steps=$(echo "$history_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
+    local samples_per_episode=$(echo "$name" | sed -n 's/.*-spe\([0-9]*\)-.*$/\1/p')
+    local compress_stride=$(echo "$name" | sed -n 's/.*-stride\([0-9]*\)-.*$/\1/p')
+    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
+    # 学习率格式: lr2e-5 需要提取 2e-5 (包含科学计数法中的负号)
+    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
+    
+    echo "MODEL_SIZE=$model_size"
+    echo "NUM_EPOCHS=$epochs"
+    echo "NUM_HISTORY=$num_history"
+    echo "NUM_FUTURE_STEPS=$num_future_steps"
+    echo "SAMPLES_PER_EPISODE=$samples_per_episode"
+    echo "COMPRESS_STRIDE=$compress_stride"
+    echo "BATCH_SIZE=$batch_size"
+    echo "LEARNING_RATE=$learning_rate"
+}
+
+parse_compressvln_params() {
+    local name="$1"
+    # 新格式: compressvln-habitat-stage1-3b-1ep-f32h8s4-stride2[-qa{ratio}]-bs64-lr2e-5-20260119-140611
+    # 旧格式: compressvln-3b-1ep-f32h8s4-stride2-bs64-lr2e-5-20260119-140611
+    # 注意: qa参数不影响eval，解析时会被忽略
+    
+    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
+    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
+    local frames_history_steps=$(echo "$name" | grep -oP 'f\d+h\d+s\d+')
+    local num_frames=$(echo "$frames_history_steps" | sed -n 's/f\([0-9]*\)h.*/\1/p')
+    local num_history=$(echo "$frames_history_steps" | sed -n 's/.*h\([0-9]*\)s.*/\1/p')
+    local num_future_steps=$(echo "$frames_history_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
+    local compress_stride=$(echo "$name" | sed -n 's/.*-stride\([0-9]*\)-.*$/\1/p')
+    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
+    # 学习率格式: lr2e-5 需要提取 2e-5 (包含科学计数法中的负号)
+    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
+    
+    echo "MODEL_SIZE=$model_size"
+    echo "NUM_EPOCHS=$epochs"
+    echo "NUM_FRAMES=$num_frames"
+    echo "NUM_HISTORY=$num_history"
+    echo "NUM_FUTURE_STEPS=$num_future_steps"
+    echo "COMPRESS_STRIDE=$compress_stride"
+    echo "BATCH_SIZE=$batch_size"
+    echo "LEARNING_RATE=$learning_rate"
+}
+
+parse_uninavid_params() {
+    local name="$1"
+    # 新格式: uninavid-habitat-stage1-3b-1ep-st32-sim0.985-ststride3-imgstride1.5-hstride2-bs64-lr2e-5-20260121-100838
+    # 旧格式: uninavid-3b-1ep-st32-sim0.985-ststride3-imgstride1.5-hstride2-bs64-lr2e-5-20260121-100838
+    
+    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
+    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
+    local short_term_frames=$(echo "$name" | sed -n 's/.*-st\([0-9]*\)-.*$/\1/p')
+    local similarity_threshold=$(echo "$name" | grep -oP 'sim[0-9.]+' | sed 's/sim//')
+    local compress_stride=$(echo "$name" | sed -n 's/.*-ststride\([0-9]*\)-.*$/\1/p')
+    local image_resize_stride=$(echo "$name" | grep -oP 'imgstride[0-9.]+' | sed 's/imgstride//')
+    local history_frame_stride=$(echo "$name" | sed -n 's/.*-hstride\([0-9]*\)-.*$/\1/p')
+    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
+    # 学习率格式: lr2e-5 需要提取 2e-5 (包含科学计数法中的负号)
+    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
+    
+    echo "MODEL_SIZE=$model_size"
+    echo "NUM_EPOCHS=$epochs"
+    echo "SHORT_TERM_FRAMES=$short_term_frames"
+    echo "SIMILARITY_THRESHOLD=$similarity_threshold"
+    echo "COMPRESS_STRIDE=$compress_stride"
+    echo "IMAGE_RESIZE_STRIDE=$image_resize_stride"
+    echo "HISTORY_FRAME_STRIDE=$history_frame_stride"
+    echo "BATCH_SIZE=$batch_size"
+    echo "LEARNING_RATE=$learning_rate"
+}
+
+parse_overlapvln_params() {
+    local name="$1"
+    # 新格式 (per_frame):   overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # 新格式 (gtc):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # 新格式 (segment_gtc): overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
+    # 注: -initial 是可选的，vanilla 模式下不显示（默认）
+    
+    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
+    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
+    
+    # 新格式: f{num_frames}s{num_future_steps} (不含 h)
+    local frames_steps=$(echo "$name" | grep -oP 'f\d+s\d+' | head -1)
+    local num_frames=$(echo "$frames_steps" | sed -n 's/f\([0-9]*\)s.*/\1/p')
+    local num_future_steps=$(echo "$frames_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
+    
+    local num_overlap=$(echo "$name" | sed -n 's/.*-overlap\([0-9]*\)-.*$/\1/p')
+    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
+    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
+    
+    # 解析 system_prompt_setting: 检查 -initial 后缀
+    local system_prompt_setting="vanilla"
+    if [[ "$name" == *"-initial-"* ]]; then
+        system_prompt_setting="initial"
+    fi
+    
+    # 解析历史处理器类型和相关参数
+    local history_processor_type="per_frame"
+    local num_history="8"
+    local log_base="1.0"
+    local compress_stride="2"
+    local use_tome="false"
+    local gtc_output_tokens=""
+    local use_pixel_embed="false"
+    local use_pose_embed="false"
+    local pose_fusion_method="additive"
+    
+    if [[ "$name" == *"-sgtc-k"* ]]; then
+        history_processor_type="segment_gtc"
+        gtc_output_tokens=$(echo "$name" | grep -oP 'sgtc-k\d+' | sed 's/sgtc-k//')
+    elif [[ "$name" == *"-gtc-k"* ]]; then
+        history_processor_type="gtc"
+        gtc_output_tokens=$(echo "$name" | grep -oP 'gtc-k\d+' | sed 's/gtc-k//')
+    elif [[ "$name" == *"-pf-h"* ]]; then
+        history_processor_type="per_frame"
+        num_history=$(echo "$name" | grep -oP 'pf-h\d+' | sed 's/pf-h//')
+        log_base=$(echo "$name" | grep -oP '\-b[0-9.]+\-' | sed 's/-b//' | sed 's/-//')
+        compress_stride=$(echo "$name" | grep -oP '\-(pool|tome)\-s\d+' | grep -oP 's\d+' | sed 's/s//')
+        if [[ "$name" == *"-tome-s"* ]]; then
+            use_tome="true"
+        fi
+    fi
+
+    # 解析 embedding enhancement slot
+    # 匹配顺序: pixel+posefilm > pixel+pose > posefilm > pose > pixel > noembed
+    if [[ "$name" == *"-pixel+posefilm-"* ]]; then
+        use_pixel_embed="true"
+        use_pose_embed="true"
+        pose_fusion_method="film"
+    elif [[ "$name" == *"-pixel+pose-"* ]]; then
+        use_pixel_embed="true"
+        use_pose_embed="true"
+        pose_fusion_method="additive"
+    elif [[ "$name" == *"-posefilm-"* ]]; then
+        use_pixel_embed="false"
+        use_pose_embed="true"
+        pose_fusion_method="film"
+    elif [[ "$name" == *"-pose-"* ]]; then
+        use_pixel_embed="false"
+        use_pose_embed="true"
+        pose_fusion_method="additive"
+    elif [[ "$name" == *"-pixel-"* ]]; then
+        use_pixel_embed="true"
+        use_pose_embed="false"
+    elif [[ "$name" == *"-noembed-"* ]]; then
+        use_pixel_embed="false"
+        use_pose_embed="false"
+    fi
+    
+    echo "MODEL_SIZE=$model_size"
+    echo "NUM_EPOCHS=$epochs"
+    echo "NUM_FRAMES=$num_frames"
+    echo "NUM_HISTORY=$num_history"
+    echo "NUM_FUTURE_STEPS=$num_future_steps"
+    echo "NUM_OVERLAP=$num_overlap"
+    echo "HISTORY_PROCESSOR_TYPE=$history_processor_type"
+    echo "LOG_BASE=$log_base"
+    echo "COMPRESS_STRIDE=$compress_stride"
+    echo "USE_TOME=$use_tome"
+    echo "GTC_OUTPUT_TOKENS=$gtc_output_tokens"
+    echo "SYSTEM_PROMPT_SETTING=$system_prompt_setting"
+    echo "USE_PIXEL_EMBED=$use_pixel_embed"
+    echo "USE_POSE_EMBED=$use_pose_embed"
+    echo "POSE_FUSION_METHOD=$pose_fusion_method"
+    echo "BATCH_SIZE=$batch_size"
+    echo "LEARNING_RATE=$learning_rate"
+}
+
+# 根据模型架构解析参数
+case "$MODEL_ARCH" in
+    streamvln)
+        eval "$(parse_streamvln_params "$MODEL_NAME")"
+        ;;
+    monovln)
+        eval "$(parse_monovln_params "$MODEL_NAME")"
+        ;;
+    compressvln)
+        eval "$(parse_compressvln_params "$MODEL_NAME")"
+        ;;
+    uninavid)
+        eval "$(parse_uninavid_params "$MODEL_NAME")"
+        ;;
+    overlapvln)
+        eval "$(parse_overlapvln_params "$MODEL_NAME")"
+        ;;
+esac
+
+# 解析环境类型 (从模型名中提取，如果用户没有指定 ENV_TYPE)
+PARSED_ENV_TYPE=$(parse_env_type "$MODEL_NAME" "$MODEL_ARCH")
+
+# 如果用户没有指定 ENV_TYPE，则使用从模型名解析出的值
+if [ -z "$ENV_TYPE" ]; then
+    ENV_TYPE="$PARSED_ENV_TYPE"
+    print_info "从模型名解析环境类型: ${ENV_TYPE}"
+else
+    print_info "使用用户指定的环境类型: ${ENV_TYPE}"
+fi
+
+# ============================================================================
+# 打印解析结果
+# ============================================================================
+echo ""
+echo "=============================================="
+echo "解析的训练参数"
+echo "=============================================="
+echo "模型架构:       ${MODEL_ARCH}"
+echo "模型名称:       ${MODEL_NAME}"
+echo "环境类型:       ${ENV_TYPE} (解析自模型名: ${PARSED_ENV_TYPE})"
+echo "模型大小:       ${MODEL_SIZE:-N/A}"
+echo "训练轮数:       ${NUM_EPOCHS:-N/A}"
+
+if [ "$MODEL_ARCH" == "streamvln" ] || [ "$MODEL_ARCH" == "compressvln" ] || [ "$MODEL_ARCH" == "overlapvln" ]; then
+    echo "NUM_FRAMES:     ${NUM_FRAMES:-N/A}"
+fi
+if [ "$MODEL_ARCH" != "uninavid" ]; then
+    echo "NUM_HISTORY:    ${NUM_HISTORY:-N/A}"
+    echo "NUM_FUTURE_STEPS: ${NUM_FUTURE_STEPS:-N/A}"
+fi
+
+if [ "$MODEL_ARCH" == "monovln" ]; then
+    echo "SAMPLES_PER_EPISODE: ${SAMPLES_PER_EPISODE:-N/A}"
+fi
+if [ "$MODEL_ARCH" == "monovln" ] || [ "$MODEL_ARCH" == "compressvln" ] || [ "$MODEL_ARCH" == "uninavid" ] || [ "$MODEL_ARCH" == "overlapvln" ]; then
+    echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-N/A}"
+fi
+
+# OverlapVLN 特有参数
+if [ "$MODEL_ARCH" == "overlapvln" ]; then
+    echo "NUM_OVERLAP:    ${NUM_OVERLAP:-N/A}"
+    echo "HISTORY_PROCESSOR_TYPE: ${HISTORY_PROCESSOR_TYPE:-per_frame}"
+    if [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
+        echo "GTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+    elif [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+        echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+        echo "SGTC_NUM_SEGMENTS: 8 (fixed)"
+    else
+        echo "NUM_HISTORY:    ${NUM_HISTORY:-8}"
+        echo "LOG_BASE:       ${LOG_BASE:-1.0}"
+        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
+        echo "USE_TOME:       ${USE_TOME:-false}"
+    fi
+    echo "USE_PIXEL_EMBED: ${USE_PIXEL_EMBED:-false}"
+    echo "USE_POSE_EMBED: ${USE_POSE_EMBED:-false}"
+    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
+    fi
+fi
+
+# UniNaVid 特有参数
+if [ "$MODEL_ARCH" == "uninavid" ]; then
+    echo "SHORT_TERM_FRAMES: ${SHORT_TERM_FRAMES:-N/A}"
+    echo "SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-N/A}"
+    echo "IMAGE_RESIZE_STRIDE: ${IMAGE_RESIZE_STRIDE:-N/A}"
+    echo "HISTORY_FRAME_STRIDE: ${HISTORY_FRAME_STRIDE:-N/A}"
+fi
+
+echo "BATCH_SIZE:     ${BATCH_SIZE:-N/A}"
+echo "LEARNING_RATE:  ${LEARNING_RATE:-N/A}"
+echo "=============================================="
+echo ""
+
+# ============================================================================
+# 检查模型目录和checkpoint
+# ============================================================================
+MODEL_DIR="${OUTPUT_ROOT}/${MODEL_ARCH}/${MODEL_NAME}"
+
+# DRY-RUN 模式下跳过目录检查
+if [ "$DRY_RUN" == "true" ]; then
+    print_info "预期模型目录: $MODEL_DIR"
+    print_success "DRY-RUN 模式完成，参数解析成功!"
+    exit 0
+fi
+
+# CHECK-ONLY 模式: 跳过模型检查，但验证eval脚本存在
+if [ "$CHECK_ONLY" == "true" ]; then
+    print_info "预期模型目录: $MODEL_DIR"
+    
+    # 检查eval脚本是否存在
+    EVAL_SCRIPT="${VLN_ROOT}/${MODEL_ARCH}/script/eval/eval_${MODEL_ARCH}_qwen2_5_vl_distributed.sh"
+    if [ ! -f "$EVAL_SCRIPT" ]; then
+        print_error "找不到eval脚本: $EVAL_SCRIPT"
+        exit 1
+    fi
+    print_success "找到eval脚本: $EVAL_SCRIPT"
+    
+    # 显示将要传递的环境变量
+    echo ""
+    echo "=============================================="
+    echo "将传递给eval脚本的环境变量"
+    echo "=============================================="
+    echo "MODEL_PATH=<checkpoint_path>"
+    echo "ENV_TYPE=${ENV_TYPE}"
+    echo "EVAL_SPLIT=${EVAL_SPLIT:-val_unseen}"
+    echo "CUDA_DEVICES=${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
+    echo "MASTER_PORT=${MASTER_PORT:-29600} (实际运行时会自动检测端口占用)"
+    if [ -n "$NUM_FRAMES" ]; then
+        echo "NUM_FRAMES=${NUM_FRAMES}"
+    fi
+    if [ -n "$NUM_HISTORY" ]; then
+        echo "NUM_HISTORY=${NUM_HISTORY}"
+    fi
+    if [ -n "$NUM_FUTURE_STEPS" ]; then
+        echo "NUM_FUTURE_STEPS=${NUM_FUTURE_STEPS}"
+    fi
+    if [ -n "$COMPRESS_STRIDE" ]; then
+        echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
+    fi
+    # OverlapVLN 特有参数
+    if [ -n "$NUM_OVERLAP" ]; then
+        echo "NUM_OVERLAP=${NUM_OVERLAP}"
+    fi
+    if [ -n "$HISTORY_PROCESSOR_TYPE" ]; then
+        echo "HISTORY_PROCESSOR_TYPE=${HISTORY_PROCESSOR_TYPE}"
+    fi
+    if [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+        if [ -n "$GTC_OUTPUT_TOKENS" ]; then
+            echo "GTC_OUTPUT_TOKENS=${GTC_OUTPUT_TOKENS}"
+        fi
+        if [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+            echo "SGTC_NUM_SEGMENTS=8 (fixed)"
+        fi
+    else
+        # per_frame 参数
+        if [ -n "$NUM_HISTORY" ]; then
+            echo "NUM_HISTORY=${NUM_HISTORY}"
+        fi
+        if [ -n "$LOG_BASE" ]; then
+            echo "LOG_BASE=${LOG_BASE}"
+        fi
+        if [ -n "$COMPRESS_STRIDE" ]; then
+            echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
+        fi
+        if [ -n "$USE_TOME" ]; then
+            echo "USE_TOME=${USE_TOME}"
+        fi
+    fi
+    if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
+        echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
+    fi
+    if [ "$MODEL_ARCH" == "overlapvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
+        echo "USE_PIXEL_EMBED=${USE_PIXEL_EMBED}"
+    fi
+    if [ "$MODEL_ARCH" == "overlapvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+        echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
+        echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
+    fi
+    # UniNaVid 特有参数
+    if [ -n "$SHORT_TERM_FRAMES" ]; then
+        echo "SHORT_TERM_FRAMES=${SHORT_TERM_FRAMES}"
+    fi
+    if [ -n "$SIMILARITY_THRESHOLD" ]; then
+        echo "SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD}"
+    fi
+    if [ -n "$IMAGE_RESIZE_STRIDE" ]; then
+        echo "IMAGE_RESIZE_STRIDE=${IMAGE_RESIZE_STRIDE}"
+    fi
+    if [ -n "$HISTORY_FRAME_STRIDE" ]; then
+        echo "HISTORY_FRAME_STRIDE=${HISTORY_FRAME_STRIDE}"
+    fi
+    echo "SAVE_VIDEO=${SAVE_VIDEO:-false}"
+    if [ -n "$MAX_EPISODES" ]; then
+        echo "MAX_EPISODES=${MAX_EPISODES}"
+    fi
+    echo "=============================================="
+    echo ""
+    print_success "CHECK-ONLY 模式完成，配置检查通过!"
+    exit 0
+fi
+
+if [ ! -d "$MODEL_DIR" ]; then
+    print_error "模型目录不存在: $MODEL_DIR"
+    exit 1
+fi
+
+print_info "模型目录: $MODEL_DIR"
+
+# 查找最新的checkpoint (按 checkpoint 编号数字排序)
+find_latest_checkpoint() {
+    local model_dir="$1"
+    local latest_checkpoint=""
+    
+    # 首先在 v*-* 子目录中查找
+    for version_dir in "$model_dir"/v*; do
+        if [ -d "$version_dir" ]; then
+            # 查找 checkpoint-* 目录，按数字排序取最大
+            local ckpt
+            ckpt=$(ls -d "$version_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+            if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+                latest_checkpoint="$ckpt"
+            fi
+        fi
+    done
+    
+    # 如果没有找到，直接在模型目录下查找
+    if [ -z "$latest_checkpoint" ]; then
+        local ckpt
+        ckpt=$(ls -d "$model_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+        if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+            latest_checkpoint="$ckpt"
+        fi
+    fi
+    
+    echo "$latest_checkpoint"
+}
+
+CHECKPOINT_PATH=$(find_latest_checkpoint "$MODEL_DIR")
+
+if [ -z "$CHECKPOINT_PATH" ]; then
+    print_error "在模型目录下找不到checkpoint!"
+    print_error "模型目录: $MODEL_DIR"
+    print_error "请确保模型训练已完成并保存了checkpoint"
+    exit 1
+fi
+
+print_success "找到checkpoint: $CHECKPOINT_PATH"
+
+# ============================================================================
+# 验证checkpoint完整性 (检查必要文件)
+# ============================================================================
+check_checkpoint_integrity() {
+    local ckpt_path="$1"
+    local required_files=("config.json")
+    local missing_files=()
+    
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$ckpt_path/$file" ]; then
+            missing_files+=("$file")
+        fi
+    done
+    
+    # 检查是否有模型权重文件 (可能是 .safetensors 或 .bin)
+    if ! ls "$ckpt_path"/*.safetensors >/dev/null 2>&1 && \
+       ! ls "$ckpt_path"/*.bin >/dev/null 2>&1; then
+        missing_files+=("model weights (.safetensors or .bin)")
+    fi
+    
+    if [ ${#missing_files[@]} -gt 0 ]; then
+        print_error "Checkpoint不完整! 缺少以下文件:"
+        for file in "${missing_files[@]}"; do
+            echo "  - $file"
+        done
+        return 1
+    fi
+    
+    return 0
+}
+
+if ! check_checkpoint_integrity "$CHECKPOINT_PATH"; then
+    exit 1
+fi
+
+print_success "Checkpoint完整性检查通过"
+
+# ============================================================================
+# 确定eval脚本路径
+# ============================================================================
+EVAL_SCRIPT="${VLN_ROOT}/${MODEL_ARCH}/script/eval/eval_${MODEL_ARCH}_qwen2_5_vl_distributed.sh"
+
+if [ ! -f "$EVAL_SCRIPT" ]; then
+    print_error "找不到eval脚本: $EVAL_SCRIPT"
+    exit 1
+fi
+
+print_info "Eval脚本: $EVAL_SCRIPT"
+
+# ============================================================================
+# 端口检测和自动切换
+# ============================================================================
+check_port_available() {
+    local port=$1
+    # 使用 ss 或 netstat 检查端口是否被占用
+    if command -v ss &> /dev/null; then
+        ! ss -tuln | grep -q ":${port} "
+    elif command -v netstat &> /dev/null; then
+        ! netstat -tuln | grep -q ":${port} "
+    else
+        # 如果没有 ss 或 netstat，尝试用 /dev/tcp 检测
+        (echo >/dev/tcp/localhost/$port) 2>/dev/null && return 1 || return 0
+    fi
+}
+
+find_available_port() {
+    local start_port=${1:-29600}
+    local max_attempts=100
+    local port=$start_port
+    
+    for ((i=0; i<max_attempts; i++)); do
+        if check_port_available $port; then
+            echo $port
+            return 0
+        fi
+        port=$((port + 1))
+    done
+    
+    # 如果找不到可用端口，返回原始端口（让后续程序报错）
+    echo $start_port
+    return 1
+}
+
+# 获取初始端口
+INITIAL_PORT="${MASTER_PORT:-29600}"
+
+# 检测端口是否可用，如果不可用则自动切换
+if ! check_port_available $INITIAL_PORT; then
+    print_warning "端口 ${INITIAL_PORT} 已被占用，正在查找可用端口..."
+    AVAILABLE_PORT=$(find_available_port $INITIAL_PORT)
+    if [ "$AVAILABLE_PORT" != "$INITIAL_PORT" ]; then
+        print_success "找到可用端口: ${AVAILABLE_PORT}"
+        MASTER_PORT=$AVAILABLE_PORT
+    else
+        print_error "无法找到可用端口！请手动指定 MASTER_PORT"
+        exit 1
+    fi
+else
+    MASTER_PORT=$INITIAL_PORT
+    print_info "端口 ${MASTER_PORT} 可用"
+fi
+
+# ============================================================================
+# 准备环境变量
+# ============================================================================
+export MODEL_PATH="$CHECKPOINT_PATH"
+export ENV_TYPE="$ENV_TYPE"  # 已在前面从模型名解析或使用用户指定值
+export EVAL_SPLIT="${EVAL_SPLIT:-val_unseen}"
+export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
+export MASTER_PORT
+export SAVE_VIDEO="${SAVE_VIDEO:-false}"
+export VIDEO_COMPRESSION="${VIDEO_COMPRESSION:-false}"
+
+# 传递模型特定参数
+if [ -n "$NUM_FRAMES" ]; then
+    export NUM_FRAMES
+fi
+if [ -n "$NUM_HISTORY" ]; then
+    export NUM_HISTORY
+fi
+if [ -n "$NUM_FUTURE_STEPS" ]; then
+    export NUM_FUTURE_STEPS
+fi
+if [ -n "$COMPRESS_STRIDE" ]; then
+    export COMPRESS_STRIDE
+fi
+if [ -n "$MAX_EPISODES" ]; then
+    export MAX_EPISODES
+fi
+# OverlapVLN 特有参数
+if [ -n "$NUM_OVERLAP" ]; then
+    export NUM_OVERLAP
+fi
+if [ -n "$HISTORY_PROCESSOR_TYPE" ]; then
+    export HISTORY_PROCESSOR_TYPE
+fi
+if [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+    if [ -n "$GTC_OUTPUT_TOKENS" ]; then
+        export GTC_OUTPUT_TOKENS
+    fi
+else
+    # per_frame 参数
+    if [ -n "$LOG_BASE" ]; then
+        export LOG_BASE
+    fi
+    if [ -n "$COMPRESS_STRIDE" ]; then
+        export COMPRESS_STRIDE
+    fi
+    if [ -n "$USE_TOME" ]; then
+        export USE_TOME
+    fi
+fi
+# UniNaVid 特有参数
+if [ -n "$SHORT_TERM_FRAMES" ]; then
+    export SHORT_TERM_FRAMES
+fi
+if [ -n "$SIMILARITY_THRESHOLD" ]; then
+    export SIMILARITY_THRESHOLD
+fi
+if [ -n "$IMAGE_RESIZE_STRIDE" ]; then
+    export IMAGE_RESIZE_STRIDE
+fi
+if [ -n "$HISTORY_FRAME_STRIDE" ]; then
+    export HISTORY_FRAME_STRIDE
+fi
+# OverlapVLN system prompt setting
+if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
+    export SYSTEM_PROMPT_SETTING
+fi
+if [ "$MODEL_ARCH" == "overlapvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
+    export USE_PIXEL_EMBED
+fi
+if [ "$MODEL_ARCH" == "overlapvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+    export USE_POSE_EMBED
+    export POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
+fi
+
+# ============================================================================
+# 打印评估配置
+# ============================================================================
+echo ""
+echo "=============================================="
+echo "评估配置"
+echo "=============================================="
+echo "模型架构:       ${MODEL_ARCH}"
+echo "模型名称:       ${MODEL_NAME}"
+echo "Checkpoint:     ${CHECKPOINT_PATH}"
+echo "环境类型:       ${ENV_TYPE}"
+echo "评估集:         ${EVAL_SPLIT}"
+echo "CUDA设备:       ${CUDA_DEVICES}"
+echo "保存视频:       ${SAVE_VIDEO}"
+if [ -n "$MAX_EPISODES" ]; then
+    echo "最大Episodes:   ${MAX_EPISODES}"
+fi
+# OverlapVLN 特有参数
+if [ "$MODEL_ARCH" == "overlapvln" ]; then
+    echo "--- OverlapVLN Parameters ---"
+    echo "NUM_OVERLAP:        ${NUM_OVERLAP:-N/A}"
+    echo "HISTORY_PROCESSOR:  ${HISTORY_PROCESSOR_TYPE:-per_frame}"
+    if [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
+        echo "GTC_OUTPUT_TOKENS:  ${GTC_OUTPUT_TOKENS:-512}"
+    elif [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+        echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+        echo "SGTC_NUM_SEGMENTS:  8 (fixed)"
+    else
+        echo "NUM_HISTORY:        ${NUM_HISTORY:-8}"
+        echo "LOG_BASE:           ${LOG_BASE:-1.0}"
+        echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"
+        echo "USE_TOME:           ${USE_TOME:-false}"
+    fi
+    echo "SYSTEM_PROMPT:      ${SYSTEM_PROMPT_SETTING:-vanilla}"
+    echo "USE_PIXEL_EMBED:    ${USE_PIXEL_EMBED:-false}"
+    echo "USE_POSE_EMBED:     ${USE_POSE_EMBED:-false}"
+    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
+    fi
+fi
+# UniNaVid 特有参数
+if [ "$MODEL_ARCH" == "uninavid" ]; then
+    echo "--- UniNaVid Parameters ---"
+    echo "SHORT_TERM_FRAMES:  ${SHORT_TERM_FRAMES:-N/A}"
+    echo "SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-N/A}"
+    echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-N/A}"
+    echo "IMAGE_RESIZE_STRIDE: ${IMAGE_RESIZE_STRIDE:-N/A}"
+    echo "HISTORY_FRAME_STRIDE: ${HISTORY_FRAME_STRIDE:-N/A}"
+fi
+echo "=============================================="
+echo ""
+
+# ============================================================================
+# 运行评估
+# ============================================================================
+print_info "开始评估..."
+
+cd "$SWIFTVLN_ROOT"
+bash "$EVAL_SCRIPT"
+
+EVAL_STATUS=$?
+
+# ============================================================================
+# 输出结果位置
+# ============================================================================
+echo ""
+echo "=============================================="
+if [ $EVAL_STATUS -eq 0 ]; then
+    print_success "评估完成!"
+    
+    # 根据eval脚本的输出目录格式推断结果位置
+    TIMESTAMP=$(date +"%Y%m%d")
+    RESULTS_DIR="./results/eval/${MODEL_ARCH}/${MODEL_NAME}/${ENV_TYPE}_${EVAL_SPLIT}_${TIMESTAMP}*"
+    
+    # 查找最新的结果目录
+    LATEST_RESULT=$(ls -td ${SWIFTVLN_ROOT}/results/eval/${MODEL_ARCH}/${MODEL_NAME}/* 2>/dev/null | head -1)
+    
+    if [ -n "$LATEST_RESULT" ] && [ -d "$LATEST_RESULT" ]; then
+        echo ""
+        print_success "评估结果保存在: ${LATEST_RESULT}"
+        echo ""
+        echo "结果文件:"
+        ls -la "$LATEST_RESULT" 2>/dev/null || true
+    else
+        echo ""
+        print_info "评估结果保存在: ${SWIFTVLN_ROOT}/results/eval/${MODEL_ARCH}/${MODEL_NAME}/"
+    fi
+else
+    print_error "评估失败! 退出码: $EVAL_STATUS"
+fi
+echo "=============================================="
