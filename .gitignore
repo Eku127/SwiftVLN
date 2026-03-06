@@ -26,3 +26,6 @@ src/swiftvln/tools/feature_test/mem_test/analysis_results/
 src/swiftvln/tools/feature_test/tome/test_data/
 src/swiftvln/tools/feature_test/tome/test_results.json
 src/swiftvln/tools/feature_test/tome/*comparison.png
+
+# Ignore all directories named models (any depth)
+models/
