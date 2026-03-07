@@ -57,13 +57,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 ## Current SatNav Dataset Defaults
 
 - Dataset root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets`
-- 当前常用版本：`ver_260228`
+- 当前常用版本：`ver_260306`
 - Eval episodes:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260228/episodes/eval/all_episodes.json`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/episodes/eval/all_episodes.json`
 - QA JSONL:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260228/data/qa_swift.jsonl`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/data/qa_swift.jsonl`
 - Trajectory data:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260228/trajectory_data`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data`
+- Scene maps:
+  - active: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
+  - backup(old): `/mnt/data3/jiangjiajun/dataset/satnav_datasets/old_scenes`
 
 ## Runtime/Infra Conventions
 
