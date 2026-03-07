@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run StreamVLN Baseline"
+  short_description: "使用SatNav数据启动并监督StreamVLN baseline训练"
+  default_prompt: "Use $run-streamvln-baseline to train StreamVLN baseline on SatNav data with preflight checks, conda activate streamvln-baseline, tmux launch, monitoring, and checkpoint verification."
