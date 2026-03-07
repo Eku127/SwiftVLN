@@ -30,3 +30,7 @@ src/swiftvln/tools/feature_test/tome/*comparison.png
 
 # Ignore all directories named models (any depth)
 models/
+
+# Ignore baseline checkpoint/model weights
+baseline/streamvln/model/
+baseline/uninavid/model/
