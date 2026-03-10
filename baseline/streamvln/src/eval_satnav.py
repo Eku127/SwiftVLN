@@ -68,6 +68,9 @@ from satnav.dataset.satnav_dataset import SatNavDataset
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+# Fixed NE penalty for episodes that fail with runtime errors during evaluation.
+ERROR_NE_PENALTY = 500.0
+
 
 # =====================================================================
 # SatNav Environment Wrapper
@@ -388,15 +391,23 @@ class SatNavVLNEvaluator:
                     )
 
                 # ---- Build image list: [history] + [current] ----
+                # Use the same condition as memory-token insertion: first generate
+                # call in a new window (output_ids is None) and not the very first
+                # step. This fixes a crash when leftover actions from the previous
+                # window carry execution past the boundary (step_id % num_frames != 0)
+                # while output_ids is still None from the reset — in that case the
+                # memory token was added to the prompt but history images were not
+                # provided, causing memory_features[b] == None and a TypeError.
                 images = rgb_list[-1:]
-                if step_id != 0 and step_id % self.num_frames == 0:
+                if output_ids is None and step_id != 0:
+                    cur_step = time_ids[0]  # == step_id (just appended above)
                     if self.num_history is None:
-                        history_ids = slice(0, time_ids[0], self.num_future_steps)
+                        history_ids = slice(0, cur_step, self.num_future_steps)
                     else:
                         history_ids = slice(
                             0,
-                            time_ids[0],
-                            max(time_ids[0] // self.num_history, 1),
+                            cur_step,
+                            max(cur_step // self.num_history, 1),
                         )
                     images = rgb_list[history_ids] + images
 
@@ -571,7 +582,7 @@ def evaluate(model, tokenizer, args):
                 "success": 0.0,
                 "spl": 0.0,
                 "oracle_success": 0.0,
-                "distance_to_goal": float("inf"),
+                "distance_to_goal": ERROR_NE_PENALTY,
                 "steps": 0,
                 "instruction": instruction[:200],
                 "error": str(e),

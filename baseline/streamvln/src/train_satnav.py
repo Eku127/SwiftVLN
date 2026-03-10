@@ -396,6 +396,11 @@ def get_model(model_args, training_args, data_args, bnb_model_from_pretrained_ar
     if model_args.mm_tunable_parts:
         overwrite_config["mm_tunable_parts"] = model_args.mm_tunable_parts
 
+    # Ensure local vision tower path from launcher is honored (offline-safe).
+    if model_args.vision_tower:
+        overwrite_config["mm_vision_tower"] = model_args.vision_tower
+        overwrite_config["vision_tower"] = model_args.vision_tower
+
     overwrite_config["mm_newline_position"] = model_args.mm_newline_position
     overwrite_config["mm_patch_merge_type"] = model_args.mm_patch_merge_type
 
