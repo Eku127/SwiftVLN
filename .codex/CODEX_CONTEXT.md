@@ -44,6 +44,26 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 数据处理：`src/swiftvln/scripts/data_process/*.py`
 - 数据同步：`src/swiftvln/scripts/data_sync/*.sh`
 
+### Baseline StreamVLN Layout (Updated: 2026-03-09)
+
+`baseline/streamvln` 已按“入口脚本 / 源码实现”分层：
+
+- 入口脚本：`baseline/streamvln/scripts/*.sh`
+  - `scripts/train_satnav.sh` -> 调用 `baseline/streamvln/src/train_satnav.py`
+  - `scripts/eval_satnav.sh` -> 调用 `baseline/streamvln/src/eval_satnav.py`
+  - `scripts/train_eval_satnav.sh` -> 串行执行 train 后自动 eval（含 webhook）
+  - `scripts/download_model.sh`
+- 源码目录：`baseline/streamvln/src/*`
+  - `src/train_satnav.py`
+  - `src/eval_satnav.py`
+  - `src/dataset/satnav_action_dataset.py`
+- 历史产物目录：`baseline/streamvln/checkpoints`、`baseline/streamvln/results`（legacy）
+- 当前主流程输出统一在仓库根：
+  - 训练模型：`output/streamvln-baseline/<EXP_NAME>/`
+  - smoke test 模型：`output/streamvln-baseline/smoketest/<EXP_NAME>/`
+  - 评测结果：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
+- baseline eval 默认：`8` 卡 + `val_unseen`（`baseline/streamvln/scripts/eval_satnav.sh`）
+
 ## Eval Queue Path Convention
 
 评测队列文件统一放在：
@@ -70,10 +90,42 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 
 ## Runtime/Infra Conventions
 
-- `98` / `73` / `17` 共享同一挂载工作区：
-  `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN`
-- 文件操作（脚本、队列、输出）默认本地可见；不需要为“写队列文件”做 SSH。
-- SSH 仅用于远端 GPU/进程状态检查与远程启动/停止。
+### Server Settings
+
+三台服务器共享同一挂载工作区，所有文件操作（脚本、队列、输出）在任意服务器上本地可见。
+
+| Server | Host | Access | GPUs | Notes |
+|---|---|---|---|---|
+| **98** | localhost | 直接执行 | 8× | 本机，无需 SSH |
+| **73** | `10.246.152.73` | `ssh 10.246.152.73` | 8× | 远程 SSH |
+| **17** | `10.246.132.17` | `ssh 10.246.132.17` 后进入 Docker 容器 | 8× | 远程 SSH + Docker |
+
+- 共享工作区挂载点：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN`
+- **SSH 仅用于**：远端 GPU/进程状态检查、远程 tmux 启动/停止。
+- **文件操作**（脚本、队列写入、输出读写）：始终是本地操作，无需 SSH。
+- server 17 Docker 容器名查询：`ssh 10.246.132.17 "docker ps"`
+
+### Conda Environments
+
+| Env | Purpose |
+|---|---|
+| `swift-vln-train` | SwiftVLN 主线训练（OverlapVLN / StreamVLN / CompressVLN） |
+| `swift-vln-eval` | SwiftVLN 主线评测 |
+| `streamvln-baseline` | baseline/streamvln 训练与评测（独立环境） |
+
+Conda 初始化命令（所有服务器统一）：
+```bash
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+```
+
+### tmux Session Naming Convention
+
+所有长时间运行的任务（训练/评测）必须在 tmux 中启动：
+
+```
+train_<short_desc>_<HHMMSS>   # 例: train_baseline_streamvln_143025
+eval_<short_desc>_<HHMMSS>    # 例: eval_streamvln_baseline_150200
+```
 
 ## Smoke Test Convention
 
