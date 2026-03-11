@@ -15,6 +15,7 @@ output/
 results/
 reports/*.tmp
 runtime/
+swanlog/
 
 # Generated analysis artifacts
 src/swiftvln/scripts/analysis/trajectory_analysis/*.png
@@ -34,3 +35,13 @@ models/
 # Ignore baseline checkpoint/model weights
 baseline/streamvln/model/
 baseline/uninavid/model/
+baseline/navila/model/
+
+# Ignore baseline training outputs and logs
+baseline/*/output/
+baseline/*/logs/
+baseline/*/results/
+baseline/*/checkpoints/
+
+# Ignore pycache under baseline
+baseline/**/__pycache__/
