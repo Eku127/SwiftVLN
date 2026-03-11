@@ -112,6 +112,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 | `swift-vln-train` | SwiftVLN 主线训练（OverlapVLN / StreamVLN / CompressVLN） |
 | `swift-vln-eval` | SwiftVLN 主线评测 |
 | `streamvln-baseline` | baseline/streamvln 训练与评测（独立环境） |
+| `navila-baseline` | baseline/navila 训练与评测（VILA + LLaMA-3-8B，torch 2.3.0+cu121，flash-attn 2.5.8） |
 
 Conda 初始化命令（所有服务器统一）：
 ```bash
