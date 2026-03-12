@@ -232,6 +232,63 @@ This is **not** a background script. It is Codex executing shell commands intera
 
 ---
 
+## Known Issues & Quick Fixes (Updated: 2026-03-04)
+
+### 1) `ssh 73` timeout / wrong host resolution
+
+Symptom:
+- `ssh 73` hangs or resolves to unexpected address (e.g., `0.0.0.73`), causing startup failure before eval begins.
+
+Root cause:
+- Local SSH alias/config is not guaranteed across machines.
+
+Fix:
+- Always prefer explicit host/IP in automation:
+
+```bash
+ssh -o BatchMode=yes -o ConnectTimeout=8 10.246.152.73 'hostname; date'
+```
+
+- In scripts, rely on `HOST_73=10.246.152.73` instead of shorthand alias.
+
+### 2) Eval log has NCCL / generation warnings but no crash
+
+Symptom:
+- Warnings such as:
+  - `ProcessGroupNCCL ... using GPU x ... currently unknown`
+  - `generation flags ... ignored: ['temperature']`
+- But eval still shows advancing progress (`Rank 0 ... n/N`), GPUs occupied, no `Traceback`.
+
+Root cause:
+- Runtime warning (environment/framework behavior), not necessarily a blocking error.
+
+Fix / decision rule:
+- Treat as **non-fatal** if all conditions hold:
+  1. `torchrun` process still alive
+  2. `Rank 0` progress keeps increasing
+  3. No `Traceback|RuntimeError|Exception|CUDA out of memory|Address already in use`
+- Continue monitoring; only escalate if progress stalls or fatal errors appear.
+
+### 3) Potential interference from concurrent eval monitor/worker
+
+Symptom:
+- Another session already has `start_eval_monitor.sh` / `start_eval_worker.sh` / `eval_queue.sh` running.
+
+Risk:
+- Unintended concurrent queue consumption, duplicated eval, or status confusion.
+
+Fix:
+- During preflight, confirm process cwd/cmdline and keep current run isolated:
+
+```bash
+pgrep -af "start_eval_monitor.sh|eval_queue.sh|eval_by_name.sh"
+readlink -f /proc/<pid>/cwd
+```
+
+- If an existing monitor/worker is not intended for the current run, stop it explicitly before queue-mode eval.
+
+---
+
 ## Operating Rules
 
 1. **Eval hosts are `98` and `73` only**. Never eval on `17`.

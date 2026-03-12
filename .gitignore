@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tmp/
 .ipynb_checkpoints/
 .DS_Store
 *.swp
@@ -14,6 +15,7 @@ output/
 results/
 reports/*.tmp
 runtime/
+swanlog/
 
 # Generated analysis artifacts
 src/swiftvln/scripts/analysis/trajectory_analysis/*.png
@@ -26,3 +28,20 @@ src/swiftvln/tools/feature_test/mem_test/analysis_results/
 src/swiftvln/tools/feature_test/tome/test_data/
 src/swiftvln/tools/feature_test/tome/test_results.json
 src/swiftvln/tools/feature_test/tome/*comparison.png
+
+# Ignore all directories named models (any depth)
+models/
+
+# Ignore baseline checkpoint/model weights
+baseline/streamvln/model/
+baseline/uninavid/model/
+baseline/navila/model/
+
+# Ignore baseline training outputs and logs
+baseline/*/output/
+baseline/*/logs/
+baseline/*/results/
+baseline/*/checkpoints/
+
+# Ignore pycache under baseline
+baseline/**/__pycache__/

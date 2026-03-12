@@ -23,10 +23,18 @@
   - `.codex/skills/overlapvln-train/SKILL.md`
 - If task matches VLN evaluation (eval by name, eval queue, eval monitoring), use:
   - `.codex/skills/overlapvln-eval/SKILL.md`
+- If user asks to run StreamVLN baseline training/evaluation on SatNav (基线训练、启动baseline、评测baseline), use:
+  - `.codex/skills/run-streamvln-baseline/SKILL.md`
 - If user asks for cross-server status巡检, use:
   - `.codex/skills/server-train-eval-monitor/SKILL.md`
+- If user asks to periodically check GPU health across 98/73/17, 定时巡检显卡, 持续检查掉卡, or monitor three-server GPU-only status, use:
+  - `.codex/skills/gpu-health-monitor/SKILL.md`
 - If task is smoke test / 冒烟测试 for train+eval validation, use:
   - `.codex/skills/swiftvln-smoke-test/SKILL.md`
+- If task is baseline/streamvln smoke test (especially SatNav baseline smoke), use:
+  - `.codex/skills/baseline-streamvln-smoke-test/SKILL.md`
+- If task is Uni-NaVid baseline smoke test (train/eval validation, feature-change loss comparison), use:
+  - `.codex/skills/uninavid-smoke-test/SKILL.md`
 
 ## Execution Rules
 

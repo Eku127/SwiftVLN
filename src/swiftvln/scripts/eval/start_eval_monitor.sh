@@ -18,6 +18,10 @@ HOST_98="${HOST_98:-10.246.132.98}"
 HOST_73="${HOST_73:-10.246.152.73}"
 HOST_17="${HOST_17:-10.246.132.17}"
 SSH_USER="${SSH_USER:-jiangjiajun}"
+SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-8}"
+SSH_RELAX_HOSTKEY="${SSH_RELAX_HOSTKEY:-true}"
+# true: SSH不可达时按idle处理，避免monitor卡死；false: 按busy处理，更保守。
+SSH_FAILURE_AS_IDLE="${SSH_FAILURE_AS_IDLE:-true}"
 
 CHECK_INTERVAL="${CHECK_INTERVAL:-30}"
 TODO_POLL_INTERVAL="${TODO_POLL_INTERVAL:-60}"
@@ -31,10 +35,31 @@ log() {
     echo "[eval-monitor] $(date '+%Y-%m-%d %H:%M:%S') $*"
 }
 
+ssh_exec() {
+    local host="$1"
+    shift
+    if [[ "$SSH_RELAX_HOSTKEY" == "true" ]]; then
+        ssh -o BatchMode=yes \
+            -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "${SSH_USER}@${host}" "$@"
+    else
+        ssh -o BatchMode=yes \
+            -o ConnectTimeout="${SSH_CONNECT_TIMEOUT}" \
+            "${SSH_USER}@${host}" "$@"
+    fi
+}
+
 is_gpu_busy_from_stats() {
     local stats="$1"
+    if [[ "$stats" == "__SSH_UNREACHABLE__" ]]; then
+        [[ "$SSH_FAILURE_AS_IDLE" != "true" ]]
+        return
+    fi
+
     if [[ -z "${stats// }" ]]; then
-        return 0
+        return 1
     fi
 
     awk -F, -v util_max="$IDLE_GPU_UTIL_MAX" -v mem_max="$IDLE_GPU_MEM_MAX_MIB" '
@@ -55,12 +80,12 @@ has_local_training_proc() {
 
 has_remote_training_proc() {
     local host="$1"
-    ssh -o BatchMode=yes -o ConnectTimeout=8 "${SSH_USER}@${host}" \
+    ssh_exec "$host" \
         "pgrep -af -f '$TRAIN_REGEX' >/dev/null 2>&1"
 }
 
 has_remote_training_proc_in_container_17() {
-    ssh -o BatchMode=yes -o ConnectTimeout=8 "${SSH_USER}@${HOST_17}" \
+    ssh_exec "$HOST_17" \
         "docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'streamvln-container' && \
          docker exec streamvln-container bash -lc \"pgrep -af -f '$TRAIN_REGEX' >/dev/null 2>&1\""
 }
@@ -71,8 +96,13 @@ get_local_gpu_stats() {
 
 get_remote_gpu_stats() {
     local host="$1"
-    ssh -o BatchMode=yes -o ConnectTimeout=8 "${SSH_USER}@${host}" \
-        "nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits" 2>/dev/null || true
+    local out=""
+    if ! out="$(ssh_exec "$host" \
+        "nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits" 2>/dev/null)"; then
+        echo "__SSH_UNREACHABLE__"
+        return 0
+    fi
+    echo "$out"
 }
 
 check_host_idle() {
@@ -104,6 +134,10 @@ check_host_idle() {
             train_active=true
         fi
         stats="$(get_remote_gpu_stats "$host_addr")"
+    fi
+
+    if [[ "$stats" == "__SSH_UNREACHABLE__" ]]; then
+        log "host=${host_label} ssh_unreachable=true policy(SSH_FAILURE_AS_IDLE)=${SSH_FAILURE_AS_IDLE}"
     fi
 
     if is_gpu_busy_from_stats "$stats"; then
@@ -141,7 +175,7 @@ run_eval_round() {
 }
 
 main() {
-    log "start monitor: CHECK_INTERVAL=${CHECK_INTERVAL}s IDLE_GPU_UTIL_MAX=${IDLE_GPU_UTIL_MAX} IDLE_GPU_MEM_MAX_MIB=${IDLE_GPU_MEM_MAX_MIB}"
+    log "start monitor: CHECK_INTERVAL=${CHECK_INTERVAL}s IDLE_GPU_UTIL_MAX=${IDLE_GPU_UTIL_MAX} IDLE_GPU_MEM_MAX_MIB=${IDLE_GPU_MEM_MAX_MIB} SSH_FAILURE_AS_IDLE=${SSH_FAILURE_AS_IDLE} SSH_RELAX_HOSTKEY=${SSH_RELAX_HOSTKEY}"
     while true; do
         if [[ -s "$TODO_FILE" ]]; then
             log "todo detected, start one eval round"

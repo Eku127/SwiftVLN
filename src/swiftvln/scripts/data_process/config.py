@@ -8,9 +8,20 @@ from pathlib import Path
 # 数据集根目录
 DATASET_ROOT = Path("/mnt/data3/jiangjiajun/dataset/satnav_datasets")
 
-# 城市分类配置
-TRAIN_CITIES = ["Geneva", "LA", "LON", "MN", "MN2", "PAR", "ROM", "SF", "BOS", "NY"]
-EVAL_CITIES = ["BER", "LA2"]
+# 城市分类配置（已切换到 new scene id 命名）
+# 评测集语义保持与历史一致：BER -> Berlin-1, LA2 -> LosAngeles-1
+TRAIN_CITIES = [
+    "Geneva-1",
+    "TheBayArea-2",
+    "Minneapolis-1",
+    "Minneapolis-2",
+    "Paris-1",
+    "Rome-1",
+    "TheBayArea-1",
+    "Boston-1",
+    "NewYork-1",
+]
+EVAL_CITIES = ["Berlin-1", "LosAngeles-1"]
 ALL_CITIES = TRAIN_CITIES + EVAL_CITIES
 
 # Episode 类型
