@@ -1,8 +1,8 @@
-# Uni-NaVid 训练环境安装教程
+# Uni-NaVid 训练 + 评测环境安装教程
 
 > 环境名：`uninavid-baseline`  
-> 用途：SatNav 数据 finetune Uni-NaVid，仅包含训练依赖，不含 Habitat 评测环境  
-> 已验证：2026-03-10，服务器 98（CUDA Driver 13.0 / CUDA Toolkit 11.5）
+> 用途：SatNav 数据 finetune Uni-NaVid，以及在 SatNav 环境下进行在线评测  
+> 已验证：2026-03-11，服务器 98（CUDA Driver 13.0 / CUDA Toolkit 11.5）
 
 ---
 
@@ -73,7 +73,17 @@ pip install -e . --no-deps
 
 ---
 
-### Step 6：验证安装
+### Step 6：安装 SatNav（评测必需，editable install）
+
+```bash
+pip install -e /mnt/data1/home/jiangjiajun/workspace/SatNav
+```
+
+> SatNav 的依赖（omegaconf、selenium、pillow 等）会一并安装，无需额外指定。
+
+---
+
+### Step 7：验证安装
 
 ```bash
 python -c "
@@ -85,6 +95,8 @@ import peft; print('peft:', peft.__version__)
 import decord; print('decord: OK')
 from uninavid.model import LlavaLlamaAttForCausalLM; print('LlavaLlamaAttForCausalLM: OK')
 from uninavid.train.train import train; print('train module: OK')
+import satnav; print('satnav:', satnav.__file__)
+from satnav.core.env import Env as SatNavEnv; print('SatNavEnv: OK')
 print('=== ALL CHECKS PASSED ===')
 "
 ```
@@ -100,6 +112,8 @@ peft: 0.6.0
 decord: OK
 LlavaLlamaAttForCausalLM: OK
 train module: OK
+satnav: /mnt/data1/home/jiangjiajun/workspace/SatNav/satnav/__init__.py
+SatNavEnv: OK
 === ALL CHECKS PASSED ===
 ```
 
@@ -127,6 +141,7 @@ train module: OK
 | sentencepiece | 0.2.1 |
 | wandb | 0.25.0 |
 | opencv-python-headless | 4.13.0 |
+| satnav | editable install from `/workspace/SatNav` |
 
 ---
 
@@ -148,5 +163,5 @@ Uni-NaVid 的原始要求是 `transformers==4.31.0`，但在新版 torch（2.5�
 ## 注意事项
 
 - 所有 `pip install` 中 `uninavid 1.0` 的版本不兼容警告均为预期行为，可安全忽略（pyproject.toml 中的原始 pin 过时）
-- FutureWarning（`torch.utils._pytree`，timm deprecation）属于无害警告，不影响训练
-- 环境不包含 Habitat 依赖（`habitat-lab`, `habitat-sim`），仅用于训练
+- FutureWarning（`torch.utils._pytree`，timm deprecation）属于无害警告，不影响训练与评测
+- 环境不包含 Habitat 依赖（`habitat-lab`, `habitat-sim`）；评测使用 SatNav 环境

@@ -48,6 +48,17 @@ PROMPT_TEMPLATE = (
 )
 
 
+def format_action_target(actions):
+    """Build a structured 4-step target sequence.
+
+    Plain `"forward forward forward forward"` targets are extremely short and
+    heavily repeated on SatNav. Adding explicit step markers keeps eval
+    compatibility because the evaluator extracts action words with regex, while
+    giving training a denser and less degenerate supervision signal.
+    """
+    return " ".join(f"{idx}. {ACTION_MAP[action]}" for idx, action in enumerate(actions, start=1))
+
+
 class SatNavUniNaVidDataset(Dataset):
     """SatNav windowed dataset for Uni-NaVid training.
 
@@ -146,7 +157,7 @@ class SatNavUniNaVidDataset(Dataset):
         image = processor.preprocess(video, return_tensors="pt")["pixel_values"]
 
         # --- 4. Build conversation ---
-        action_text = " ".join(ACTION_MAP[a] for a in sample["actions"])
+        action_text = format_action_target(sample["actions"])
         prompt = PROMPT_TEMPLATE.format(
             nav_id=NAVIGATION_IDENTIFIER,
             img_token=DEFAULT_IMAGE_TOKEN,
