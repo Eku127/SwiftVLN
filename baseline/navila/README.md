@@ -59,8 +59,55 @@ conda activate navila
 
 ## 4. 训练
 
-TODO：适配 SatNav 数据的训练脚本。
+SatNav 训练入口：
+
+```bash
+bash baseline/navila/scripts/train_satnav.sh
+```
+
+常用覆盖项：
+
+```bash
+DATA_PATH=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data/annotations.json \
+IMAGE_FOLDER=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data \
+NUM_GPUS=8 \
+TRAIN_BSZ=10 \
+GRAD_ACCUM=2 \
+bash baseline/navila/scripts/train_satnav.sh
+```
+
+实现方式：
+
+- 不改上游 `NaVILA` repo 的 model / trainer 主逻辑
+- 在 `baseline/navila/src/dataset/satnav_dataset.py` 中把 SatNav episode 在线展开成 NaVILA 原版需要的“历史帧 + 当前帧 + 单步动作文本”
+- 在 `baseline/navila/src/train_satnav.py` 中只 monkey-patch data module，再调用原版 `train()`
 
 ## 5. 评测
 
-TODO：适配 SatNav 数据的评测脚本。
+SatNav 评测入口：
+
+```bash
+bash baseline/navila/scripts/eval_satnav.sh navila-llama3-8b-8f val_unseen 1 5
+```
+
+支持两种模式：
+
+- 按实验名评测：从 `output/navila-baseline/<EXP_NAME>/` 自动解析 checkpoint
+- 按 checkpoint 路径评测：直接传入绝对路径
+
+常用覆盖项：
+
+```bash
+SATNAV_VERSION=ver_260306 \
+MODEL_BASE=/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/baseline/navila/model/navila-siglip-llama3-8b-v1.5-pretrain \
+bash baseline/navila/scripts/eval_satnav.sh \
+  /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/baseline/navila/model/navila-llama3-8b-8f \
+  val_seen 1 10
+```
+
+评测实现约定：
+
+- prompt 与原版 `NaVILA/evaluation/vlnce_baselines/navila_trainer.py` 保持一致
+- 动作解析保持原版自然语言正则逻辑：`stop / move forward / turn left / turn right`
+- 距离、角度会被解析成 SatNav 离散动作队列（10m 前进、15 度转向）
+- 结果输出到 `results/navila-baseline/...`
