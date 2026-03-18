@@ -18,6 +18,7 @@ from config import (
     TRAIN_CITIES, EVAL_CITIES, EPISODE_TYPES, EPISODE_FILES,
     get_data_dir, get_episodes_dir
 )
+from normalize_trajectory_types import normalize_dataset
 
 
 def load_episodes(city_path: Path) -> List[Dict[str, Any]]:
@@ -96,7 +97,12 @@ def process_cities(data_dir: Path, cities: List[str], output_dir: Path, split_na
     }
 
 
-def process_episodes(version: str, train_only: bool = False, eval_only: bool = False):
+def process_episodes(
+    version: str,
+    train_only: bool = False,
+    eval_only: bool = False,
+    normalize_first: bool = True,
+):
     """
     处理指定版本的episodes数据
     
@@ -114,6 +120,14 @@ def process_episodes(version: str, train_only: bool = False, eval_only: bool = F
     print(f"Processing episodes for version: {version}")
     print(f"Data directory: {data_dir}")
     print(f"Output directory: {output_dir}")
+
+    if normalize_first:
+        normalize_result = normalize_dataset(version)
+        print(
+            "Normalization complete: "
+            f"removed={normalize_result['removed_cities']}, "
+            f"normalized={normalize_result['normalized_episodes']}"
+        )
     
     results = {}
     
@@ -155,7 +169,11 @@ def main():
     if args.train_only and args.eval_only:
         parser.error("Cannot specify both --train-only and --eval-only")
     
-    process_episodes(args.version, args.train_only, args.eval_only)
+    process_episodes(
+        args.version,
+        train_only=args.train_only,
+        eval_only=args.eval_only,
+    )
 
 
 if __name__ == "__main__":

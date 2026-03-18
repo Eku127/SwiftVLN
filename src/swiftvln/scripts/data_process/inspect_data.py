@@ -23,6 +23,7 @@ def inspect_city(city_path: Path) -> Dict[str, Any]:
         "qa_items": 0,
         "episodes": 0,
         "episodes_by_type": {},
+        "episodes_by_subtype": {},
         "traj_dirs": 0,
         "img_dirs": 0
     }
@@ -47,6 +48,12 @@ def inspect_city(city_path: Path) -> Dict[str, Any]:
             # 统计各类型 episodes
             type_counter = Counter(ep.get("trajectory_type", "Unknown") for ep in episodes)
             result["episodes_by_type"] = dict(type_counter)
+            subtype_counter = Counter(
+                ep.get("trajectory_subtype")
+                for ep in episodes
+                if ep.get("trajectory_subtype")
+            )
+            result["episodes_by_subtype"] = dict(subtype_counter)
 
     # 检查子目录
     for item in city_path.iterdir():
@@ -92,6 +99,8 @@ def inspect_all(data_dir: Path):
             print(f"   Episodes: {result['episodes']}")
             for ep_type, count in result['episodes_by_type'].items():
                 print(f"     - {ep_type}: {count}")
+            for ep_subtype, count in result['episodes_by_subtype'].items():
+                print(f"     - subtype/{ep_subtype}: {count}")
         else:
             print(f"   Episodes: ❌ No VLN_episodes.json")
 
@@ -129,13 +138,20 @@ def inspect_all(data_dir: Path):
 
     # Episodes 类型汇总
     all_types = Counter()
+    all_subtypes = Counter()
     for r in all_results:
         all_types.update(r['episodes_by_type'])
+        all_subtypes.update(r['episodes_by_subtype'])
 
     if all_types:
         print("\nEpisodes by type:")
         for ep_type, count in sorted(all_types.items()):
             print(f"  - {ep_type}: {count}")
+
+    if all_subtypes:
+        print("\nEpisodes by subtype:")
+        for ep_subtype, count in sorted(all_subtypes.items()):
+            print(f"  - {ep_subtype}: {count}")
 
     print("\n" + "=" * 80)
     print("Cities list for config.py:")
