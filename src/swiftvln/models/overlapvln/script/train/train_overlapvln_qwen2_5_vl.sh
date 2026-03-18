@@ -479,3 +479,36 @@ echo "=========================================="
 echo "Training completed!"
 echo "Model saved to: $OUTPUT_DIR"
 echo "=========================================="
+
+# Persist training metadata (SwanLab URL etc.) for downstream eval/CSV collection
+if [ "$USE_SWANLAB" = true ]; then
+    _swanlab_url=""
+    _latest_run_dir=$(ls -td "${OUTPUT_DIR}"/v0-* 2>/dev/null | head -1)
+    if [ -n "$_latest_run_dir" ] && [ -f "${_latest_run_dir}/logging.jsonl" ]; then
+        _swanlab_url=$(grep -oP 'https://swanlab\.cn/@[^\s"]+/runs/[^\s"]+' "${_latest_run_dir}/logging.jsonl" 2>/dev/null | tail -1)
+    fi
+    if [ -z "$_swanlab_url" ] && [ -n "${TRAIN_LOG_FILE:-}" ] && [ -f "$TRAIN_LOG_FILE" ]; then
+        _swanlab_url=$(grep -oP 'https://swanlab\.cn/@[^\s"]+/runs/[^\s"]+' "$TRAIN_LOG_FILE" 2>/dev/null | tail -1)
+    fi
+    _SWANLAB_URL="$_swanlab_url" \
+    _SWANLAB_PROJECT="$SWANLAB_PROJECT" \
+    _SWANLAB_EXP="$SWANLAB_EXP_NAME" \
+    _OUTPUT_DIR="$OUTPUT_DIR" \
+    python3 -c "
+import json, pathlib, os
+meta = {}
+url = os.environ.get('_SWANLAB_URL', '')
+if url:
+    meta['swanlab_url'] = url
+proj = os.environ.get('_SWANLAB_PROJECT', '')
+if proj:
+    meta['swanlab_project'] = proj
+exp = os.environ.get('_SWANLAB_EXP', '')
+if exp:
+    meta['swanlab_exp_name'] = exp
+if meta:
+    out = pathlib.Path(os.environ['_OUTPUT_DIR']) / 'train_metadata.json'
+    out.write_text(json.dumps(meta, indent=2))
+    print(f'Saved train metadata: {out}')
+" 2>/dev/null || true
+fi
