@@ -36,11 +36,13 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 ## Key Directories & Entry Scripts
 
 - 训练队列：`src/swiftvln/scripts/train/train_queue.sh`
+- 训练 watchdog：`src/swiftvln/scripts/train/train_watchdog.sh`
 - 评测单模型：`src/swiftvln/scripts/eval/eval_by_name.sh`
 - 评测队列：`src/swiftvln/scripts/eval/eval_queue.sh`
 - 评测入队：`src/swiftvln/scripts/eval/enqueue_eval.sh`
 - 评测 worker：`src/swiftvln/scripts/eval/start_eval_worker.sh`
 - 评测 monitor：`src/swiftvln/scripts/eval/start_eval_monitor.sh`
+- 评测 watchdog：`src/swiftvln/scripts/eval/eval_watchdog.sh`
 - 数据处理：`src/swiftvln/scripts/data_process/*.py`
 - 数据同步：`src/swiftvln/scripts/data_sync/*.sh`
 
@@ -104,19 +106,77 @@ NaVILA SatNav eval 约定：
 
 注意：不再使用旧路径 `src/swiftvln/scripts/eval/*.txt`。
 
+### Eval Watchdog 异步回调机制（Updated: 2026-03-18）
+
+评测默认使用 **tmux + watchdog** 异步模式，多服务器并发安全：
+
+- 评测在 tmux session 中运行（命名：`eval_<short_desc>_<HHMMSS>`）
+- `eval_watchdog.sh` 后台监控 tmux session，完成/失败时通过 `codex exec resume` 回调
+- Per-host 完成状态：`runtime/eval_queue/eval_queue_last_run_<hostname>.json`
+- Per-run 独立目录：`runtime/eval_queue/runs/<hostname>_<session_name>/`
+  - `watchdog_result.json`、`watchdog.log`、`codex_response.txt`、`eval_queue_status.json`
+- 自动清理：watchdog 启动时默认清理 7 天前的旧 run 目录（`--cleanup-days`）
+
+Watchdog 启动方式（Codex 在启动评测后自动注册）：
+
+```bash
+nohup bash src/swiftvln/scripts/eval/eval_watchdog.sh \
+  --tmux-session <session_name> \
+  --codex-session <codex_uuid> \
+  --eval-log <log_path> \
+  --cleanup-days 7 &
+```
+
+### Train Watchdog 异步回调机制（Updated: 2026-03-18）
+
+训练同样使用 **tmux + watchdog** 事件驱动模式，支持多服务器并行启动：
+
+- 训练在 tmux session 中运行（命名：`train_<short_desc>_<HHMMSS>`）
+- `train_watchdog.sh` 后台监控，通过 `train_events.log` 消费实验事件
+- 事件驱动回调（非轮询）：
+  - 实验失败 → `codex exec resume` 让 Codex 分析修复
+  - 全部完成 → `codex exec`（新 session）按 eval skill 启动评测
+  - 进程崩溃 → `codex exec resume` 诊断恢复
+- Per-host 完成状态：`runtime/train_queue/train_queue_last_run_<hostname>.json`
+- Per-run 独立目录：`runtime/train_queue/runs/<hostname>_<session>/`
+- `train_queue.sh` 通过 `_emit_train_event()` 写入事件日志
+
+```bash
+nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
+  --tmux-session <session_name> \
+  --codex-session <codex_uuid> \
+  --train-log <log_path> \
+  --on-all-done eval &
+```
+
 ## Current SatNav Dataset Defaults
 
 - Dataset root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets`
-- 当前常用版本：`ver_260306`
+- 当前常用版本：`ver_260317`
 - Eval episodes:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/episodes/eval/all_episodes.json`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/episodes/eval/all_episodes.json`
 - QA JSONL:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/data/qa_swift.jsonl`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl`
 - Trajectory data:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data`
 - Scene maps:
   - active: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
   - backup(old): `/mnt/data3/jiangjiajun/dataset/satnav_datasets/old_scenes`
+
+### SatNav Data Processing Convention (Updated: 2026-03-14)
+
+- 数据处理默认会先执行 trajectory type 标准化：
+  - 删除不完整城市目录 `Venezia`
+  - 将 `highway / multiway / multway / waterway` 统一映射为 `trajectory_type = Road`
+  - 同时保留细分类到顶层字段 `trajectory_subtype`，规范值为 `Highway / Multiway / Waterway`
+- 标准化脚本：
+  `src/swiftvln/scripts/data_process/normalize_trajectory_types.py`
+- 默认入口 `src/swiftvln/scripts/data_process/run_all.py` 会先执行标准化，再生成 `episodes` 与 `qa_swift.jsonl`
+- 单独执行 `src/swiftvln/scripts/data_process/process_episodes.py` 时，也会自动先做同样的标准化
+- `episodes/train/*.json` 与 `episodes/eval/*.json` 输出会保留 `trajectory_subtype` 字段
+- 当前默认城市划分（0316 起）：
+  - eval: `Amsterdam-1`, `Rome-1`, `NewYork-1`
+  - train: 其余全部城市
 
 ## Runtime/Infra Conventions
 
@@ -149,6 +209,14 @@ Conda 初始化命令（所有服务器统一）：
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 ```
+
+### Offline Model Convention (Updated: 2026-03-17)
+
+- 后续 VLN 训练任务默认使用**离线本地模型**，不依赖在线下载（避免 DNS/外网波动导致训练失败）。
+- OverlapVLN/StreamVLN/CompressVLN 的 stage1 基座模型默认路径：
+  `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
+- 启动训练前必须先检查该路径存在且非空；若缺失，先修复模型路径/缓存，再启动训练。
+- 若脚本默认值仍是 `Qwen/Qwen2.5-VL-3B-Instruct`（在线 ID），运行时需显式覆盖为上述本地绝对路径。
 
 ### tmux Session Naming Convention
 

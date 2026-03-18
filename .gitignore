@@ -16,6 +16,7 @@ results/
 reports/*.tmp
 runtime/
 swanlog/
+/test_data/
 
 # Generated analysis artifacts
 src/swiftvln/scripts/analysis/trajectory_analysis/*.png

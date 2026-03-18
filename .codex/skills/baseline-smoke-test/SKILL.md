@@ -103,10 +103,12 @@ source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate streamvln-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
-bash baseline/streamvln/scripts/eval_satnav.sh \
+SATNAV_VERSION="" bash baseline/streamvln/scripts/eval_satnav.sh \
   smoketest/${SMOKE_EXP} val_seen 1 10 \
   2>&1 | tee /tmp/streamvln_smoke_eval.log
 ```
+
+> 注意：当前 `baseline/streamvln/scripts/eval_satnav.sh` 在 `set -u` 下会直接读取 `SATNAV_VERSION`，若未定义可能报 `unbound variable`。smoke 命令建议显式加 `SATNAV_VERSION=""`。
 
 ### Cleanup
 
