@@ -35,8 +35,8 @@ VISION_TOWER="${BASELINE_DIR}/model/eva_vit_g.pth"
 IMAGE_PROCESSOR="${UNINAVID_REPO}/uninavid/processor/clip-patch14-224"
 DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero1.json}"
 
-DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data/annotations.json}"
-VIDEO_FOLDER="${VIDEO_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data}"
+DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data/annotations.json}"
+VIDEO_FOLDER="${VIDEO_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data}"
 
 NUM_GPUS="${NUM_GPUS:-8}"
 TRAIN_BSZ="${TRAIN_BSZ:-24}"

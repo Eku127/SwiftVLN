@@ -7,16 +7,20 @@
 #   DATA_PATH=...
 #   IMAGE_FOLDER=...
 #   NUM_GPUS=8
-#   TRAIN_BSZ=8
-#   GRAD_ACCUM=2
+#   TRAIN_BSZ=4
+#   GRAD_ACCUM=1
 #   NUM_EPOCHS=1
-#   LEARNING_RATE=1e-4
-#   MAX_STEPS=...
+#   LEARNING_RATE=3e-5
+#   MAX_STEPS=120
 #   SAVE_STEPS=100
-#   SAVE_TOTAL_LIMIT=1
+#   SAVE_TOTAL_LIMIT=2
 #   MODEL_MAX_LENGTH=4096
 #   DATALOADER_WORKERS=16
 #   MASTER_PORT=29500
+#   USE_SWANLAB=false
+#   SWANLAB_PROJECT=NaVILA
+#   SWANLAB_MODE=cloud
+#   REPORT_TO=...
 set -euo pipefail
 
 SWIFTVLN_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -24,23 +28,26 @@ BASELINE_DIR="${SWIFTVLN_ROOT}/baseline/navila"
 
 MODEL_PATH="${MODEL_PATH:-${BASELINE_DIR}/model/navila-siglip-llama3-8b-v1.5-pretrain}"
 VISION_TOWER="${VISION_TOWER:-${BASELINE_DIR}/model/navila-siglip-llama3-8b-v1.5-pretrain/vision_tower}"
-DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero3.json}"
+DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero2.json}"
 
-DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data/annotations.json}"
-IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data}"
+DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data/annotations.json}"
+IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data}"
 
 NUM_GPUS="${NUM_GPUS:-8}"
-TRAIN_BSZ="${TRAIN_BSZ:-8}"
-GRAD_ACCUM="${GRAD_ACCUM:-2}"
+TRAIN_BSZ="${TRAIN_BSZ:-4}"
+GRAD_ACCUM="${GRAD_ACCUM:-1}"
 NUM_EPOCHS="${NUM_EPOCHS:-1}"
-LEARNING_RATE="${LEARNING_RATE:-1e-4}"
-MAX_STEPS="${MAX_STEPS:-}"
+LEARNING_RATE="${LEARNING_RATE:-3e-5}"
+MAX_STEPS="${MAX_STEPS:-120}"
 SAVE_STEPS="${SAVE_STEPS:-100}"
-SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-1}"
+SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-2}"
 MODEL_MAX_LENGTH="${MODEL_MAX_LENGTH:-4096}"
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-16}"
 MASTER_PORT="${MASTER_PORT:-29500}"
-REPORT_TO="${REPORT_TO:-wandb}"
+REPORT_TO="${REPORT_TO:-}"
+USE_SWANLAB="${USE_SWANLAB:-false}"
+SWANLAB_PROJECT="${SWANLAB_PROJECT:-NaVILA}"
+SWANLAB_MODE="${SWANLAB_MODE:-cloud}"
 CUSTOM_EXP_NAME="${1:-}"
 
 VERSION_NUM="$(echo "${DATA_PATH}" | grep -oP 'ver_\K\d+' | head -1 || true)"
@@ -59,8 +66,20 @@ fi
 
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/navila-baseline/${EXP_NAME}"
 MAX_STEPS_ARG=()
+REPORT_TO_ARG=()
 if [[ -n "${MAX_STEPS}" ]]; then
     MAX_STEPS_ARG=(--max_steps "${MAX_STEPS}")
+fi
+
+if [[ -n "${REPORT_TO}" ]]; then
+    REPORT_TO_ARG=(--report_to "${REPORT_TO}")
+elif [[ "${USE_SWANLAB}" == "true" ]]; then
+    export SWANLAB_PROJECT
+    export SWANLAB_NAME="${EXP_NAME}"
+    export SWANLAB_MODE
+    REPORT_TO_ARG=(--report_to swanlab)
+else
+    REPORT_TO_ARG=(--report_to none)
 fi
 
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
@@ -77,6 +96,8 @@ echo "  EXP_NAME   : ${EXP_NAME}"
 echo "  GPUs       : ${NUM_GPUS}"
 echo "  Batch      : ${TRAIN_BSZ} x ${GRAD_ACCUM} x ${NUM_GPUS} = ${EFFECTIVE_BATCH_SIZE}"
 echo "  LR         : ${LEARNING_RATE}"
+echo "  SwanLab    : ${USE_SWANLAB}"
+echo "  Report To  : ${REPORT_TO_ARG[*]}"
 echo "=========================================="
 
 torchrun \
@@ -123,7 +144,7 @@ torchrun \
     --gradient_checkpointing True \
     --dataloader_num_workers "${DATALOADER_WORKERS}" \
     --lazy_preprocess True \
-    --report_to "${REPORT_TO}"
+    "${REPORT_TO_ARG[@]}"
 
 echo "=========================================="
 echo "Training completed!"
