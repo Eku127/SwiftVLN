@@ -36,7 +36,7 @@ Before starting, confirm with the user:
 | Environment | — | `satnav` or `habitat` |
 | Server(s) | — | One or more of: `98`, `73`, `17` |
 | QA mixed training | — | Whether to mix QA data |
-| Stage1 base model path | `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct` | Always offline local |
+| Stage1 base model path | `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct` | Default script path; use this absolute local cache path to avoid ModelScope hub resolution |
 
 ---
 
@@ -46,6 +46,7 @@ Before starting, confirm with the user:
    - `src/swiftvln/scripts/train/train_queue.sh`
    - `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
 2. Produce **run checklist**: model set, stage, environment, data version, offline model path, launch mode, expected output naming.
+   For `stage1`, confirm the resolved path is the absolute local cache path above, not `Qwen/Qwen2.5-VL-3B-Instruct`.
 3. Apply default model rule: `baseline`/unspecified → `overlapvln`.
 4. **Wait for user confirmation**.
 
@@ -63,6 +64,7 @@ Before starting, confirm with the user:
 1. Discover latest SatNav dataset under `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_*`.
 2. Resolve data paths (trajectory, QA).
 3. Verify offline base model: `test -d /mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct && echo OK`
+   If missing, fail fast instead of falling back to a remote `model_id`.
 4. If user requests, sync `satnav_task.yaml` and `train_queue.sh`.
 5. **Fail fast** if any path is missing.
 6. **Wait for user confirmation**.

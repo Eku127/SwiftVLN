@@ -33,7 +33,8 @@ MODEL_TYPE="overlapvln_qwen2_5_vl"
 TRAIN_STAGE="stage1"
 
 # Model paths for each stage
-STAGE1_MODEL_PATH="Qwen/Qwen2.5-VL-3B-Instruct"
+# Stage1 defaults to the local offline cache path to avoid ModelScope hub resolution.
+STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
 STAGE2_MODEL_PATH="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239"
 
 # Select model path based on stage

@@ -157,7 +157,10 @@ cleanup_old_runs() {
     fi
     # Legacy flat logs
     find "${SWIFTVLN_ROOT}/logs" -maxdepth 1 -name "train_queue_*.log" -mtime +"$days" -delete 2>/dev/null || true
-    [[ $count -gt 0 ]] && log "Cleaned $count old run dirs (>${days} days)"
+    if [[ $count -gt 0 ]]; then
+        log "Cleaned $count old run dirs (>${days} days)"
+    fi
+    return 0
 }
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -407,12 +410,12 @@ while true; do
         # Re-process any remaining events
         check_new_events
 
-        local success_n=$(count_events "EXPERIMENT_SUCCESS")
-        local fail_n=$(count_events "EXPERIMENT_FAILED")
-        local has_queue_done=$(count_events "QUEUE_DONE")
+        success_n=$(count_events "EXPERIMENT_SUCCESS")
+        fail_n=$(count_events "EXPERIMENT_FAILED")
+        has_queue_done=$(count_events "QUEUE_DONE")
 
         # Determine outcome
-        local outcome="completed"
+        outcome="completed"
         if [[ $has_queue_done -eq 0 && $success_n -eq 0 && $fail_n -eq 0 ]]; then
             outcome="crash"
             log "No events recorded — likely crashed before any experiment ran"
@@ -425,7 +428,7 @@ while true; do
 
         if [[ "$outcome" == "crash" ]]; then
             # ── Crash ──
-            local err_ctx
+            err_ctx=""
             err_ctx=$(get_error_context)
             send_webhook "Train Crashed" "host=${HOSTNAME_SAFE}\ntmux=${TMUX_SESSION}\nsuccess=${success_n}\nfailed=${fail_n}\nelapsed=$((ELAPSED/60))min"
             if [[ -n "$CODEX_SESSION" ]]; then
@@ -483,7 +486,7 @@ PROMPT
 
     # ── Progress / stall detection ──────────────────────────────────────
     if [[ -n "$TRAIN_LOG" && -f "$TRAIN_LOG" ]]; then
-        local current_progress
+        current_progress=""
         current_progress=$(grep -oP '(?:train_loss|global_step|epoch)\s*[=:]\s*[0-9.]+' "$TRAIN_LOG" 2>/dev/null | tail -1 || echo "")
         if [[ -n "$current_progress" ]]; then
             if [[ "$current_progress" == "$LAST_PROGRESS" ]]; then
