@@ -35,6 +35,8 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 
 ## Key Directories & Entry Scripts
 
+- 实验计划目录：`runtime/plans/` （自然语言实验计划文件，供 orchestrate-plan skill 读取）
+- 实验计划 skill：`.codex/skills/orchestrate-plan/SKILL.md`
 - 训练队列：`src/swiftvln/scripts/train/train_queue.sh`
 - 训练 watchdog：`src/swiftvln/scripts/train/train_watchdog.sh`
 - 评测单模型：`src/swiftvln/scripts/eval/eval_by_name.sh`
@@ -209,6 +211,21 @@ Conda 初始化命令（所有服务器统一）：
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 ```
+
+### train_queue.sh 非交互模式（Updated: 2026-03-18）
+
+`train_queue.sh` 支持通过环境变量 `TRAIN_EXPERIMENTS_FILE` 跳过交互式向导：
+
+```bash
+TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train/train_queue.sh
+```
+
+该文件需 source 可读，至少定义：
+- `EXPERIMENTS` 数组（格式：`model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio`）
+- `TRAIN_STAGE`（`stage1` 或 `stage2`）
+- `ENV_TYPE`（`satnav` 或 `habitat`）
+
+由 `orchestrate-plan` skill 在运行时通过 Write tool 生成，放在 `runtime/plans/generated/` 下。
 
 ### Offline Model Convention (Updated: 2026-03-17)
 

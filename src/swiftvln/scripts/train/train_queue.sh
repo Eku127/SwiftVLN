@@ -519,6 +519,37 @@ format_config_display() {
 # 交互式配置
 # ============================================================================
 interactive_setup() {
+    # ── Non-interactive mode ──────────────────────────────────────────────────
+    # If TRAIN_EXPERIMENTS_FILE is set, source it to load all config variables
+    # and skip the interactive wizard entirely.
+    #
+    # The file must define (at minimum):
+    #   EXPERIMENTS=("model|config|changes|ds_names|ds_paths||qa_ratio" ...)
+    #   TRAIN_STAGE="stage1"   (or "stage2")
+    #   ENV_TYPE="satnav"      (or "habitat")
+    #
+    # Optional (will use script defaults if absent):
+    #   USE_SWANLAB="false"
+    #   SWANLAB_PROJECT=""
+    #   USE_QA_MIXED_TRAINING="false"
+    #   QA_DATASET="..."
+    if [[ -n "${TRAIN_EXPERIMENTS_FILE:-}" ]]; then
+        if [[ ! -f "$TRAIN_EXPERIMENTS_FILE" ]]; then
+            print_error "TRAIN_EXPERIMENTS_FILE 指定的文件不存在: $TRAIN_EXPERIMENTS_FILE"
+            exit 1
+        fi
+        print_info "非交互模式：从文件加载实验配置 → $TRAIN_EXPERIMENTS_FILE"
+        # shellcheck source=/dev/null
+        source "$TRAIN_EXPERIMENTS_FILE"
+        if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
+            print_error "TRAIN_EXPERIMENTS_FILE 加载后 EXPERIMENTS 数组为空，请检查文件内容"
+            exit 1
+        fi
+        print_success "已加载 ${#EXPERIMENTS[@]} 个实验，stage=${TRAIN_STAGE}, env=${ENV_TYPE}"
+        return 0
+    fi
+    # ─────────────────────────────────────────────────────────────────────────
+
     print_header "╔══════════════════════════════════════════════════════════════╗"
     echo -e "         ${BOLD}VLN 串行训练配置向导${NC}"
     print_header "╚══════════════════════════════════════════════════════════════╝"
