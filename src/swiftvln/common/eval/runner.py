@@ -38,6 +38,7 @@ from .reporting import (
     clean_results_for_output,
     compute_trajectory_type_stats,
     get_swanlab_url,
+    get_swanlab_url_from_train_metadata,
     save_timing_stats,
 )
 
@@ -462,8 +463,10 @@ class BaseVLNEval(ABC):
         # Add model-specific extras
         summary.update(self.get_summary_extras())
         
-        # Try to get SwanLab run URL if available
+        # Try to get SwanLab run URL: active session first, then train_metadata.json
         swanlab_url = get_swanlab_url()
+        if not swanlab_url:
+            swanlab_url = get_swanlab_url_from_train_metadata(self.args.model_path)
         if swanlab_url:
             summary["swanlab_url"] = swanlab_url
         

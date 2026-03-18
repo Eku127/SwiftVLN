@@ -78,6 +78,29 @@ def get_swanlab_url() -> Optional[str]:
     return None
 
 
+def get_swanlab_url_from_train_metadata(model_path: str) -> Optional[str]:
+    """Read SwanLab URL from train_metadata.json located in the training output dir.
+
+    The model_path typically points to a checkpoint like:
+      output/<arch>/<exp_name>/v0-<ts>/checkpoint-N
+    We walk up to find train_metadata.json at the <exp_name> level.
+    """
+    from pathlib import Path
+
+    p = Path(model_path)
+    for ancestor in [p.parent.parent, p.parent, p]:
+        candidate = ancestor / "train_metadata.json"
+        if candidate.is_file():
+            try:
+                meta = json.loads(candidate.read_text(encoding="utf-8"))
+                url = meta.get("swanlab_url", "")
+                if url:
+                    return url
+            except Exception:
+                pass
+    return None
+
+
 def save_timing_stats(output_dir: str, timing_stats_list: List[Dict[str, Any]]) -> str:
     """Save timing statistics summary and return output file path."""
     num_episodes = len(timing_stats_list)

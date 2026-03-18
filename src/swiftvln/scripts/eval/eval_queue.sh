@@ -664,6 +664,62 @@ run_evaluation() {
 }
 
 # ============================================================================
+# 写入机器可读的完成状态（供 eval_watchdog / 外部工具使用）
+# ============================================================================
+write_completion_status() {
+    local result_file="${1:-}"
+    local success_count="${2:-0}"
+    local fail_count="${3:-0}"
+    local _hostname
+    _hostname="$(hostname | sed 's/[^a-zA-Z0-9._-]/_/g')"
+
+    # per-host 状态文件（多服务器并发安全）
+    local status_file="${EVAL_QUEUE_DIR}/eval_queue_last_run_${_hostname}.json"
+
+    # 如果调用方设置了 EVAL_RUN_DIR，同时写入 per-run 目录
+    local run_status_file=""
+    if [[ -n "${EVAL_RUN_DIR:-}" && -d "${EVAL_RUN_DIR}" ]]; then
+        run_status_file="${EVAL_RUN_DIR}/eval_queue_status.json"
+    fi
+
+    local success_list=""
+    local failed_list=""
+    for result in "${EXP_RESULTS[@]}"; do
+        IFS='|' read -r _idx model status _dur _metrics <<< "$result"
+        if [[ "$status" == "SUCCESS" ]]; then
+            [[ -n "$success_list" ]] && success_list="${success_list},"
+            success_list="${success_list}\"${model}\""
+        else
+            [[ -n "$failed_list" ]] && failed_list="${failed_list},"
+            failed_list="${failed_list}\"${model}\""
+        fi
+    done
+
+    local json_body
+    json_body=$(cat <<EOF
+{
+    "completed_at": "$(date -Iseconds)",
+    "eval_split": "${EVAL_SPLIT:-val_unseen}",
+    "success_count": ${success_count},
+    "fail_count": ${fail_count},
+    "total_count": ${#EXP_RESULTS[@]},
+    "success_models": [${success_list}],
+    "failed_models": [${failed_list}],
+    "result_file": "${result_file}",
+    "hostname": "${_hostname}"
+}
+EOF
+)
+    echo "$json_body" > "$status_file"
+    print_info "完成状态已写入: $status_file"
+
+    if [[ -n "$run_status_file" ]]; then
+        echo "$json_body" > "$run_status_file"
+        print_info "Per-run 状态已写入: $run_status_file"
+    fi
+}
+
+# ============================================================================
 # 显示最终结果
 # ============================================================================
 show_final_results() {
@@ -760,7 +816,10 @@ show_final_results() {
     done
 
     send_webhook "Eval Queue Finished" "success=${success_count}\nfailed=${fail_count}\ntotal=${#EXP_RESULTS[@]}"
-    
+
+    # 写入机器可读的完成状态文件（供 eval_watchdog 等外部工具使用）
+    write_completion_status "$RESULT_FILE" "$success_count" "$fail_count"
+
     echo ""
     print_success "结果已保存到: $RESULT_FILE"
 }
