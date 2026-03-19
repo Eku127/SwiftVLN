@@ -95,6 +95,15 @@ pip install -e /mnt/data1/home/jiangjiajun/workspace/SatNav
 - 按实验名评测（推荐）：使用训练产出的 `EXP_NAME`。
 - 按 checkpoint 路径评测：用于兼容历史目录或手工路径。
 
+SatNav 评测 split 约定：
+
+- `bash baseline/streamvln/scripts/eval_satnav.sh <exp_or_ckpt>`：
+  默认顺序运行 `val_seen` 和 `val_unseen`
+- `bash baseline/streamvln/scripts/eval_satnav.sh <exp_or_ckpt> val_seen`：
+  只跑 `val_seen`
+- `bash baseline/streamvln/scripts/eval_satnav.sh <exp_or_ckpt> val_unseen`：
+  只跑 `val_unseen`
+
 评测输出位置：
 
 - `results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`

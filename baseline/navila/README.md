@@ -87,13 +87,18 @@ bash baseline/navila/scripts/train_satnav.sh
 SatNav 评测入口：
 
 ```bash
-bash baseline/navila/scripts/eval_satnav.sh navila-llama3-8b-8f val_unseen 1 5
+bash baseline/navila/scripts/eval_satnav.sh navila-llama3-8b-8f
 ```
 
 支持两种模式：
 
 - 按实验名评测：从 `output/navila-baseline/<EXP_NAME>/` 自动解析 checkpoint
 - 按 checkpoint 路径评测：直接传入绝对路径
+
+SatNav 评测 split 约定：
+
+- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
+- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
 
 常用覆盖项：
 

@@ -74,11 +74,17 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - 路径不存在时直接报错（`FileNotFoundError`），无 fallback
     - 路由逻辑：`src/swiftvln/common/eval/evaluator.py` 的 `_init_satnav_config()`
     - 配置文件：`src/swiftvln/configs/satnav_task.yaml` 的 `DATASET.DATA_PATH`
+  - baseline SatNav eval 默认 split 约定（0319 更新）：
+    - `baseline/streamvln/scripts/eval_satnav.sh`
+    - `baseline/navila/scripts/eval_satnav.sh`
+    - `baseline/uninavid/scripts/eval_satnav.sh`
+    - 若**未显式传 split 参数**，默认顺序运行 `val_seen` 和 `val_unseen`
+    - 若显式传 `val_seen` / `val_unseen` / `test`，则只跑该单个 split
   - 评测结果目录约定（0319 起）：
     - SwiftVLN 主线模型（overlapvln/streamvln/compressvln/monovln/uninavid）：
       `results/eval/<arch>/<model_name>/<split>/<timestamp>/`
       例：`results/eval/overlapvln/<model>/val_seen/20260319_143025/`
-    - SatNav 默认 `EVAL_SPLIT=val_seen`，Habitat 默认 `EVAL_SPLIT=val_unseen`
+    - SatNav 默认同时跑 `val_seen` + `val_unseen`（不设置 `EVAL_SPLIT`），Habitat 默认 `EVAL_SPLIT=val_unseen`
 
 ### Baseline NaVILA Layout (Updated: 2026-03-12)
 

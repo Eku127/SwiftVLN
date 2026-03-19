@@ -25,6 +25,11 @@ description: "Run smoke tests for any baseline (streamvln / navila / uninavid) o
 - 全部使用 **生产数据最新版本**（auto-detect），不使用 `smoke_test_data/` 专用数据。
 - 训练：`MAX_STEPS=8`，`SAVE_STRATEGY=steps`，`SAVE_STEPS=8`，`LOGGING_STEPS=1`。
 - 评测：尽量贴近正式默认路径；若 baseline 支持则优先用正式 split，仅缩小 episode 数量。
+- baseline eval 入口：
+  `baseline/streamvln/scripts/eval_satnav.sh`
+  `baseline/navila/scripts/eval_satnav.sh`
+  `baseline/uninavid/scripts/eval_satnav.sh`
+- 上述三个脚本在 **不显式传 split** 时，均默认顺序运行 `val_seen` 和 `val_unseen`。
 - 验证训练 loss 是否有限且呈下降趋势（见 [Loss 验证](#loss-验证) 节）。
 - 验证评测 summary 写入成功。
 - 完成后**必须清理** smoke 输出和结果目录。
@@ -84,7 +89,7 @@ LOGGING_STEPS=1 \
 TRAIN_GPUS=8 \
 EVAL_GPUS=8 \
 EVAL_MAX_EPISODES=10 \
-bash baseline/streamvln/scripts/train_eval_satnav.sh continue val_unseen \
+bash baseline/streamvln/scripts/train_eval_satnav.sh continue \
   2>&1 | tee "${SMOKE_PIPE_LOG}"
 
 # 训练结束后捕获自动生成的 EXP_NAME
@@ -98,12 +103,12 @@ echo "Smoke EXP: ${SMOKE_EXP}"
 >
 > 与正式全量相比，仅保留两处 smoke 缩减：
 > - 训练只跑 `8` steps
-> - eval 只跑 `10` 个 episodes
+> - eval 只跑 `10` 个 episodes（每个 split）
 >
 > 其余关键路径尽量保持与正式一致：
 > - `continue` 模式
 > - `train_eval_satnav.sh` 联动入口
-> - `val_unseen`
+> - **默认 val_seen + val_unseen 两个 split**（0319 起 episodes/eval/ 下只有 val_seen/ 和 val_unseen/ 子目录）
 > - `8 GPU eval`
 
 ### 验证训练产物
@@ -129,13 +134,19 @@ grep -nE "Post-train summary|Eval target subpath|Start eval|Pipeline finished su
 ### Eval Smoke 验证
 
 ```bash
+# val_seen
+ls results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/
+tail -100 results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/eval.log
+cat results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/evaluation_summary.json
+
+# val_unseen
 ls results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_unseen/
 tail -100 results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_unseen/eval.log
 cat results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_unseen/evaluation_summary.json
 ```
 
 > 如果联动失败，这里通常会表现为：
-> `results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_unseen/` 不存在，或者 pipeline log 中没有 `Start eval`。
+> `results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/` 不存在，或者 pipeline log 中没有 `Start eval`。
 
 ### Cleanup
 
@@ -209,9 +220,13 @@ source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate navila-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
-bash baseline/navila/scripts/eval_satnav.sh \
-  "smoketest/${SMOKE_NAME}" val_seen 1 10 \
-  2>&1 | tee /tmp/navila_smoke_eval.log
+# smoke 为了分别保留两边日志，这里显式逐 split 执行；
+# 正式调用若不传 split，脚本默认也会顺序跑 val_seen + val_unseen。
+for SPLIT in val_seen val_unseen; do
+  bash baseline/navila/scripts/eval_satnav.sh \
+    "smoketest/${SMOKE_NAME}" "${SPLIT}" 1 10 \
+    2>&1 | tee "/tmp/navila_smoke_eval_${SPLIT}.log"
+done
 ```
 
 ### Cleanup
@@ -279,14 +294,17 @@ bash baseline/uninavid/scripts/train_satnav.sh 'smoketest/${SMOKE_NAME}'
 ### Eval Smoke（在 73 上执行）
 
 ```bash
-ssh 10.246.152.73 "
+# smoke 为了分别保留两边日志，这里显式逐 split 执行；
+# 正式调用若不传 split，脚本默认也会顺序跑 val_seen + val_unseen。
+for SPLIT in val_seen val_unseen; do
+  ssh 10.246.152.73 "
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate uninavid-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
-
 bash baseline/uninavid/scripts/eval_satnav.sh \
-  'smoketest/${SMOKE_NAME}' val_seen 1 10
-" 2>&1 | tee /tmp/uninavid_smoke_eval.log
+  'smoketest/${SMOKE_NAME}' '${SPLIT}' 1 10
+" 2>&1 | tee "/tmp/uninavid_smoke_eval_${SPLIT}.log"
+done
 ```
 
 ### Cleanup
@@ -350,13 +368,22 @@ if len(losses) >= 2:
 
 ```bash
 # streamvln
-cat results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/evaluation_summary.json
+for SPLIT in val_seen val_unseen; do
+  echo "=== streamvln ${SPLIT} ===" && \
+  cat results/streamvln-baseline/smoketest/${SMOKE_EXP}/${SPLIT}/evaluation_summary.json
+done
 
 # navila
-cat results/navila-baseline/smoketest/${SMOKE_NAME}/val_seen/evaluation_summary.json
+for SPLIT in val_seen val_unseen; do
+  echo "=== navila ${SPLIT} ===" && \
+  cat results/navila-baseline/smoketest/${SMOKE_NAME}/${SPLIT}/evaluation_summary.json
+done
 
 # uninavid
-ssh 10.246.152.73 "cat /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/uninavid-baseline/smoketest/${SMOKE_NAME}/val_seen/evaluation_summary.json"
+for SPLIT in val_seen val_unseen; do
+  echo "=== uninavid ${SPLIT} ===" && \
+  ssh 10.246.152.73 "cat /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/uninavid-baseline/smoketest/${SMOKE_NAME}/${SPLIT}/evaluation_summary.json"
+done
 ```
 
 **验收标准：**
@@ -380,6 +407,7 @@ ssh 10.246.152.73 "cat /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/un
 | Step losses | `[x.xx, x.xx, ...]` |
 | Loss 趋势 | ✅ PASS / ⚠️ 稳定 / ❌ FAIL |
 | Checkpoint 存在 | ✅/❌ |
-| Eval 10 episodes 完成 | ✅/❌ |
-| Eval Summary 写入 | ✅/❌ |
+| Eval val_seen 10 eps 完成 | ✅/❌ |
+| Eval val_unseen 10 eps 完成 | ✅/❌ |
+| Eval Summary 写入（两 split） | ✅/❌ |
 | 清理完成 | ✅/❌ |

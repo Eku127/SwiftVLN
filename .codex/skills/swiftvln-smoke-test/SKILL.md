@@ -187,6 +187,7 @@ source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate swift-vln-eval
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
+# 不设置 EVAL_SPLIT → 默认同时跑 val_seen + val_unseen（每个 split 各 10 episodes）
 MAX_EPISODES=10 ENV_TYPE=satnav \
   bash src/swiftvln/scripts/eval/eval_by_name.sh <streamvln_exp_name> \
   2>&1 | tee /tmp/smoke_streamvln_eval.log
@@ -202,7 +203,8 @@ MAX_EPISODES=10 ENV_TYPE=satnav \
 
 ### Verify eval artifacts (per model)
 
-- [ ] `results/eval/<arch>/<exp_name>/.../evaluation_summary.json` exists
+- [ ] `results/eval/<arch>/<exp_name>/val_seen/<timestamp>/evaluation_summary.json` exists
+- [ ] `results/eval/<arch>/<exp_name>/val_unseen/<timestamp>/evaluation_summary.json` exists
 - [ ] Log has no `Traceback`, `RuntimeError`, or fatal errors
 
 ---
@@ -234,10 +236,12 @@ Provide the following at completion:
 
 ### Pass/Fail Matrix
 
-| Model | Env | Mode | Train | Checkpoint Path | Eval | Summary Path | Failure Reason |
+| Model | Env | Split | Train | Checkpoint Path | Eval | Summary Path | Failure Reason |
 |---|---|---|---|---|---|---|---|
-| streamvln baseline | SatNav | multi-card | ✅/❌ | `output/...` | ✅/❌ | `results/...` | — |
-| overlapvln baseline | SatNav | multi-card | ✅/❌ | `output/...` | ✅/❌ | `results/...` | — |
+| streamvln baseline | SatNav | val_seen | ✅/❌ | `output/...` | ✅/❌ | `results/.../val_seen/<ts>/` | — |
+| | | val_unseen | — | | ✅/❌ | `results/.../val_unseen/<ts>/` | — |
+| overlapvln baseline | SatNav | val_seen | ✅/❌ | `output/...` | ✅/❌ | `results/.../val_seen/<ts>/` | — |
+| | | val_unseen | — | | ✅/❌ | `results/.../val_unseen/<ts>/` | — |
 
 ### Also include:
 1. Exact commands or script entrypoints that were run

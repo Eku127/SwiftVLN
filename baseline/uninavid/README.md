@@ -57,6 +57,32 @@ HuggingFace 模型通过 `hf-mirror.com` 直连下载，无需代理，支持断
 ## 目录结构
 
 ```
+
+## 评测
+
+SatNav 评测入口：
+
+```bash
+bash baseline/uninavid/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
+```
+
+SatNav 评测 split 约定：
+
+- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
+- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
+
+示例：
+
+```bash
+# 默认双 split
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/<exp_name>
+
+# 单独跑 val_unseen
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/<exp_name> \
+  val_unseen 8
+```
 baseline/uninavid/
 ├── model/
 │   ├── eva_vit_g.pth

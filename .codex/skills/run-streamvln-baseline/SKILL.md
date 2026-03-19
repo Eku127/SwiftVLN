@@ -188,9 +188,9 @@ export SATNAV_VERSION=ver_260306
 
 ```bash
 VERSION_DIR="/mnt/data3/jiangjiajun/dataset/satnav_datasets/${SATNAV_VERSION}"
-ls "${VERSION_DIR}/trajectory_data/annotations.json"   # 训练数据
+ls "${VERSION_DIR}/trajectory_data/annotations.json"        # 训练数据
 ls "${VERSION_DIR}/trajectory_data/images/"
-ls "${VERSION_DIR}/episodes/eval/all_episodes.json"    # eval episodes
+ls "${VERSION_DIR}/episodes/eval/val_seen/all_episodes.json"   # eval episodes (val_seen)
 ```
 
 ---
@@ -228,7 +228,7 @@ tmux new-session -d -s "${SESSION}" \
    conda activate streamvln-baseline && \
    cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN && \
    SATNAV_VERSION=ver_260306 TRAIN_GPUS=8 EVAL_GPUS=8 \
-   bash baseline/streamvln/scripts/train_eval_satnav.sh continue val_unseen \
+   bash baseline/streamvln/scripts/train_eval_satnav.sh continue \
    2>&1 | tee ${LOG}"
 
 tmux ls | grep "${SESSION}"
@@ -246,7 +246,7 @@ ssh 10.246.152.73 "
    conda activate streamvln-baseline && \
    cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN && \
    SATNAV_VERSION=ver_260306 TRAIN_GPUS=8 EVAL_GPUS=8 \
-   bash baseline/streamvln/scripts/train_eval_satnav.sh continue val_unseen \
+   bash baseline/streamvln/scripts/train_eval_satnav.sh continue \
    2>&1 | tee ${LOG}'
 "
 
@@ -266,7 +266,7 @@ ssh 10.246.132.17 "
      conda activate streamvln-baseline && \
      cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN && \
      SATNAV_VERSION=ver_260306 TRAIN_GPUS=8 EVAL_GPUS=8 \
-     bash baseline/streamvln/scripts/train_eval_satnav.sh continue val_unseen \
+     bash baseline/streamvln/scripts/train_eval_satnav.sh continue \
      2>&1 | tee ${LOG}'
   \"
 "
@@ -425,10 +425,11 @@ send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_END_MSG}"
 
 ---
 
-## 步骤 5 — 执行评测（仅 `val_unseen`）
+## 步骤 5 — 执行评测（默认 `val_seen` + `val_unseen` 都跑）
 
 > **必须发送 eval 开始 / 结束通知。**
-> 本 skill 当前约定：**不跑 `val_seen`，只跑 `val_unseen`（8卡）**。
+> 本 skill 当前约定：**默认 val_seen 和 val_unseen 两个 split 均跑（8卡）**。若用户明确指定了单个 split，则只跑指定的那个。
+> 0319 起 `episodes/eval/` 下只有 `val_seen/` 和 `val_unseen/` 子目录，不再有顶层扁平文件。
 >
 > 如果使用了一键串行模式（`train_eval_satnav.sh`），eval 已自动执行且 webhook 已自动发送，可跳过本步骤中的手动 eval 和手动 webhook 部分，直接进入"校验评测产物"。
 
@@ -442,80 +443,84 @@ tmux ls | grep streamvln_eval | awk -F: '{print $1}' | xargs -r -n1 tmux kill-se
 pkill -f "baseline/streamvln/scripts/eval_satnav.sh|baseline/streamvln/src/eval_satnav.py|streamvln_eval" || true
 
 # 2) 仅清理当前实验的 eval 结果（保留其他实验的历史结果）
-rm -rf "results/streamvln-baseline/<EXP_NAME>/val_unseen"
 rm -rf "results/streamvln-baseline/<EXP_NAME>/val_seen"
+rm -rf "results/streamvln-baseline/<EXP_NAME>/val_unseen"
 rm -rf "results/streamvln-baseline/<EXP_NAME>/test"
 ```
 
 > **禁止**使用 `rm -rf results/streamvln-baseline/by-path` 或 `find ... -name val_unseen ... -exec rm` 等全局清理命令——这会误删其他实验的已有评测结果。
 
-### 评测数据约束（全量 all_episodes）
+### 评测数据约束（按 split 子目录路由）
 
 默认直接使用：
 
-`/mnt/data3/jiangjiajun/dataset/satnav_datasets/<ver_xxxxxx>/episodes/eval/all_episodes.json`
+`/mnt/data3/jiangjiajun/dataset/satnav_datasets/<ver_xxxxxx>/episodes/eval/val_seen/all_episodes.json`
 
-**不做城市过滤（不删除 Berlin / LosAngeles）。**
+**eval_satnav.sh 根据 `SPLIT` 参数自动路由到对应子目录**（`val_seen/` 或 `val_unseen/`）。
+**若不传 `SPLIT` 参数，则脚本会顺序运行 `val_seen` 和 `val_unseen` 两个 split。**
+不做城市过滤，使用全量 eval episodes。
 
 ### 按实验名评测（推荐）
 
-从训练日志末尾获取 EXP_NAME，然后：
+从训练日志末尾获取 EXP_NAME。若未指定单个 split，直接调用一次即可默认顺序跑完 `val_seen` 和 `val_unseen`：
 
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate streamvln-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
-# 仅跑 val_unseen，8 卡
-bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> val_unseen 8
+# 默认两个 split 都跑（除非用户明确指定了单个 split）
+bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> "" 8
 ```
 
-在每次 eval 命令前后加 webhook：
+如果需要为每个 split 单独发送 webhook，可按下面形式显式循环：
 
 ```bash
 EVAL_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
-SPLIT="val_unseen"
-EVAL_START_TS="$(date +%s)"
 
-EVAL_START_MSG="## StreamVLN Baseline Eval Started
+for SPLIT in val_seen val_unseen; do
+  EVAL_START_TS="$(date +%s)"
+
+  EVAL_START_MSG="## StreamVLN Baseline Eval Started
 exp_name: <EXP_NAME>
 split: ${SPLIT}
 gpus: 8
 time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
+  send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
 
-if bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> "${SPLIT}" 8; then
-  eval_rc=0
-else
-  eval_rc=$?
-fi
+  if bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> "${SPLIT}" 8; then
+    eval_rc=0
+  else
+    eval_rc=$?
+  fi
 
-EVAL_END_TS="$(date +%s)"
-EVAL_DURATION_SEC=$((EVAL_END_TS - EVAL_START_TS))
-EVAL_STATUS="SUCCESS"
-[ $eval_rc -ne 0 ] && EVAL_STATUS="FAILED"
+  EVAL_END_TS="$(date +%s)"
+  EVAL_DURATION_SEC=$((EVAL_END_TS - EVAL_START_TS))
+  EVAL_STATUS="SUCCESS"
+  [ $eval_rc -ne 0 ] && EVAL_STATUS="FAILED"
 
-EVAL_END_MSG="## StreamVLN Baseline Eval Finished
+  EVAL_END_MSG="## StreamVLN Baseline Eval Finished
 status: ${EVAL_STATUS}
 exp_name: <EXP_NAME>
 split: ${SPLIT}
 duration_sec: ${EVAL_DURATION_SEC}
 eval_log: results/streamvln-baseline/<EXP_NAME>/${SPLIT}/eval.log
 time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
+  send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
+done
 ```
 
 ### 评测时覆盖数据版本
 
 ```bash
 SATNAV_VERSION=ver_260306 \
-  bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> val_unseen 8
+  bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> val_seen 8
 ```
 
 ### 按 checkpoint 路径评测（兼容旧方式）
 
 ```bash
-bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_unseen 8
+bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_seen 8
 ```
 
 ### 校验评测产物
@@ -532,8 +537,10 @@ bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_unseen 8
 
 | 服务器 | 模式 | 数据版本 | 训练 | EXP_NAME | Checkpoint | Split | 评测 | SR / SPL | 失败原因 |
 |---|---|---|---|---|---|---|---|---|---|
-| 98/73/17 | continue | ver_XXXXXX | ✅/❌ | `...` | `output/...` | val_unseen | ✅/❌ | X.X / X.X | — |
-| 98/73/17 | scratch | ver_XXXXXX | ✅/❌ | `...` | `output/...` | val_unseen | ✅/❌ | X.X / X.X | — |
+| 98/73/17 | continue | ver_XXXXXX | ✅/❌ | `...` | `output/...` | val_seen | ✅/❌ | X.X / X.X | — |
+| | | | — | | | val_unseen | ✅/❌ | X.X / X.X | — |
+| 98/73/17 | scratch | ver_XXXXXX | ✅/❌ | `...` | `output/...` | val_seen | ✅/❌ | X.X / X.X | — |
+| | | | — | | | val_unseen | ✅/❌ | X.X / X.X | — |
 
 ### 报告还应包含
 

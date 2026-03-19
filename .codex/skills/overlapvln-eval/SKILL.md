@@ -55,7 +55,7 @@ Before starting, confirm the following with the user:
 | Parameter | Default | Notes |
 |---|---|---|
 | Model name(s) | — | One or more model names to evaluate, or use queue-based consumption |
-| Eval split | SatNav: `val_seen` / Habitat: `val_unseen` | Options: `val_seen`, `val_unseen`, `test` |
+| Eval split | SatNav: 不指定则同时跑 `val_seen` + `val_unseen`；Habitat: `val_unseen` | 显式设置 `EVAL_SPLIT=val_seen` 可只跑单个 split |
 | CUDA devices | `0,1,2,3,4,5,6,7` | GPU device list |
 | Save video | `false` | Whether to save evaluation videos |
 | Conda env | `swift-vln-eval` | Must be activated before running eval scripts |
@@ -138,7 +138,7 @@ tmux new-session -d -s "${session_name}" \
 tmux ls | grep "${session_name}"
 ```
 
-Optional env vars: `EVAL_SPLIT`, `CUDA_DEVICES`, `SAVE_VIDEO`, `ENV_TYPE`.
+Optional env vars: `EVAL_SPLIT`（不设置时 SatNav 自动跑 val_seen+val_unseen 两个 split）, `CUDA_DEVICES`, `SAVE_VIDEO`, `ENV_TYPE`.
 
 For parsing validation before real eval:
 
