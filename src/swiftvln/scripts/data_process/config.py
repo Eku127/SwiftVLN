@@ -4,6 +4,7 @@
 """
 
 from pathlib import Path
+from typing import List, Tuple
 
 # 数据集根目录
 DATASET_ROOT = Path("/mnt/data3/jiangjiajun/dataset/satnav_datasets")
@@ -67,6 +68,36 @@ TRAIN_CITIES = [
 ]
 EVAL_CITIES = ["Amsterdam-1", "Rome-1", "NewYork-1"]
 ALL_CITIES = TRAIN_CITIES + EVAL_CITIES
+
+
+def classify_eval_cities(
+    eval_cities: List[str] = None,
+    train_cities: List[str] = None,
+) -> Tuple[List[str], List[str]]:
+    """将 eval 城市按 seen/unseen 分类。
+
+    规则：eval 城市的基础城市名（如 "Amsterdam-1" → "Amsterdam"）
+    若在 train_cities 中有任意 TIF 出现，则归入 val_seen；否则归入 val_unseen。
+
+    Returns:
+        (val_seen_cities, val_unseen_cities)
+    """
+    if eval_cities is None:
+        eval_cities = EVAL_CITIES
+    if train_cities is None:
+        train_cities = TRAIN_CITIES
+
+    train_bases = {city.rsplit("-", 1)[0] for city in train_cities}
+
+    val_seen, val_unseen = [], []
+    for city in eval_cities:
+        base = city.rsplit("-", 1)[0]
+        if base in train_bases:
+            val_seen.append(city)
+        else:
+            val_unseen.append(city)
+
+    return val_seen, val_unseen
 
 # Episode 类型
 EPISODE_TYPES = {

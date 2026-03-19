@@ -24,7 +24,7 @@
 #   4. 脚本会在每次评估完成后自动检测并添加新任务到队列
 #
 # 环境变量:
-#   EVAL_SPLIT   - val_unseen (默认), val_seen, test 等
+#   EVAL_SPLIT   - SatNav 默认 val_seen / Habitat 默认 val_unseen (可手动覆盖)
 #   CUDA_DEVICES - GPU设备 (default: 0,1,2,3,4,5,6,7)
 #   SAVE_VIDEO   - 保存视频 (true/false)
 #   MAX_EPISODES - 限制episode数量 (用于调试)
@@ -632,11 +632,12 @@ run_evaluation() {
         print_success "评估 $exp_idx 完成! 耗时: $duration_str"
         send_webhook "Eval Finished" "model=${model}\nindex=${exp_idx}/${total}\nstatus=SUCCESS\nduration=${duration_str}\nmetrics=SR:${sr} SPL:${spl} NE:${ne}"
 
-        # 自动收集到 results/eval_collected/eval_results_data<version>.csv
+        # 自动收集到 results/eval_collected/<split>/eval_results_data<version>.csv
         if [[ -f "$COLLECT_SCRIPT" && -n "$result_path" && -d "$result_path" ]]; then
             python3 "$COLLECT_SCRIPT" \
                 --model-name "$model" \
                 --result-path "$result_path" \
+                --eval-split "${EVAL_SPLIT:-val_seen}" \
                 --output-dir "${SWIFTVLN_ROOT}/results/eval_collected" >/dev/null 2>&1 || \
                 print_warning "CSV收集失败: $model"
         fi

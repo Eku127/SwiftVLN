@@ -153,10 +153,30 @@ class BaseVLNEvaluator(ABC):
             )
     
     def _init_satnav_config(self, config_path: str, args: Any) -> None:
-        """Initialize SatNav configuration."""
+        """Initialize SatNav configuration.
+
+        ``DATASET.DATA_PATH`` may contain a ``{split}`` placeholder which is
+        expanded with ``args.eval_split`` at runtime, e.g.::
+
+            eval/{split}/all_episodes.json → eval/val_seen/all_episodes.json
+
+        Raises ``FileNotFoundError`` if the expanded path does not exist.
+        """
         self.config = OmegaConf.load(config_path)
         OmegaConf.set_struct(self.config, False)
         self.config.DATASET.SPLIT = args.eval_split
+
+        raw_path = self.config.DATASET.DATA_PATH
+        if '{split}' in raw_path:
+            resolved_path = raw_path.replace('{split}', args.eval_split)
+            if not os.path.exists(resolved_path):
+                raise FileNotFoundError(
+                    f"[SatNav] eval_split='{args.eval_split}' → '{resolved_path}' does not exist. "
+                    f"Run process_episodes.py to generate this split first."
+                )
+            self.config.DATASET.DATA_PATH = resolved_path
+            print(f"[SatNav] eval_split='{args.eval_split}' → DATA_PATH: {resolved_path}")
+
         OmegaConf.set_struct(self.config, True)
         
     def config_env(self) -> EnvWrapper:

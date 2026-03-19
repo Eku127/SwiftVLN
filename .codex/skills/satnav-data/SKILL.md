@@ -26,7 +26,12 @@ Execute a 4-step pipeline **continuously without pausing between steps**. Only s
    - 当前默认 trajectory 归一化：
      - `highway / multiway / multway / waterway` -> `trajectory_type = Road`
      - 同时保留细分类到 `trajectory_subtype`，规范值为 `Highway / Multiway / Waterway`
-5. Run episodes processing to produce grouped outputs under `episodes/train` and `episodes/eval`.
+5. Run episodes processing to produce grouped outputs:
+   - `episodes/train/` — 训练集（all_episodes.json + 各类型）
+   - `episodes/eval/val_seen/` — seen eval 城市（基础城市名在 train 中有 TIF）
+   - `episodes/eval/val_unseen/` — unseen eval 城市（基础城市名完全不在 train 中）
+   - **注意**：`episodes/eval/` 下没有顶层扁平文件，只有 `val_seen/` 和 `val_unseen/` 子目录
+   - 分类逻辑由 `config.py` 中 `classify_eval_cities()` 自动判断，无需手动维护
 6. Convert `qa.json` to Swift-compatible JSONL (`qa_swift.jsonl`).
 7. Report summary and **proceed to Step 2 automatically** unless the user explicitly asks to stop after Step 1.
 

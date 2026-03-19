@@ -2,7 +2,11 @@
 """Collect eval summaries into versioned CSV files.
 
 Output CSV naming:
-  results/eval_collected/eval_results_data<version>.csv
+  results/eval_collected/<split>/eval_results_data<version>.csv
+
+The split (val_seen / val_unseen / test) is taken from --eval-split.
+If --eval-split is not provided, it is inferred from the result_path directory
+structure: results/eval/<arch>/<model>/<split>/<timestamp>/ → parent.name.
 """
 
 from __future__ import annotations
@@ -317,11 +321,31 @@ def write_csv_rows(csv_path: Path, rows: List[Dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
+KNOWN_SPLITS = {"val_seen", "val_unseen", "test"}
+
+
+def infer_split_from_path(result_path: Path) -> str:
+    """Infer eval split from result directory structure.
+
+    Expected layout: results/eval/<arch>/<model>/<split>/<timestamp>/
+    The split is the parent directory name of the timestamp folder.
+    """
+    candidate = result_path.parent.name
+    if candidate in KNOWN_SPLITS:
+        return candidate
+    # Also check grandparent in case result_path points directly to split dir
+    candidate2 = result_path.name
+    if candidate2 in KNOWN_SPLITS:
+        return candidate2
+    return "unknown"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--result-path", required=True, help="Path to eval result dir that contains evaluation_summary.json")
     parser.add_argument("--output-dir", default="results/eval_collected")
+    parser.add_argument("--eval-split", default=None, help="Eval split (val_seen/val_unseen/test). Inferred from result-path if not provided.")
     args = parser.parse_args()
 
     result_path = Path(args.result_path)
@@ -333,16 +357,22 @@ def main() -> int:
     with summary_path.open("r", encoding="utf-8") as f:
         summary = json.load(f)
 
+    eval_split = args.eval_split or infer_split_from_path(result_path)
+    if eval_split == "unknown":
+        print(f"[WARN] could not determine eval_split from path: {result_path}; writing to root output dir")
+
     row = build_row(args.model_name, result_path, summary)
     data_version = parse_data_version(args.model_name, str(summary.get("model_path", "")))
-    csv_path = Path(args.output_dir) / f"eval_results_data{data_version}.csv"
+
+    split_dir = Path(args.output_dir) / eval_split if eval_split != "unknown" else Path(args.output_dir)
+    csv_path = split_dir / f"eval_results_data{data_version}.csv"
 
     rows = read_csv_rows(csv_path)
     rows = [r for r in rows if r.get("model_name") != args.model_name]
     rows.append(row)
     write_csv_rows(csv_path, rows)
 
-    print(f"[INFO] collected: {args.model_name}")
+    print(f"[INFO] collected: {args.model_name} (split={eval_split})")
     print(f"[INFO] csv: {csv_path}")
     return 0
 

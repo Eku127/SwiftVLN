@@ -55,7 +55,7 @@ Before starting, confirm the following with the user:
 | Parameter | Default | Notes |
 |---|---|---|
 | Model name(s) | — | One or more model names to evaluate, or use queue-based consumption |
-| Eval split | `val_unseen` | Options: `val_unseen`, `val_seen`, `test` |
+| Eval split | SatNav: `val_seen` / Habitat: `val_unseen` | Options: `val_seen`, `val_unseen`, `test` |
 | CUDA devices | `0,1,2,3,4,5,6,7` | GPU device list |
 | Save video | `false` | Whether to save evaluation videos |
 | Conda env | `swift-vln-eval` | Must be activated before running eval scripts |
@@ -121,7 +121,7 @@ tmux new-session -d -s "${session_name}" \
 eval_<short_desc>_<HHMMSS>
 ```
 
-Example: `eval_queue_val_unseen_153025`
+Example: `eval_queue_val_seen_153025`
 
 ### Mode A: Single Model Eval
 
@@ -313,7 +313,7 @@ When the watchdog triggers `codex exec resume`, Codex resumes and should:
 
 | Type | Path |
 |---|---|
-| Per-model results | `results/eval/<model_arch>/<model_name>/...` |
+| Per-model results | `results/eval/<model_arch>/<model_name>/<split>/<timestamp>/` |
 | Queue logs | `logs/eval_queue_*.log` |
 | Queue summaries | `logs/eval_queue_results/eval_results_*.txt` |
 | Per-host completion status | `runtime/eval_queue/eval_queue_last_run_<hostname>.json` |

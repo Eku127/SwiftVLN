@@ -54,7 +54,14 @@ else
     exit 1
 fi
 
-EVAL_SPLIT="${EVAL_SPLIT:-val_unseen}"
+# SatNav 默认 val_seen；Habitat 或未指定 ENV_TYPE 时默认 val_unseen
+if [ -z "$EVAL_SPLIT" ]; then
+    if [ "$ENV_TYPE" == "satnav" ]; then
+        EVAL_SPLIT="val_seen"
+    else
+        EVAL_SPLIT="val_unseen"
+    fi
+fi
 
 # ============================================================================
 # VLN Parameters (should match training)
@@ -112,7 +119,7 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 # Extract model name from MODEL_PATH
 MODEL_NAME=$(echo "$MODEL_PATH" | sed -n 's|.*/output/overlapvln/\([^/]*\)/.*|\1|p')
 MODEL_NAME="${MODEL_NAME:-unknown_model}"
-OUTPUT_DIR="${OUTPUT_DIR:-./results/eval/overlapvln/${MODEL_NAME}/${ENV_TYPE}_${EVAL_SPLIT}_${TIMESTAMP}}"
+OUTPUT_DIR="${OUTPUT_DIR:-./results/eval/overlapvln/${MODEL_NAME}/${EVAL_SPLIT}/${TIMESTAMP}}"
 
 # ============================================================================
 # Video Options

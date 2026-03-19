@@ -48,7 +48,7 @@
 #
 # 环境变量:
 #   ENV_TYPE     - habitat (默认) 或 satnav (如果模型名包含 env_type，会自动解析)
-#   EVAL_SPLIT   - val_unseen (默认), val_seen, test 等
+#   EVAL_SPLIT   - satnav 默认 val_seen, habitat 默认 val_unseen (可手动覆盖)
 #   CUDA_DEVICES - GPU设备 (default: 0,1,2,3,4,5,6,7)
 #   MASTER_PORT  - 分布式端口 (default: 29600)
 #   MAX_EPISODES - 限制episode数量 (用于调试)
@@ -736,7 +736,16 @@ fi
 # ============================================================================
 export MODEL_PATH="$CHECKPOINT_PATH"
 export ENV_TYPE="$ENV_TYPE"  # 已在前面从模型名解析或使用用户指定值
-export EVAL_SPLIT="${EVAL_SPLIT:-val_unseen}"
+
+# SatNav 默认 val_seen（seen/unseen 子目录结构），Habitat 默认 val_unseen
+if [ -z "$EVAL_SPLIT" ]; then
+    if [ "$ENV_TYPE" == "satnav" ]; then
+        EVAL_SPLIT="val_seen"
+    else
+        EVAL_SPLIT="val_unseen"
+    fi
+fi
+export EVAL_SPLIT
 export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
 export MASTER_PORT
 export SAVE_VIDEO="${SAVE_VIDEO:-false}"
@@ -877,11 +886,11 @@ if [ $EVAL_STATUS -eq 0 ]; then
     print_success "评估完成!"
     
     # 根据eval脚本的输出目录格式推断结果位置
-    TIMESTAMP=$(date +"%Y%m%d")
-    RESULTS_DIR="./results/eval/${MODEL_ARCH}/${MODEL_NAME}/${ENV_TYPE}_${EVAL_SPLIT}_${TIMESTAMP}*"
-    
-    # 查找最新的结果目录
-    LATEST_RESULT=$(ls -td ${SWIFTVLN_ROOT}/results/eval/${MODEL_ARCH}/${MODEL_NAME}/* 2>/dev/null | head -1)
+    # 格式: results/eval/<arch>/<model>/<split>/<timestamp>/
+    SPLIT_RESULTS_DIR="${SWIFTVLN_ROOT}/results/eval/${MODEL_ARCH}/${MODEL_NAME}/${EVAL_SPLIT}"
+
+    # 查找最新的 timestamp 子目录
+    LATEST_RESULT=$(ls -td ${SPLIT_RESULTS_DIR}/* 2>/dev/null | head -1)
     
     if [ -n "$LATEST_RESULT" ] && [ -d "$LATEST_RESULT" ]; then
         echo ""

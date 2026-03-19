@@ -24,7 +24,7 @@ description: "Run smoke tests for any baseline (streamvln / navila / uninavid) o
 - 全部固定 **8 GPU** 训练。
 - 全部使用 **生产数据最新版本**（auto-detect），不使用 `smoke_test_data/` 专用数据。
 - 训练：`MAX_STEPS=8`，`SAVE_STRATEGY=steps`，`SAVE_STEPS=8`，`LOGGING_STEPS=1`。
-- 评测：`val_seen` split，`max_episodes=10`，1 GPU。
+- 评测：尽量贴近正式默认路径；若 baseline 支持则优先用正式 split，仅缩小 episode 数量。
 - 验证训练 loss 是否有限且呈下降趋势（见 [Loss 验证](#loss-验证) 节）。
 - 验证评测 summary 写入成功。
 - 完成后**必须清理** smoke 输出和结果目录。
@@ -66,7 +66,7 @@ ls baseline/streamvln/model/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln_v1
 ls "${LATEST_ANNOTATIONS}"
 ```
 
-### Linked Train+Eval Smoke（模拟正式联动）
+### Full-Path Smoke（缩步数，保留正式主路径）
 
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
@@ -82,9 +82,9 @@ SAVE_STRATEGY=steps \
 SAVE_STEPS=8 \
 LOGGING_STEPS=1 \
 TRAIN_GPUS=8 \
-EVAL_GPUS=1 \
+EVAL_GPUS=8 \
 EVAL_MAX_EPISODES=10 \
-bash baseline/streamvln/scripts/train_eval_satnav.sh continue val_seen \
+bash baseline/streamvln/scripts/train_eval_satnav.sh continue val_unseen \
   2>&1 | tee "${SMOKE_PIPE_LOG}"
 
 # 训练结束后捕获自动生成的 EXP_NAME
@@ -95,6 +95,16 @@ echo "Smoke EXP: ${SMOKE_EXP}"
 > 这里不是“先 train，再手工单独 eval”，而是直接验证正式联动链路：
 > `train_satnav.sh` -> `EXP_NAME 提取` -> `eval_satnav.sh smoketest/<EXP_NAME>` -> `evaluation_summary.json`
 > 是否能一口气打通。
+>
+> 与正式全量相比，仅保留两处 smoke 缩减：
+> - 训练只跑 `8` steps
+> - eval 只跑 `10` 个 episodes
+>
+> 其余关键路径尽量保持与正式一致：
+> - `continue` 模式
+> - `train_eval_satnav.sh` 联动入口
+> - `val_unseen`
+> - `8 GPU eval`
 
 ### 验证训练产物
 
@@ -119,13 +129,13 @@ grep -nE "Post-train summary|Eval target subpath|Start eval|Pipeline finished su
 ### Eval Smoke 验证
 
 ```bash
-ls results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/
-tail -100 results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/eval.log
-cat results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/evaluation_summary.json
+ls results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_unseen/
+tail -100 results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_unseen/eval.log
+cat results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_unseen/evaluation_summary.json
 ```
 
 > 如果联动失败，这里通常会表现为：
-> `results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/` 不存在，或者 pipeline log 中没有 `Start eval`。
+> `results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_unseen/` 不存在，或者 pipeline log 中没有 `Start eval`。
 
 ### Cleanup
 

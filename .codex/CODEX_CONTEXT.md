@@ -67,6 +67,18 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - smoke test 模型：`output/streamvln-baseline/smoketest/<EXP_NAME>/`
   - 评测结果：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
 - baseline eval 默认：`8` 卡 + `val_unseen`（`baseline/streamvln/scripts/eval_satnav.sh`）
+  - SatNav eval split 路由约定（0319 起）：
+    - `DATA_PATH` 使用 `{split}` 占位符：`episodes/eval/{split}/all_episodes.json`
+    - `--eval_split val_seen` → 展开为 `episodes/eval/val_seen/all_episodes.json`
+    - `--eval_split val_unseen` → 展开为 `episodes/eval/val_unseen/all_episodes.json`（目录暂不存在，待新城市引入后生成）
+    - 路径不存在时直接报错（`FileNotFoundError`），无 fallback
+    - 路由逻辑：`src/swiftvln/common/eval/evaluator.py` 的 `_init_satnav_config()`
+    - 配置文件：`src/swiftvln/configs/satnav_task.yaml` 的 `DATASET.DATA_PATH`
+  - 评测结果目录约定（0319 起）：
+    - SwiftVLN 主线模型（overlapvln/streamvln/compressvln/monovln/uninavid）：
+      `results/eval/<arch>/<model_name>/<split>/<timestamp>/`
+      例：`results/eval/overlapvln/<model>/val_seen/20260319_143025/`
+    - SatNav 默认 `EVAL_SPLIT=val_seen`，Habitat 默认 `EVAL_SPLIT=val_unseen`
 
 ### Baseline NaVILA Layout (Updated: 2026-03-12)
 
@@ -155,8 +167,11 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 
 - Dataset root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets`
 - 当前常用版本：`ver_260317`
-- Eval episodes:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/episodes/eval/all_episodes.json`
+- Eval episodes (val_seen):
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/episodes/eval/val_seen/all_episodes.json`
+- Eval episodes (val_unseen):
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/episodes/eval/val_unseen/all_episodes.json`（当前无城市，目录暂不存在，后续引入新城市后生成）
+- **注意**：`episodes/eval/` 下只有 `val_seen/` 和 `val_unseen/` 子目录，不再有顶层扁平文件
 - QA JSONL:
   `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl`
 - Trajectory data:
@@ -179,6 +194,11 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 - 当前默认城市划分（0316 起）：
   - eval: `Amsterdam-1`, `Rome-1`, `NewYork-1`
   - train: 其余全部城市
+- Eval 城市按 seen/unseen 自动分类（0319 起）：
+  - **val_seen**：eval 城市的基础名（如 `Amsterdam`）在 train 中有任意 TIF → 当前全部 3 个 eval 城市均为 val_seen
+  - **val_unseen**：eval 城市的基础名完全不出现于 train → 当前无，后续引入新城市时自动归入
+  - `episodes/eval/val_seen/` 和 `episodes/eval/val_unseen/` 在每次 `process_episodes.py` 时自动生成
+  - `episodes/eval/all_episodes.json` 继续保留（全量 eval，向后兼容）
 
 ## Runtime/Infra Conventions
 
