@@ -13,6 +13,7 @@
 #   SATNAV_VERSION   Data version, e.g. ver_260306 (default: latest via train/eval scripts)
 #   TRAIN_GPUS       GPU count for training (default: 8)
 #   EVAL_GPUS        GPU count for eval (default: 8)
+#   EVAL_MAX_EPISODES  Limit eval episodes for smoke/debug (default: unset)
 #   CLEAN_EVAL_FIRST true/false, clear target eval output before run (default: true)
 #   TRAIN_WEBHOOK_URL  Webhook for train start/end
 #   EVAL_WEBHOOK_URL   Webhook for eval start/end
@@ -34,10 +35,13 @@ REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
 
 TRAIN_GPUS="${TRAIN_GPUS:-8}"
 EVAL_GPUS="${EVAL_GPUS:-8}"
+EVAL_MAX_EPISODES="${EVAL_MAX_EPISODES:-}"
 CLEAN_EVAL_FIRST="${CLEAN_EVAL_FIRST:-true}"
+SMOKE_TEST="${SMOKE_TEST:-false}"
 
-TRAIN_WEBHOOK_URL="${TRAIN_WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=503b5488-4d70-455d-a5b9-29fc8d7fb797}"
-EVAL_WEBHOOK_URL="${EVAL_WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=87cd9c07-52f0-4cec-a7a8-9586a9dc68c8}"
+DEFAULT_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
+TRAIN_WEBHOOK_URL="${TRAIN_WEBHOOK_URL:-${DEFAULT_WEBHOOK_URL}}"
+EVAL_WEBHOOK_URL="${EVAL_WEBHOOK_URL:-${DEFAULT_WEBHOOK_URL}}"
 
 PIPE_TS="$(date +%Y%m%d-%H%M%S)"
 PIPE_LOG="/tmp/streamvln_baseline_train_eval_${PIPE_TS}.log"
@@ -59,7 +63,11 @@ extract_exp_name_from_log() {
         echo "$exp_name"
         return 0
     fi
-    exp_name="$(ls -1dt "${REPO_ROOT}"/output/streamvln-baseline/streamvln-baseline-"${MODE}"-* 2>/dev/null | head -1 | xargs -r basename)"
+    if [ "${SMOKE_TEST}" = "true" ]; then
+        exp_name="$(ls -1dt "${REPO_ROOT}"/output/streamvln-baseline/smoketest/streamvln-baseline-"${MODE}"-* 2>/dev/null | head -1 | xargs -r basename)"
+    else
+        exp_name="$(ls -1dt "${REPO_ROOT}"/output/streamvln-baseline/streamvln-baseline-"${MODE}"-* 2>/dev/null | head -1 | xargs -r basename)"
+    fi
     if [ -z "$exp_name" ]; then
         exp_name="$(ls -1dt "${REPO_ROOT}"/results/streamvln-baseline/streamvln-baseline-"${MODE}"-* 2>/dev/null | head -1 | xargs -r basename)"
     fi
@@ -104,6 +112,13 @@ EXP_NAME=""
 if ! EXP_NAME="$(extract_exp_name_from_log "${PIPE_LOG}")"; then
     EXP_NAME=""
 fi
+echo "[INFO] Post-train summary: train_rc=${train_rc}, exp_name=${EXP_NAME:-unknown}" | tee -a "${PIPE_LOG}"
+
+EXP_SUBPATH="${EXP_NAME}"
+if [ -n "${EXP_NAME}" ] && [ "${SMOKE_TEST}" = "true" ]; then
+    EXP_SUBPATH="smoketest/${EXP_NAME}"
+fi
+echo "[INFO] Eval target subpath: ${EXP_SUBPATH:-unknown}" | tee -a "${PIPE_LOG}"
 
 TRAIN_END_MSG="## StreamVLN Baseline Train Finished
 status: ${TRAIN_STATUS}
@@ -124,7 +139,8 @@ if [ -z "${EXP_NAME}" ]; then
 fi
 
 if [ "${CLEAN_EVAL_FIRST}" = "true" ]; then
-    rm -rf "${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}/${SPLIT}"
+    echo "[INFO] Cleaning previous eval dir: ${REPO_ROOT}/results/streamvln-baseline/${EXP_SUBPATH}/${SPLIT}" | tee -a "${PIPE_LOG}"
+    rm -rf "${REPO_ROOT}/results/streamvln-baseline/${EXP_SUBPATH}/${SPLIT}"
 fi
 
 EVAL_START_TS="$(date +%s)"
@@ -133,6 +149,7 @@ host: ${HOSTNAME_STR}
 exp_name: ${EXP_NAME}
 split: ${SPLIT}
 eval_gpus: ${EVAL_GPUS}
+eval_max_episodes: ${EVAL_MAX_EPISODES:-full}
 satnav_version: ${SATNAV_VERSION:-auto}
 time: $(date '+%Y-%m-%d %H:%M:%S')"
 send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
@@ -140,11 +157,20 @@ send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
 echo "[INFO] Start eval..." | tee -a "${PIPE_LOG}"
 set +e
 if [ -n "${SATNAV_VERSION:-}" ]; then
-    SATNAV_VERSION="${SATNAV_VERSION}" \
-      bash "${BASELINE_DIR}/scripts/eval_satnav.sh" "${EXP_NAME}" "${SPLIT}" "${EVAL_GPUS}" 2>&1 | tee -a "${PIPE_LOG}"
+    if [ -n "${EVAL_MAX_EPISODES}" ]; then
+        SATNAV_VERSION="${SATNAV_VERSION}" \
+          bash "${BASELINE_DIR}/scripts/eval_satnav.sh" "${EXP_SUBPATH}" "${SPLIT}" "${EVAL_GPUS}" "${EVAL_MAX_EPISODES}" 2>&1 | tee -a "${PIPE_LOG}"
+    else
+        SATNAV_VERSION="${SATNAV_VERSION}" \
+          bash "${BASELINE_DIR}/scripts/eval_satnav.sh" "${EXP_SUBPATH}" "${SPLIT}" "${EVAL_GPUS}" 2>&1 | tee -a "${PIPE_LOG}"
+    fi
     eval_rc=${PIPESTATUS[0]}
 else
-    bash "${BASELINE_DIR}/scripts/eval_satnav.sh" "${EXP_NAME}" "${SPLIT}" "${EVAL_GPUS}" 2>&1 | tee -a "${PIPE_LOG}"
+    if [ -n "${EVAL_MAX_EPISODES}" ]; then
+        bash "${BASELINE_DIR}/scripts/eval_satnav.sh" "${EXP_SUBPATH}" "${SPLIT}" "${EVAL_GPUS}" "${EVAL_MAX_EPISODES}" 2>&1 | tee -a "${PIPE_LOG}"
+    else
+        bash "${BASELINE_DIR}/scripts/eval_satnav.sh" "${EXP_SUBPATH}" "${SPLIT}" "${EVAL_GPUS}" 2>&1 | tee -a "${PIPE_LOG}"
+    fi
     eval_rc=${PIPESTATUS[0]}
 fi
 set -e
@@ -157,9 +183,10 @@ EVAL_STATUS="SUCCESS"
 EVAL_END_MSG="## StreamVLN Baseline Eval Finished
 status: ${EVAL_STATUS}
 exp_name: ${EXP_NAME}
+exp_subpath: ${EXP_SUBPATH}
 split: ${SPLIT}
 duration_sec: ${EVAL_DURATION_SEC}
-eval_log: results/streamvln-baseline/${EXP_NAME}/${SPLIT}/eval.log
+eval_log: results/streamvln-baseline/${EXP_SUBPATH}/${SPLIT}/eval.log
 time: $(date '+%Y-%m-%d %H:%M:%S')"
 send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
 

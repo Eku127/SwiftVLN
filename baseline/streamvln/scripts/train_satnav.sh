@@ -93,7 +93,7 @@ SWANLAB_PROJECT="StreamVLN"
 SWANLAB_MODE="cloud"
 USE_WXWORK_NOTIFICATION="${USE_WXWORK_NOTIFICATION:-false}"
 SWANLAB_NOTIFICATION_METHOD="wxwork"
-SWANLAB_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d78d3128-7b16-4bf1-a6a7-403bf0915fe0"
+SWANLAB_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
 SWANLAB_SECRET=""
 
 # ---- VLN parameters ----

@@ -108,7 +108,7 @@ if [ "$EVAL_MODE" = "by_name" ]; then
     fi
 
     # Extract data version from EXP_NAME: data{XXXXXX} -> ver_XXXXXX
-    if [ -z "$SATNAV_VERSION" ]; then
+    if [ -z "${SATNAV_VERSION:-}" ]; then
         PARSED_VER=$(echo "$EXP_NAME" | grep -oP 'data\K\d+' | head -1)
         if [ -n "$PARSED_VER" ]; then
             SATNAV_VERSION="ver_${PARSED_VER}"
@@ -131,7 +131,7 @@ else
 fi
 
 # ---- Resolve SatNav version ----
-if [ -z "$SATNAV_VERSION" ]; then
+if [ -z "${SATNAV_VERSION:-}" ]; then
     SATNAV_VERSION=$(ls -d "${SATNAV_DATA_ROOT}"/ver_* 2>/dev/null | sort | tail -1 | xargs basename)
     if [ -z "$SATNAV_VERSION" ]; then
         print_error "No SatNav data versions found in ${SATNAV_DATA_ROOT}"

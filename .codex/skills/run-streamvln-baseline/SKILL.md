@@ -38,10 +38,10 @@ cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
 Webhook URL（与现有 skill 保持一致）：
 
-- Train webhook（来源：`overlapvln-train`）  
-  `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=503b5488-4d70-455d-a5b9-29fc8d7fb797`
-- Eval webhook（来源：`overlapvln-eval`）  
-  `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=87cd9c07-52f0-4cec-a7a8-9586a9dc68c8`
+- Train webhook  
+  `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e`
+- Eval webhook  
+  `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e`
 
 建议先定义一个通用发送函数（后续步骤直接复用）：
 
@@ -280,7 +280,7 @@ ssh 10.246.132.17 "
 SESSION="train_streamvln_baseline_$(date +%H%M%S)"
 LOG="/tmp/${SESSION}.log"
 
-TRAIN_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=503b5488-4d70-455d-a5b9-29fc8d7fb797"
+TRAIN_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
 TRAIN_START_TS="$(date +%s)"
 TRAIN_START_MSG="## StreamVLN Baseline Train Started
 server: <98|73|17>
@@ -473,7 +473,7 @@ bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> val_unseen 8
 在每次 eval 命令前后加 webhook：
 
 ```bash
-EVAL_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=87cd9c07-52f0-4cec-a7a8-9586a9dc68c8"
+EVAL_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
 SPLIT="val_unseen"
 EVAL_START_TS="$(date +%s)"
 

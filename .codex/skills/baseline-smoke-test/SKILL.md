@@ -66,27 +66,35 @@ ls baseline/streamvln/model/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln_v1
 ls "${LATEST_ANNOTATIONS}"
 ```
 
-### Train Smoke
+### Linked Train+Eval Smoke（模拟正式联动）
 
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate streamvln-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
+SMOKE_PIPE_LOG="/tmp/streamvln_smoke_train_eval_$(date +%Y%m%d_%H%M%S).log"
+
 SMOKE_TEST=true \
+SATNAV_VERSION="${LATEST_VER}" \
 MAX_STEPS=8 \
 SAVE_STRATEGY=steps \
 SAVE_STEPS=8 \
 LOGGING_STEPS=1 \
-bash baseline/streamvln/scripts/train_satnav.sh continue \
-  2>&1 | tee /tmp/streamvln_smoke_train.log
+TRAIN_GPUS=8 \
+EVAL_GPUS=1 \
+EVAL_MAX_EPISODES=10 \
+bash baseline/streamvln/scripts/train_eval_satnav.sh continue val_seen \
+  2>&1 | tee "${SMOKE_PIPE_LOG}"
 
 # 训练结束后捕获自动生成的 EXP_NAME
 SMOKE_EXP=$(ls -t output/streamvln-baseline/smoketest/ | head -1)
 echo "Smoke EXP: ${SMOKE_EXP}"
 ```
 
-> 注意：streamvln 的 train_satnav.sh 自动使用 `SATNAV_DATA_ROOT` 下的最新数据版本，无需手动传入。
+> 这里不是“先 train，再手工单独 eval”，而是直接验证正式联动链路：
+> `train_satnav.sh` -> `EXP_NAME 提取` -> `eval_satnav.sh smoketest/<EXP_NAME>` -> `evaluation_summary.json`
+> 是否能一口气打通。
 
 ### 验证训练产物
 
@@ -96,19 +104,28 @@ ls output/streamvln-baseline/smoketest/${SMOKE_EXP}/
 # 预期：含 safetensors 或 checkpoint-8/ 子目录（eval 脚本自动处理）
 ```
 
-### Eval Smoke
+### 验证联动切换成功
 
 ```bash
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate streamvln-baseline
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
-
-SATNAV_VERSION="" bash baseline/streamvln/scripts/eval_satnav.sh \
-  smoketest/${SMOKE_EXP} val_seen 1 10 \
-  2>&1 | tee /tmp/streamvln_smoke_eval.log
+grep -nE "Post-train summary|Eval target subpath|Start eval|Pipeline finished successfully" "${SMOKE_PIPE_LOG}"
 ```
 
-> 注意：当前 `baseline/streamvln/scripts/eval_satnav.sh` 在 `set -u` 下会直接读取 `SATNAV_VERSION`，若未定义可能报 `unbound variable`。smoke 命令建议显式加 `SATNAV_VERSION=""`。
+**预期至少包含：**
+- `Post-train summary: train_rc=0`
+- `Eval target subpath: smoketest/${SMOKE_EXP}`
+- `[INFO] Start eval...`
+- `[OK] Pipeline finished successfully.`
+
+### Eval Smoke 验证
+
+```bash
+ls results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/
+tail -100 results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/eval.log
+cat results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/evaluation_summary.json
+```
+
+> 如果联动失败，这里通常会表现为：
+> `results/streamvln-baseline/smoketest/${SMOKE_EXP}/val_seen/` 不存在，或者 pipeline log 中没有 `Start eval`。
 
 ### Cleanup
 
@@ -116,6 +133,7 @@ SATNAV_VERSION="" bash baseline/streamvln/scripts/eval_satnav.sh \
 REPO=/mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 rm -rf ${REPO}/output/streamvln-baseline/smoketest/${SMOKE_EXP}
 rm -rf ${REPO}/results/streamvln-baseline/smoketest/${SMOKE_EXP}
+rm -f "${SMOKE_PIPE_LOG}"
 ```
 
 ---
