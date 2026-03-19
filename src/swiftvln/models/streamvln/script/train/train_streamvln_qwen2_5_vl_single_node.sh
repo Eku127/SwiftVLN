@@ -151,7 +151,7 @@ EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM_STEPS * GPUS_PER_NODE))
 QA_SUFFIX=""
 if [ "$USE_QA_MIXED_TRAINING" = true ]; then
     # Convert ratio to percentage (e.g., 0.15 -> 15)
-    QA_PCT=$(echo "$QA_RATIO * 100" | bc | cut -d'.' -f1)
+    QA_PCT=$(awk "BEGIN {printf \"%.0f\", ${QA_RATIO} * 100}")
     QA_SUFFIX="-qa${QA_PCT}"
 fi
 
@@ -232,7 +232,7 @@ echo "------------------------------------------"
 if [ "$USE_QA_MIXED_TRAINING" = true ]; then
     echo "Mixed Training: ENABLED"
     echo "  QA Dataset: $QA_DATASET"
-    echo "  QA Ratio: ${QA_RATIO} (QA $(echo "scale=0; $QA_RATIO * 100" | bc)%, VLN $(echo "scale=0; (1 - $QA_RATIO) * 100" | bc)%)"
+    echo "  QA Ratio: ${QA_RATIO} (QA $(awk "BEGIN {printf \"%.0f\", ${QA_RATIO} * 100}")%, VLN $(awk "BEGIN {printf \"%.0f\", (1 - ${QA_RATIO}) * 100}")%)"
     [ "$QA_MAX_SAMPLES" -gt 0 ] 2>/dev/null && echo "  QA Max Samples: $QA_MAX_SAMPLES"
 else
     echo "Mixed Training: DISABLED (VLN only)"
