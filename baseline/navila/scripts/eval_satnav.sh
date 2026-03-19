@@ -6,8 +6,10 @@
 #
 #   1. Eval by name (recommended):
 #      bash scripts/eval_satnav.sh <exp_name_or_subpath> [split] [gpus] [max_episodes]
+#      - If [split] is omitted, SatNav runs both val_seen and val_unseen
 #   2. Eval by checkpoint path:
 #      bash scripts/eval_satnav.sh /path/to/checkpoint [split] [gpus] [max_episodes]
+#      - If [split] is omitted, SatNav runs both val_seen and val_unseen
 #
 # Environment variables:
 #   SATNAV_VERSION   Override dataset version (e.g. ver_260306)
@@ -28,7 +30,7 @@ print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
 INPUT="${1:-}"
-SPLIT="${2:-val_unseen}"
+SPLIT_ARG="${2:-}"
 NUM_GPUS="${3:-8}"
 MAX_EPISODES="${4:-}"
 SATNAV_VERSION="${SATNAV_VERSION:-}"
@@ -37,6 +39,12 @@ MODEL_BASE="${MODEL_BASE:-}"
 if [ -z "${INPUT}" ]; then
     print_error "Usage: bash scripts/eval_satnav.sh <exp_name_or_subpath | checkpoint_path> [split] [gpus] [max_episodes]"
     exit 1
+fi
+
+if [ -n "${SPLIT_ARG}" ]; then
+    SPLITS_LIST="${SPLIT_ARG}"
+else
+    SPLITS_LIST="val_seen val_unseen"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,7 +87,7 @@ if [ "${EVAL_MODE}" = "by_name" ]; then
         fi
     fi
 
-    OUTPUT_DIR="${REPO_ROOT}/results/navila-baseline/${EXP_NAME}/${SPLIT}"
+    OUTPUT_BASE_DIR="${REPO_ROOT}/results/navila-baseline/${EXP_NAME}"
 else
     CHECKPOINT_DIR="${INPUT}"
     EXP_NAME="$(basename "${CHECKPOINT_DIR}")"
@@ -89,7 +97,7 @@ else
         exit 1
     fi
 
-    OUTPUT_DIR="${REPO_ROOT}/results/navila-baseline/by-path/${EXP_NAME}/${SPLIT}"
+    OUTPUT_BASE_DIR="${REPO_ROOT}/results/navila-baseline/by-path/${EXP_NAME}"
 fi
 
 if [ -z "${SATNAV_VERSION}" ]; then
@@ -103,57 +111,12 @@ else
     print_info "Using SatNav version: ${SATNAV_VERSION}"
 fi
 
-SATNAV_EPISODES="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/episodes/eval/all_episodes.json"
 SATNAV_SCENES="${SATNAV_DATA_ROOT}/scenes"
-
-if [ ! -f "${SATNAV_EPISODES}" ]; then
-    print_error "Episodes file not found: ${SATNAV_EPISODES}"
-    exit 1
-fi
-
-SATNAV_CONFIG="${BASELINE_DIR}/configs/.satnav_task_eval_tmp.yaml"
-trap 'rm -f "${SATNAV_CONFIG}"' EXIT
-cp "${SATNAV_CONFIG_TEMPLATE}" "${SATNAV_CONFIG}"
-sed -i "s|DATA_PATH:.*|DATA_PATH: ${SATNAV_EPISODES}|" "${SATNAV_CONFIG}"
-sed -i "s|SCENES_DIR:.*|SCENES_DIR: ${SATNAV_SCENES}|" "${SATNAV_CONFIG}"
-
-mkdir -p "${OUTPUT_DIR}"
 
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate navila-baseline
 
-echo ""
-echo "=========================================="
-echo "NaVILA Baseline Evaluation"
-echo "=========================================="
-echo "  Eval mode  : ${EVAL_MODE}"
-echo "  EXP_NAME   : ${EXP_NAME}"
-echo "  Checkpoint : ${CHECKPOINT_DIR}"
-echo "  Config     : ${SATNAV_CONFIG}"
-echo "  Data ver   : ${SATNAV_VERSION}"
-echo "  Split      : ${SPLIT}"
-echo "  Output     : ${OUTPUT_DIR}"
-echo "  GPUs       : ${NUM_GPUS}"
-[ -n "${MAX_EPISODES}" ] && echo "  Max Episodes: ${MAX_EPISODES}"
-[ -n "${MODEL_BASE}" ] && echo "  Model Base  : ${MODEL_BASE}"
-echo "=========================================="
-
 export PYTHONPATH="${BASELINE_DIR}/src:${BASELINE_DIR}:${PYTHONPATH:-}"
-
-COMMON_ARGS=(
-    --model_path "${CHECKPOINT_DIR}"
-    --satnav_config_path "${SATNAV_CONFIG}"
-    --eval_split "${SPLIT}"
-    --output_path "${OUTPUT_DIR}"
-)
-
-if [ -n "${MAX_EPISODES}" ]; then
-    COMMON_ARGS+=(--max_episodes "${MAX_EPISODES}")
-fi
-
-if [ -n "${MODEL_BASE}" ]; then
-    COMMON_ARGS+=(--model_base "${MODEL_BASE}")
-fi
 
 if command -v torchrun >/dev/null 2>&1; then
     TORCHRUN_CMD=(torchrun)
@@ -162,23 +125,75 @@ else
     TORCHRUN_CMD=(python -m torch.distributed.run)
 fi
 
-if [ "${NUM_GPUS}" -gt 1 ]; then
-    "${TORCHRUN_CMD[@]}" \
-        --nproc_per_node="${NUM_GPUS}" \
-        --master_port=$((RANDOM % 10000 + 20000)) \
-        "${EVAL_SCRIPT}" \
-        "${COMMON_ARGS[@]}" \
-        --world_size "${NUM_GPUS}" \
-        2>&1 | tee "${OUTPUT_DIR}/eval.log"
-else
-    python "${EVAL_SCRIPT}" \
-        "${COMMON_ARGS[@]}" \
-        --world_size 1 \
-        --rank 0 \
-        2>&1 | tee "${OUTPUT_DIR}/eval.log"
-fi
+run_single_split() {
+    local split="$1"
+    local satnav_episodes="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/episodes/eval/${split}/all_episodes.json"
+    local satnav_config="${BASELINE_DIR}/configs/.satnav_task_eval_${split}_$$.yaml"
+    local output_dir="${OUTPUT_BASE_DIR}/${split}"
 
-echo ""
-print_success "Evaluation completed!"
-echo "  Results: ${OUTPUT_DIR}"
-echo ""
+    if [ ! -f "${satnav_episodes}" ]; then
+        print_error "Episodes file not found: ${satnav_episodes}"
+        return 1
+    fi
+
+    cp "${SATNAV_CONFIG_TEMPLATE}" "${satnav_config}"
+    sed -i "s|DATA_PATH:.*|DATA_PATH: ${satnav_episodes}|" "${satnav_config}"
+    sed -i "s|SCENES_DIR:.*|SCENES_DIR: ${SATNAV_SCENES}|" "${satnav_config}"
+
+    mkdir -p "${output_dir}"
+
+    echo ""
+    echo "=========================================="
+    echo "NaVILA Baseline Evaluation"
+    echo "=========================================="
+    echo "  Eval mode  : ${EVAL_MODE}"
+    echo "  EXP_NAME   : ${EXP_NAME}"
+    echo "  Checkpoint : ${CHECKPOINT_DIR}"
+    echo "  Config     : ${satnav_config}"
+    echo "  Data ver   : ${SATNAV_VERSION}"
+    echo "  Split      : ${split}"
+    echo "  Output     : ${output_dir}"
+    echo "  GPUs       : ${NUM_GPUS}"
+    [ -n "${MAX_EPISODES}" ] && echo "  Max Episodes: ${MAX_EPISODES}"
+    [ -n "${MODEL_BASE}" ] && echo "  Model Base  : ${MODEL_BASE}"
+    echo "=========================================="
+
+    COMMON_ARGS=(
+        --model_path "${CHECKPOINT_DIR}"
+        --satnav_config_path "${satnav_config}"
+        --eval_split "${split}"
+        --output_path "${output_dir}"
+    )
+
+    if [ -n "${MAX_EPISODES}" ]; then
+        COMMON_ARGS+=(--max_episodes "${MAX_EPISODES}")
+    fi
+
+    if [ -n "${MODEL_BASE}" ]; then
+        COMMON_ARGS+=(--model_base "${MODEL_BASE}")
+    fi
+
+    if [ "${NUM_GPUS}" -gt 1 ]; then
+        "${TORCHRUN_CMD[@]}" \
+            --nproc_per_node="${NUM_GPUS}" \
+            --master_port=$((RANDOM % 10000 + 20000)) \
+            "${EVAL_SCRIPT}" \
+            "${COMMON_ARGS[@]}" \
+            --world_size "${NUM_GPUS}" \
+            2>&1 | tee "${output_dir}/eval.log"
+    else
+        python "${EVAL_SCRIPT}" \
+            "${COMMON_ARGS[@]}" \
+            --world_size 1 \
+            --rank 0 \
+            2>&1 | tee "${output_dir}/eval.log"
+    fi
+
+    rm -f "${satnav_config}"
+    print_success "Evaluation completed for split=${split}!"
+    echo "  Results: ${output_dir}"
+}
+
+for SPLIT in ${SPLITS_LIST}; do
+    run_single_split "${SPLIT}"
+done
