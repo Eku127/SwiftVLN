@@ -251,6 +251,11 @@ TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train
 - `TRAIN_STAGE`（`stage1` 或 `stage2`）
 - `ENV_TYPE`（`satnav` 或 `habitat`）
 
+`train_queue.sh` 的 SwanLab 约定（Updated: 2026-03-20）：
+- 交互式与非交互式均**强制启用** SwanLab
+- 默认 `SWANLAB_PROJECT=SatNav`
+- 非交互配置文件里若写 `USE_SWANLAB=false` 会被忽略；如需自定义只改 `SWANLAB_PROJECT`
+
 由 `orchestrate-plan` skill 在运行时通过 Write tool 生成，放在 `runtime/plans/generated/` 下。
 
 ### Offline Model Convention (Updated: 2026-03-17)

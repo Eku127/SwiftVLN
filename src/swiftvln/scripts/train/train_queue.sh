@@ -61,6 +61,8 @@ AUTO_ENQUEUE_EVAL="${AUTO_ENQUEUE_EVAL:-true}"
 EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL="${EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL:-false}"
 EVAL_ENQUEUE_RETRIES="${EVAL_ENQUEUE_RETRIES:-3}"
 EVAL_ENQUEUE_RETRY_SLEEP="${EVAL_ENQUEUE_RETRY_SLEEP:-3}"
+USE_SWANLAB=true
+SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
 
 # QA 混合训练配置
 USE_QA_MIXED_TRAINING=false
@@ -528,9 +530,8 @@ interactive_setup() {
     #   TRAIN_STAGE="stage1"   (or "stage2")
     #   ENV_TYPE="satnav"      (or "habitat")
     #
-    # Optional (will use script defaults if absent):
-    #   USE_SWANLAB="false"
-    #   SWANLAB_PROJECT=""
+    # Optional:
+    #   SWANLAB_PROJECT="YourProject"   # train_queue 默认强制启用 SwanLab
     #   USE_QA_MIXED_TRAINING="false"
     #   QA_DATASET="..."
     if [[ -n "${TRAIN_EXPERIMENTS_FILE:-}" ]]; then
@@ -541,11 +542,16 @@ interactive_setup() {
         print_info "非交互模式：从文件加载实验配置 → $TRAIN_EXPERIMENTS_FILE"
         # shellcheck source=/dev/null
         source "$TRAIN_EXPERIMENTS_FILE"
+        if [[ "${USE_SWANLAB:-true}" != "true" ]]; then
+            print_warning "TRAIN_EXPERIMENTS_FILE 中的 USE_SWANLAB=${USE_SWANLAB} 将被忽略，train_queue 现统一强制启用 SwanLab"
+        fi
+        USE_SWANLAB=true
+        SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
         if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
             print_error "TRAIN_EXPERIMENTS_FILE 加载后 EXPERIMENTS 数组为空，请检查文件内容"
             exit 1
         fi
-        print_success "已加载 ${#EXPERIMENTS[@]} 个实验，stage=${TRAIN_STAGE}, env=${ENV_TYPE}"
+        print_success "已加载 ${#EXPERIMENTS[@]} 个实验，stage=${TRAIN_STAGE}, env=${ENV_TYPE}, SwanLab=${SWANLAB_PROJECT}"
         return 0
     fi
     # ─────────────────────────────────────────────────────────────────────────
@@ -556,19 +562,10 @@ interactive_setup() {
     
     # 1. SwanLab 配置
     print_header "📊 Step 1: SwanLab 配置"
-    read -p "是否使用 SwanLab 记录实验? [Y/n]: " use_swanlab
-    use_swanlab=${use_swanlab:-Y}
-    
-    if [[ "$use_swanlab" =~ ^[Yy]$ ]]; then
-        USE_SWANLAB=true
-        read -p "SwanLab Project 名称 [SatNav]: " swanlab_project
-        SWANLAB_PROJECT=${swanlab_project:-SatNav}
-        print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
-    else
-        USE_SWANLAB=false
-        SWANLAB_PROJECT=""
-        print_info "SwanLab: 禁用"
-    fi
+    print_info "train_queue 现统一启用 SwanLab 记录实验"
+    read -p "SwanLab Project 名称 [${SWANLAB_PROJECT}]: " swanlab_project
+    SWANLAB_PROJECT=${swanlab_project:-$SWANLAB_PROJECT}
+    print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
     
     # 2. 选择模型
     print_header "🤖 Step 2: 选择训练模型"
