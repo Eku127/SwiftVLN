@@ -46,3 +46,6 @@ baseline/*/checkpoints/
 
 # Ignore pycache under baseline
 baseline/**/__pycache__/
+
+# Sidecar packages (installed by Codex, not part of the repo)
+.sidecar_pkgs/
