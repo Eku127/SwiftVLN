@@ -12,11 +12,17 @@
 #   NUM_EPOCHS=1
 #   LEARNING_RATE=3e-5
 #   MAX_STEPS=120
-#   SAVE_STEPS=100
-#   SAVE_TOTAL_LIMIT=2
+#   SAVE_STEPS=20000
+#   SAVE_COUNT_TARGET=4
+#   SAVE_TOTAL_LIMIT=4
 #   MODEL_MAX_LENGTH=4096
 #   DATALOADER_WORKERS=16
 #   MASTER_PORT=29500
+#   SATNAV_MAX_EPISODES=...
+#   SATNAV_MAX_SAMPLES=...
+#   SATNAV_SAMPLE_RATIO=...
+#   SATNAV_SAMPLE_STRIDE=...      (forward stride in middle when HEAD_KEEP is set; turns always kept)
+#   SATNAV_HEAD_KEEP=...          (enable head+stop+turn-protect mode; default 7)
 #   USE_SWANLAB=false
 #   SWANLAB_PROJECT=baseline
 #   SWANLAB_MODE=cloud
@@ -33,17 +39,36 @@ DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero2.json}"
 DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data/annotations.json}"
 IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data}"
 
+# Sample reduction strategy: head + stop + turn-protected forward stride.
+#   - Head  steps 1..HEAD_KEEP : always kept (unique <8-frame input distribution)
+#   - Stop  (last step)        : always kept (rare but critical)
+#   - Middle turns             : always kept (decision-critical minority class)
+#   - Middle forward runs      : keep every SAMPLE_STRIDE-th consecutive forward step
+# Default (head=7, fwd_stride=5): 4.76M -> ~2.64M samples (55%), full turn coverage.
+# Pass empty string to disable: SATNAV_HEAD_KEEP= SATNAV_SAMPLE_STRIDE= (full raw data).
+SATNAV_HEAD_KEEP="${SATNAV_HEAD_KEEP-7}"
+SATNAV_SAMPLE_STRIDE="${SATNAV_SAMPLE_STRIDE-5}"
+# Smoke / debug limits (unset by default for full training).
+SATNAV_MAX_EPISODES="${SATNAV_MAX_EPISODES-}"
+SATNAV_MAX_SAMPLES="${SATNAV_MAX_SAMPLES-}"
+SATNAV_SAMPLE_RATIO="${SATNAV_SAMPLE_RATIO-}"
+
 NUM_GPUS="${NUM_GPUS:-8}"
 TRAIN_BSZ="${TRAIN_BSZ:-4}"
 GRAD_ACCUM="${GRAD_ACCUM:-1}"
 NUM_EPOCHS="${NUM_EPOCHS:-1}"
 LEARNING_RATE="${LEARNING_RATE:-3e-5}"
-MAX_STEPS="${MAX_STEPS:-120}"
-SAVE_STEPS="${SAVE_STEPS:-100}"
-SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-2}"
+# Empty MAX_STEPS means "do not pass --max_steps", which enables full-data training.
+MAX_STEPS="${MAX_STEPS-120}"
+# Default checkpoint cadence is every 20k optimizer steps.
+# Explicit empty SAVE_STEPS= switches back to auto scheduling from SAVE_COUNT_TARGET.
+SAVE_STEPS="${SAVE_STEPS-20000}"
+SAVE_COUNT_TARGET="${SAVE_COUNT_TARGET:-4}"
+SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-4}"
 MODEL_MAX_LENGTH="${MODEL_MAX_LENGTH:-4096}"
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-16}"
 MASTER_PORT="${MASTER_PORT:-29500}"
+MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
 REPORT_TO="${REPORT_TO:-}"
 USE_SWANLAB="${USE_SWANLAB:-false}"
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-baseline}"
@@ -67,8 +92,120 @@ fi
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/navila-baseline/${EXP_NAME}"
 MAX_STEPS_ARG=()
 REPORT_TO_ARG=()
+
+compute_effective_samples() {
+    DATA_PATH="${DATA_PATH}" \
+    SATNAV_MAX_EPISODES="${SATNAV_MAX_EPISODES}" \
+    SATNAV_MAX_SAMPLES="${SATNAV_MAX_SAMPLES}" \
+    SATNAV_SAMPLE_RATIO="${SATNAV_SAMPLE_RATIO}" \
+    SATNAV_SAMPLE_STRIDE="${SATNAV_SAMPLE_STRIDE}" \
+    SATNAV_HEAD_KEEP="${SATNAV_HEAD_KEEP}" \
+    python3 - <<'PY'
+import json
+import os
+import zlib
+
+VALID_ACTIONS = {0, 1, 2, 3}
+
+data_path = os.environ["DATA_PATH"]
+max_episodes_env = os.getenv("SATNAV_MAX_EPISODES", "").strip()
+max_samples_env = os.getenv("SATNAV_MAX_SAMPLES", "").strip()
+sample_ratio_env = os.getenv("SATNAV_SAMPLE_RATIO", "").strip()
+sample_stride_env = os.getenv("SATNAV_SAMPLE_STRIDE", "").strip()
+head_keep_env = os.getenv("SATNAV_HEAD_KEEP", "").strip()
+
+max_episodes = int(max_episodes_env) if max_episodes_env else None
+max_samples = int(max_samples_env) if max_samples_env else None
+sample_ratio = float(sample_ratio_env) if sample_ratio_env else None
+sample_stride = int(sample_stride_env) if sample_stride_env else None
+head_keep = int(head_keep_env) if head_keep_env else None
+
+with open(data_path) as f:
+    episodes = json.load(f)
+
+if max_episodes is not None:
+    episodes = episodes[:max_episodes]
+
+def select_head_stop_stride(actions, head_keep, fwd_stride):
+    last_step = len(actions) - 1
+    if last_step <= 0:
+        return []
+    kept = set()
+    for i in range(1, min(head_keep + 1, last_step + 1)):
+        if actions[i] in VALID_ACTIONS:
+            kept.add(i)
+    if actions[last_step] in VALID_ACTIONS:
+        kept.add(last_step)
+    mid_start = head_keep + 1
+    mid_end = last_step - 1
+    if fwd_stride > 0 and mid_start <= mid_end:
+        consecutive_fwd = 0
+        for i in range(mid_start, mid_end + 1):
+            a = actions[i]
+            if a not in VALID_ACTIONS:
+                consecutive_fwd = 0
+                continue
+            if a == 1:
+                if consecutive_fwd % fwd_stride == 0:
+                    kept.add(i)
+                consecutive_fwd += 1
+            else:
+                kept.add(i)
+                consecutive_fwd = 0
+    return sorted(kept)
+
+count = 0
+for episode in episodes:
+    episode_id = str(episode.get("id", ""))
+    trajectory_id = str(episode.get("trajectory_id", ""))
+    actions = episode["actions"]
+
+    if head_keep is not None:
+        fwd_stride = sample_stride if (sample_stride is not None and sample_stride > 1) else 1
+        step_indices = select_head_stop_stride(actions, head_keep, fwd_stride)
+    else:
+        step_indices = []
+        for i in range(1, len(actions)):
+            action = actions[i]
+            if action not in VALID_ACTIONS:
+                continue
+            if sample_stride is not None and sample_stride > 1 and i % sample_stride != 0:
+                continue
+            if sample_ratio is not None and sample_ratio < 1.0:
+                sample_key = f"{episode_id}|{trajectory_id}|{i}"
+                sample_hash = zlib.crc32(sample_key.encode("utf-8")) & 0xFFFFFFFF
+                if (sample_hash / 0xFFFFFFFF) >= sample_ratio:
+                    continue
+            step_indices.append(i)
+
+    count += len(step_indices)
+    if max_samples is not None and count >= max_samples:
+        print(min(count, max_samples))
+        raise SystemExit(0)
+
+print(count)
+PY
+}
+
 if [[ -n "${MAX_STEPS}" ]]; then
     MAX_STEPS_ARG=(--max_steps "${MAX_STEPS}")
+fi
+
+TOTAL_STEPS=""
+if [[ -n "${MAX_STEPS}" ]]; then
+    TOTAL_STEPS="${MAX_STEPS}"
+else
+    TOTAL_SAMPLES="$(compute_effective_samples)"
+    STEPS_PER_EPOCH=$(((TOTAL_SAMPLES + EFFECTIVE_BATCH_SIZE - 1) / EFFECTIVE_BATCH_SIZE))
+    TOTAL_STEPS=$((STEPS_PER_EPOCH * NUM_EPOCHS))
+fi
+
+if [[ -z "${SAVE_STEPS}" ]]; then
+    SAVE_STEPS=$(((TOTAL_STEPS + SAVE_COUNT_TARGET - 1) / SAVE_COUNT_TARGET))
+fi
+
+if [[ "${SAVE_STEPS}" -lt 1 ]]; then
+    SAVE_STEPS=1
 fi
 
 if [[ -n "${REPORT_TO}" ]]; then
@@ -85,6 +222,9 @@ fi
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate navila-baseline
 
+export SATNAV_HEAD_KEEP SATNAV_SAMPLE_STRIDE
+export SATNAV_MAX_EPISODES SATNAV_MAX_SAMPLES SATNAV_SAMPLE_RATIO
+
 echo "=========================================="
 echo "NaVILA Baseline Training"
 echo "=========================================="
@@ -94,15 +234,19 @@ echo "  Image root : ${IMAGE_FOLDER}"
 echo "  Output     : ${OUTPUT_DIR}"
 echo "  EXP_NAME   : ${EXP_NAME}"
 echo "  GPUs       : ${NUM_GPUS}"
+echo "  Master     : ${MASTER_ADDR}:${MASTER_PORT}"
 echo "  Batch      : ${TRAIN_BSZ} x ${GRAD_ACCUM} x ${NUM_GPUS} = ${EFFECTIVE_BATCH_SIZE}"
 echo "  LR         : ${LEARNING_RATE}"
+echo "  Total step : ${TOTAL_STEPS}"
+echo "  Save every : ${SAVE_STEPS} steps"
+echo "  Sampling   : head_keep=${SATNAV_HEAD_KEEP:-off}, stride=${SATNAV_SAMPLE_STRIDE:-off}, max_ep=${SATNAV_MAX_EPISODES:-off}, max_samples=${SATNAV_MAX_SAMPLES:-off}"
 echo "  SwanLab    : ${USE_SWANLAB}"
 echo "  Report To  : ${REPORT_TO_ARG[*]}"
 echo "=========================================="
 
 torchrun \
-    --standalone \
     --nproc_per_node="${NUM_GPUS}" \
+    --master_addr="${MASTER_ADDR}" \
     --master_port="${MASTER_PORT}" \
     "${BASELINE_DIR}/src/train_satnav.py" \
     --deepspeed "${DS_CONFIG}" \
