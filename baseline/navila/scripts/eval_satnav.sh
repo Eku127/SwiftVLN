@@ -14,6 +14,9 @@
 # Environment variables:
 #   SATNAV_VERSION   Override dataset version (e.g. ver_260306)
 #   MODEL_BASE       Base model path for adapter-only checkpoints
+#   LOCAL_CACHE_DIR  Local disk dir to cache checkpoint (avoids NFS D-state).
+#                    Auto-detected: uses /mnt/data4/jiangjiajun/navila_ckpt_cache
+#                    if checkpoint is on NFS. Set to "" to disable caching.
 # ==============================================================================
 
 set -euo pipefail
@@ -35,6 +38,7 @@ NUM_GPUS="${3:-8}"
 MAX_EPISODES="${4:-}"
 SATNAV_VERSION="${SATNAV_VERSION:-}"
 MODEL_BASE="${MODEL_BASE:-}"
+LOCAL_CACHE_DIR="${LOCAL_CACHE_DIR:-/mnt/data4/jiangjiajun/navila_ckpt_cache}"
 
 if [ -z "${INPUT}" ]; then
     print_error "Usage: bash scripts/eval_satnav.sh <exp_name_or_subpath | checkpoint_path> [split] [gpus] [max_episodes]"
@@ -112,6 +116,55 @@ else
 fi
 
 SATNAV_SCENES="${SATNAV_DATA_ROOT}/scenes"
+
+# ---- NFS checkpoint cache (avoid D-state from 8 processes reading NFS simultaneously) ----
+# If checkpoint is on an NFS mount and LOCAL_CACHE_DIR is set, rsync model weights
+# (excluding DeepSpeed optimizer states) to local disk before loading.
+maybe_cache_checkpoint() {
+    local src="$1"
+    if [ -z "$LOCAL_CACHE_DIR" ]; then
+        echo "$src"
+        return
+    fi
+
+    # Check if the path is on an NFS filesystem
+    local mount_type
+    mount_type=$(stat -f -c "%T" "$src" 2>/dev/null || echo "unknown")
+    if [ "$mount_type" = "nfs" ] || findmnt -n -o FSTYPE --target "$src" 2>/dev/null | grep -q "^nfs"; then
+        local ckpt_name
+        ckpt_name=$(basename "$src")
+        local local_ckpt="${LOCAL_CACHE_DIR}/${ckpt_name}"
+
+        # Check if already cached (use sentinel file to mark complete cache)
+        if [ -f "${local_ckpt}/.cache_complete" ]; then
+            print_info "Using existing local checkpoint cache: ${local_ckpt}"
+            echo "$local_ckpt"
+            return
+        fi
+
+        print_warning "Checkpoint is on NFS (${mount_type}). Caching model weights to local disk to avoid I/O D-state..."
+        print_info "Source      : ${src}"
+        print_info "Destination : ${local_ckpt}"
+        mkdir -p "$local_ckpt"
+
+        # Rsync model files only — exclude DeepSpeed optimizer states (global_step*)
+        # which can be 80-100G and are not needed for inference
+        rsync -ah --progress \
+            --exclude="global_step*" \
+            "${src}/" "${local_ckpt}/"
+
+        touch "${local_ckpt}/.cache_complete"
+        local cached_size
+        cached_size=$(du -sh "$local_ckpt" | cut -f1)
+        print_success "Checkpoint cached locally (${cached_size}): ${local_ckpt}"
+        echo "$local_ckpt"
+    else
+        # Not NFS, use as-is
+        echo "$src"
+    fi
+}
+
+CHECKPOINT_DIR=$(maybe_cache_checkpoint "$CHECKPOINT_DIR")
 
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate navila-baseline
