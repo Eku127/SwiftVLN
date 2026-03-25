@@ -116,6 +116,31 @@ NaVILA SatNav eval 约定：
 - 动作解析沿用上游自然语言正则逻辑（`stop / move forward / turn left / turn right`）
 - 评测环境依赖 `navila-baseline` conda env + `pip install -e /mnt/data1/home/jiangjiajun/workspace/SatNav`
 
+NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
+
+- `baseline/navila/scripts/train_satnav.sh` 默认使用
+  `MASTER_ADDR=127.0.0.1` + 显式 `MASTER_PORT`，
+  避免 Docker 容器内 `torchrun --standalone` 的 hostname 解析卡死
+- `baseline/navila/scripts/train_satnav.sh` 中：
+  - 默认 `MAX_STEPS=120`
+  - 若显式传空值 `MAX_STEPS=`，则**不传 `--max_steps`**，用于全量训练
+  - 默认 `SAVE_STEPS=20000`
+  - 若显式传空值 `SAVE_STEPS=`，则按真实总 step 数自动推导：
+    `SAVE_STEPS = ceil(total_steps / SAVE_COUNT_TARGET)`，默认 `SAVE_COUNT_TARGET=4`
+  - `SAVE_TOTAL_LIMIT` 默认 `4`
+- NaVILA SatNav train 默认采样策略（head+stop+turn-protect+fwd-stride，Updated: 2026-03-25）：
+  - `SATNAV_HEAD_KEEP=7`：保留每条轨迹前 7 步（帧数 < num_video_frames=8 的独特分布区间，全部保留）
+  - stop 步（每 episode 末尾）：**全部保留**（稀有关键动作）
+  - 中间区间 turn 步（left/right）：**全部保留**（决策关键少数类，不做 stride）
+  - `SATNAV_SAMPLE_STRIDE=5`：中间区间连续 forward run 每 5 步取 1 步（遇 turn 重置计数）
+  - 效果：原始 476 万 → **约 264 万（55%）**，turn 覆盖率 100%（旧均匀 stride 仅 33.7%）
+  - 若需完整全量训练（不做采样），显式传空值：`SATNAV_HEAD_KEEP= SATNAV_SAMPLE_STRIDE=`
+- smoke / 调试时可额外叠加：
+  - `SATNAV_MAX_EPISODES`
+  - `SATNAV_MAX_SAMPLES`
+  - `SATNAV_SAMPLE_RATIO`
+  以上三个变量默认为空，**正式全量训练不要设置**
+
 ## Eval Queue Path Convention
 
 评测队列文件统一放在：
@@ -293,6 +318,10 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_streamvln_baseline_150200
 
 - 训练/评测约定、smoke 参数、正式训练默认值：详见 `baseline/uninavid/doc/train_eval_conventions.md`
 - `baseline/uninavid/scripts/train_satnav.sh` 已对齐 streamvln 风格：默认结构化 `EXP_NAME`，`USE_SWANLAB` 默认关闭，可按需开启
+- `baseline/uninavid/scripts/eval_satnav.sh` 的 NFS checkpoint cache 逻辑（`maybe_cache_checkpoint()`）已修复：
+  - 仅将最终 checkpoint 路径写到 stdout
+  - cache 命中/rsync 进度等日志统一写到 stderr
+  - 避免 `by_name` 模式下 `CHECKPOINT_DIR=$(...)` 被日志污染，导致 `--model_path` 变成多行字符串
 - DeepSpeed ZeRO-2 NaN 问题根因：详见 `baseline/uninavid/doc/deepspeed_zero2_nan_analysis.md`
 
 ## Dependency Note
