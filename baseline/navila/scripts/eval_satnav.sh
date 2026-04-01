@@ -137,26 +137,26 @@ maybe_cache_checkpoint() {
 
         # Check if already cached (use sentinel file to mark complete cache)
         if [ -f "${local_ckpt}/.cache_complete" ]; then
-            print_info "Using existing local checkpoint cache: ${local_ckpt}"
+            print_info "Using existing local checkpoint cache: ${local_ckpt}" >&2
             echo "$local_ckpt"
             return
         fi
 
-        print_warning "Checkpoint is on NFS (${mount_type}). Caching model weights to local disk to avoid I/O D-state..."
-        print_info "Source      : ${src}"
-        print_info "Destination : ${local_ckpt}"
+        print_warning "Checkpoint is on NFS (${mount_type}). Caching model weights to local disk to avoid I/O D-state..." >&2
+        print_info "Source      : ${src}" >&2
+        print_info "Destination : ${local_ckpt}" >&2
         mkdir -p "$local_ckpt"
 
         # Rsync model files only — exclude DeepSpeed optimizer states (global_step*)
         # which can be 80-100G and are not needed for inference
         rsync -ah --progress \
             --exclude="global_step*" \
-            "${src}/" "${local_ckpt}/"
+            "${src}/" "${local_ckpt}/" >&2
 
         touch "${local_ckpt}/.cache_complete"
         local cached_size
         cached_size=$(du -sh "$local_ckpt" | cut -f1)
-        print_success "Checkpoint cached locally (${cached_size}): ${local_ckpt}"
+        print_success "Checkpoint cached locally (${cached_size}): ${local_ckpt}" >&2
         echo "$local_ckpt"
     else
         # Not NFS, use as-is
