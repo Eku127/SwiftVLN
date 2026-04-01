@@ -452,13 +452,37 @@ def init_distributed(args):
         args.local_rank = 0
 
 
+def distributed_barrier(args) -> None:
+    """Run barrier on the current rank's device to avoid NCCL device warnings."""
+    if not (dist.is_available() and dist.is_initialized()):
+        return
+    device_ids = [args.local_rank] if torch.cuda.is_available() else None
+    dist.barrier(device_ids=device_ids)
+
+
+def cleanup_distributed() -> None:
+    """Destroy the process group so NCCL can exit cleanly."""
+    if dist.is_available() and dist.is_initialized():
+        dist.destroy_process_group()
+
+
 # =====================================================================
 # Distributed result aggregation
 # =====================================================================
 
 
-def load_existing_results(result_file: str) -> list:
-    """Load result.jsonl and deduplicate by episode_id (last write wins)."""
+def build_episode_key(episode_id, scene_id) -> str:
+    ep_id = str(episode_id) if episode_id is not None else ""
+    scene = str(scene_id) if scene_id is not None else ""
+    if ep_id == "":
+        return ""
+    if scene == "":
+        return ep_id
+    return f"{scene}::{ep_id}"
+
+
+def load_dedup_results(result_file: str) -> list:
+    """Load result.jsonl and keep the latest record per scene_id + episode_id."""
     if not os.path.exists(result_file):
         return []
 
@@ -469,10 +493,13 @@ def load_existing_results(result_file: str) -> list:
                 result = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            episode_id = str(result.get("episode_id", ""))
-            if not episode_id:
+            ep_key = build_episode_key(
+                result.get("episode_id", ""),
+                result.get("scene_id", ""),
+            )
+            if not ep_key:
                 continue
-            by_episode[episode_id] = result
+            by_episode[ep_key] = result
     return list(by_episode.values())
 
 
@@ -557,11 +584,11 @@ def save_summary(results: list, output_path: str, args) -> None:
 def aggregate_distributed(result_file: str, output_path: str, args) -> None:
     """Wait all ranks, then summarize from deduplicated result.jsonl on rank 0."""
     rank = get_rank()
-    dist.barrier()
+    distributed_barrier(args)
     if rank == 0:
-        all_results = load_existing_results(result_file)
+        all_results = load_dedup_results(result_file)
         save_summary(all_results, output_path, args)
-    dist.barrier()
+    distributed_barrier(args)
 
 
 # =====================================================================
@@ -605,13 +632,25 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
 
     # Resume support
     result_file = os.path.join(args.output_path, "result.jsonl")
-    existing_results = load_existing_results(result_file)
-    done_ids = {str(r.get("episode_id", "")) for r in existing_results}
+    existing_results = load_dedup_results(result_file)
+    done_ids = {
+        build_episode_key(r.get("episode_id", ""), r.get("scene_id", ""))
+        for r in existing_results
+    }
     done_ids.discard("")
     results = []
     if existing_results:
         if is_main:
             print(f"[Resume] Loaded {len(done_ids)} done episodes from {result_file}")
+
+    local_done_before_resume = sum(
+        1
+        for ep in my_episodes
+        if build_episode_key(
+            getattr(ep, "episode_id", ""),
+            getattr(ep, "scene_id", "unknown"),
+        ) in done_ids
+    )
 
     pbar = tqdm.tqdm(
         my_episodes,
@@ -621,7 +660,9 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
 
     for episode in pbar:
         ep_id = str(episode.episode_id)
-        if ep_id in done_ids:
+        scene_id = getattr(episode, "scene_id", "unknown")
+        ep_key = build_episode_key(ep_id, scene_id)
+        if ep_key in done_ids:
             continue
 
         instruction = evaluator.get_instruction(episode)
@@ -631,7 +672,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             metrics = evaluator.eval_episode(env_wrapper, episode)
             result = {
                 "episode_id": ep_id,
-                "scene_id": getattr(episode, "scene_id", "unknown"),
+                "scene_id": scene_id,
                 "success": float(metrics.get("success", 0)),
                 "spl": float(metrics.get("spl", 0)),
                 "oracle_success": float(metrics.get("oracle_success", 0)),
@@ -646,7 +687,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             traceback.print_exc()
             result = {
                 "episode_id": ep_id,
-                "scene_id": getattr(episode, "scene_id", "unknown"),
+                "scene_id": scene_id,
                 "success": 0.0,
                 "spl": 0.0,
                 "oracle_success": 0.0,
@@ -660,6 +701,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             result["trajectory_type"] = trajectory_type
 
         results.append(result)
+        done_ids.add(ep_key)
         with open(result_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(result, ensure_ascii=True) + "\n")
 
@@ -670,14 +712,18 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             [r["distance_to_goal"] for r in recent if r["distance_to_goal"] < 1e6]
             or [0]
         )
-        pbar.set_postfix(SR=f"{avg_sr:.2%}", NE=f"{avg_ne:.1f}m", done=len(results))
+        pbar.set_postfix(
+            SR=f"{avg_sr:.2%}",
+            NE=f"{avg_ne:.1f}m",
+            done=local_done_before_resume + len(results),
+        )
 
     env_wrapper.close()
 
     if world_size > 1:
         aggregate_distributed(result_file, args.output_path, args)
     else:
-        all_results = load_existing_results(result_file)
+        all_results = load_dedup_results(result_file)
         save_summary(all_results, args.output_path, args)
 
 
@@ -733,32 +779,35 @@ def main():
     init_distributed(args)
     device = torch.device(f"cuda:{args.local_rank}")
 
-    # ---- Load model ----
-    # load_pretrained_model dispatches on 'vid' in model_name to load
-    # LlavaLlamaAttForCausalLM. Our checkpoint directories may not have
-    # a "vid"-containing name, so we force a canonical name here.
-    #
-    # Use device_map={"": local_rank} to pin all layers to this rank's GPU.
-    # device_map="auto" (the default) distributes layers across all visible
-    # GPUs which breaks distributed eval where each rank owns exactly one GPU.
-    model_name = "uninavid"
-    tokenizer, model, image_processor, context_len = load_pretrained_model(
-        args.model_path,
-        args.model_base,
-        model_name,
-        device_map={"": args.local_rank},
-        device=f"cuda:{args.local_rank}",
-    )
+    try:
+        # ---- Load model ----
+        # load_pretrained_model dispatches on 'vid' in model_name to load
+        # LlavaLlamaAttForCausalLM. Our checkpoint directories may not have
+        # a "vid"-containing name, so we force a canonical name here.
+        #
+        # Use device_map={"": local_rank} to pin all layers to this rank's GPU.
+        # device_map="auto" (the default) distributes layers across all visible
+        # GPUs which breaks distributed eval where each rank owns exactly one GPU.
+        model_name = "uninavid"
+        tokenizer, model, image_processor, context_len = load_pretrained_model(
+            args.model_path,
+            args.model_base,
+            model_name,
+            device_map={"": args.local_rank},
+            device=f"cuda:{args.local_rank}",
+        )
 
-    model.eval()
+        model.eval()
 
-    # ---- Verify flash attention (smoke check) ----
-    attn_class = type(model.model.layers[0].self_attn).__name__
-    print(f"[FlashAttn Check] attention class: {attn_class}")
-    print(f"[FlashAttn Check] using LlamaFlashAttention2: {attn_class == 'LlamaFlashAttention2'}")
+        # ---- Verify flash attention (smoke check) ----
+        attn_class = type(model.model.layers[0].self_attn).__name__
+        print(f"[FlashAttn Check] attention class: {attn_class}")
+        print(f"[FlashAttn Check] using LlamaFlashAttention2: {attn_class == 'LlamaFlashAttention2'}")
 
-    os.makedirs(args.output_path, exist_ok=True)
-    evaluate(model, tokenizer, image_processor, args)
+        os.makedirs(args.output_path, exist_ok=True)
+        evaluate(model, tokenizer, image_processor, args)
+    finally:
+        cleanup_distributed()
 
 
 if __name__ == "__main__":

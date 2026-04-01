@@ -183,6 +183,13 @@ NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
   - `uninavid-baseline-continue-{epochs}ep-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
   - `uninavid-baseline-scratch-{epochs}ep-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
 
+UniNaVid SatNav eval 约定（Updated: 2026-04-01）：
+
+- `baseline/uninavid/src/eval_satnav.py` 的断点续跑与离线汇总唯一键使用 `scene_id + episode_id`
+- 避免仅按 `episode_id` 去重时，`val_seen` 中跨 scene 重复 episode id 导致的误跳过与汇总失真
+- 多卡汇总为 rank0 在 `dist.barrier()` 后从 `result.jsonl` 按联合键离线去重并写 `evaluation_summary.json`
+- 分布式收尾使用带 `device_ids=[local_rank]` 的 barrier，并在 `main()` 退出时显式 `destroy_process_group()`，避免 NCCL barrier / process group 清理 warning
+
 ## Eval Queue Path Convention
 
 评测队列文件统一放在：
