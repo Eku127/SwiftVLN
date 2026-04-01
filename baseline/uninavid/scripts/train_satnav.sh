@@ -1,7 +1,8 @@
 #!/bin/bash
 # Uni-NaVid SatNav fine-tuning launcher.
 # Usage:
-#   bash baseline/uninavid/scripts/train_satnav.sh [EXP_NAME]
+#   bash baseline/uninavid/scripts/train_satnav.sh [scratch|continue] [EXP_NAME]
+#   bash baseline/uninavid/scripts/train_satnav.sh [EXP_NAME]   # backward-compatible, defaults to continue
 #
 # Optional env overrides:
 #   DATA_PATH=...
@@ -30,13 +31,14 @@ SWIFTVLN_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 UNINAVID_REPO="/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid"
 BASELINE_DIR="${SWIFTVLN_ROOT}/baseline/uninavid"
 
-PREV_MODEL="${BASELINE_DIR}/model/Uni-Navid"
+CONTINUE_MODEL="${BASELINE_DIR}/model/Uni-Navid"
+SCRATCH_MODEL="${BASELINE_DIR}/model/vicuna-7b-v1.5"
 VISION_TOWER="${BASELINE_DIR}/model/eva_vit_g.pth"
 IMAGE_PROCESSOR="${UNINAVID_REPO}/uninavid/processor/clip-patch14-224"
 DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero1.json}"
 
-DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data/annotations.json}"
-VIDEO_FOLDER="${VIDEO_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data}"
+DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data/annotations.json}"
+VIDEO_FOLDER="${VIDEO_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data}"
 
 NUM_GPUS="${NUM_GPUS:-8}"
 TRAIN_BSZ="${TRAIN_BSZ:-24}"
@@ -58,7 +60,34 @@ SWANLAB_PROJECT="${SWANLAB_PROJECT:-baseline}"
 SWANLAB_MODE="${SWANLAB_MODE:-cloud}"
 SEED_ARG=()
 MAX_STEPS_ARG=()
-CUSTOM_EXP_NAME="${1:-}"
+TRAIN_MODE="${UNINAVID_INIT_MODE:-continue}"
+CUSTOM_EXP_NAME=""
+
+if [[ $# -ge 1 ]]; then
+    case "${1}" in
+        scratch|continue)
+            TRAIN_MODE="${1}"
+            CUSTOM_EXP_NAME="${2:-}"
+            ;;
+        *)
+            CUSTOM_EXP_NAME="${1}"
+            ;;
+    esac
+fi
+
+case "${TRAIN_MODE}" in
+    scratch)
+        PREV_MODEL="${SCRATCH_MODEL}"
+        ;;
+    continue)
+        PREV_MODEL="${CONTINUE_MODEL}"
+        ;;
+    *)
+        echo "Unsupported training mode: ${TRAIN_MODE}" >&2
+        echo "Expected one of: scratch, continue" >&2
+        exit 2
+        ;;
+esac
 
 VERSION_NUM="$(echo "${DATA_PATH}" | grep -oP 'ver_\K\d+' | head -1 || true)"
 if [[ -z "${VERSION_NUM}" ]]; then
@@ -71,7 +100,7 @@ EFFECTIVE_BATCH_SIZE=$((TRAIN_BSZ * GRAD_ACCUM * NUM_GPUS))
 if [[ -n "${CUSTOM_EXP_NAME}" ]]; then
     EXP_NAME="${CUSTOM_EXP_NAME}"
 else
-    EXP_NAME="uninavid-baseline-${NUM_EPOCHS}ep-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+    EXP_NAME="uninavid-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 fi
 
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/uninavid-baseline/${EXP_NAME}"
@@ -96,6 +125,26 @@ if [[ -n "${MAX_STEPS}" ]]; then
     MAX_STEPS_ARG=(--max_steps "${MAX_STEPS}")
 fi
 
+if [[ ! -d "${PREV_MODEL}" ]]; then
+    echo "Base model directory not found: ${PREV_MODEL}" >&2
+    exit 2
+fi
+
+if [[ ! -f "${PREV_MODEL}/config.json" ]]; then
+    echo "Base model config not found: ${PREV_MODEL}/config.json" >&2
+    exit 2
+fi
+
+if [[ ! -f "${VISION_TOWER}" ]]; then
+    echo "Vision tower not found: ${VISION_TOWER}" >&2
+    exit 2
+fi
+
+if [[ ! -f "${DATA_PATH}" ]]; then
+    echo "Data path not found: ${DATA_PATH}" >&2
+    exit 2
+fi
+
 # ── Conda ──────────────────────────────────────────────────
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate uninavid-baseline
@@ -107,6 +156,8 @@ echo "  Data path   : ${DATA_PATH}"
 echo "  Video dir   : ${VIDEO_FOLDER}"
 echo "  Output      : ${OUTPUT_DIR}"
 echo "  EXP_NAME    : ${EXP_NAME}"
+echo "  Init Mode   : ${TRAIN_MODE}"
+echo "  Base Model  : ${PREV_MODEL}"
 echo "  GPUs        : ${NUM_GPUS}"
 echo "  Batch       : ${TRAIN_BSZ} x ${GRAD_ACCUM} x ${NUM_GPUS} = ${EFFECTIVE_BATCH_SIZE}"
 echo "  LR          : ${LEARNING_RATE}"

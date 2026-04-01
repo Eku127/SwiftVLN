@@ -87,6 +87,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 # Fixed NE penalty for episodes that error during evaluation.
 ERROR_NE_PENALTY = 500.0
+ACTIONS_PER_QUERY = 4
 
 # Action text → SatNav action index
 ACTION_TEXT_MAP = {"forward": 1, "left": 2, "right": 3, "stop": 0}
@@ -301,8 +302,9 @@ class UniNaVidEvaluator:
         output_ids = self.model.generate(
             input_ids,
             images=imgs,
-            do_sample=True,
-            temperature=0.5,
+            # Use deterministic decoding for stable benchmark metrics.
+            do_sample=False,
+            temperature=0.0,
             max_new_tokens=1024,   # same as offline_eval_uninavid.py
             use_cache=True,
             stopping_criteria=[stopping_criteria],
@@ -326,9 +328,9 @@ class UniNaVidEvaluator:
 
     @staticmethod
     def parse_actions(output: str) -> list:
-        """Parse action words from model output text."""
+        """Parse action words from model output text and keep at most 4."""
         words = re.findall(r"\b(forward|left|right|stop)\b", output.lower())
-        return [ACTION_TEXT_MAP[w] for w in words]
+        return [ACTION_TEXT_MAP[w] for w in words[:ACTIONS_PER_QUERY]]
 
     # ------------------------------------------------------------------
     # Instruction extraction
@@ -455,6 +457,25 @@ def init_distributed(args):
 # =====================================================================
 
 
+def load_existing_results(result_file: str) -> list:
+    """Load result.jsonl and deduplicate by episode_id (last write wins)."""
+    if not os.path.exists(result_file):
+        return []
+
+    by_episode: dict = {}
+    with open(result_file, encoding="utf-8") as f:
+        for line in f:
+            try:
+                result = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            episode_id = str(result.get("episode_id", ""))
+            if not episode_id:
+                continue
+            by_episode[episode_id] = result
+    return list(by_episode.values())
+
+
 def save_summary(results: list, output_path: str, args) -> None:
     """Compute and print metrics summary, then write to evaluation_summary.json."""
     if not results:
@@ -533,64 +554,14 @@ def save_summary(results: list, output_path: str, args) -> None:
     print(f"Results saved to {output_path}")
 
 
-def aggregate_distributed(results: list, world_size: int, output_path: str, args) -> None:
-    """Gather results from all ranks, then print/save summary on rank 0."""
-    device = torch.device(f"cuda:{get_rank()}")
+def aggregate_distributed(result_file: str, output_path: str, args) -> None:
+    """Wait all ranks, then summarize from deduplicated result.jsonl on rank 0."""
     rank = get_rank()
-
-    sucs = torch.tensor([r["success"] for r in results], device=device)
-    spls = torch.tensor([r["spl"] for r in results], device=device)
-    oss = torch.tensor([r["oracle_success"] for r in results], device=device)
-    nes = torch.tensor([r["distance_to_goal"] for r in results], device=device)
-    ep_num = torch.tensor(len(results), device=device)
-
-    ep_num_all = [torch.zeros_like(ep_num) for _ in range(world_size)]
-    dist.all_gather(ep_num_all, ep_num)
-
-    sucs_all = [torch.zeros(ep_num_all[i].item(), dtype=sucs.dtype, device=device) for i in range(world_size)]
-    spls_all = [torch.zeros(ep_num_all[i].item(), dtype=spls.dtype, device=device) for i in range(world_size)]
-    oss_all = [torch.zeros(ep_num_all[i].item(), dtype=oss.dtype, device=device) for i in range(world_size)]
-    nes_all = [torch.zeros(ep_num_all[i].item(), dtype=nes.dtype, device=device) for i in range(world_size)]
-
     dist.barrier()
-    dist.all_gather(sucs_all, sucs)
-    dist.all_gather(spls_all, spls)
-    dist.all_gather(oss_all, oss)
-    dist.all_gather(nes_all, nes)
-    dist.barrier()
-
     if rank == 0:
-        sucs_cat = torch.cat(sucs_all).cpu().numpy()
-        spls_cat = torch.cat(spls_all).cpu().numpy()
-        oss_cat = torch.cat(oss_all).cpu().numpy()
-        nes_cat = torch.cat(nes_all).cpu().numpy()
-        total = len(sucs_cat)
-
-        summary = {
-            "eval_split": args.eval_split,
-            "SR": float(sucs_cat.mean()),
-            "SPL": float(spls_cat.mean()),
-            "OS": float(oss_cat.mean()),
-            "NE": float(nes_cat.mean()),
-            "total_episodes": total,
-            "model_path": args.model_path,
-        }
-
-        print("\n" + "=" * 60)
-        print(f"Uni-NaVid SatNav Evaluation Summary ({args.eval_split})")
-        print("=" * 60)
-        print(f"Success Rate: {summary['SR']:.2%}")
-        print(f"SPL:          {summary['SPL']:.4f}")
-        print(f"Oracle Succ:  {summary['OS']:.2%}")
-        print(f"Nav Error:    {summary['NE']:.2f}m")
-        print(f"Total:        {summary['total_episodes']}")
-        print("=" * 60)
-
-        summary_path = os.path.join(output_path, "evaluation_summary.json")
-        with open(summary_path, "w") as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False)
-
-        print(f"Results saved to {output_path}")
+        all_results = load_existing_results(result_file)
+        save_summary(all_results, output_path, args)
+    dist.barrier()
 
 
 # =====================================================================
@@ -634,17 +605,11 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
 
     # Resume support
     result_file = os.path.join(args.output_path, "result.jsonl")
-    done_ids: set = set()
+    existing_results = load_existing_results(result_file)
+    done_ids = {str(r.get("episode_id", "")) for r in existing_results}
+    done_ids.discard("")
     results = []
-    if os.path.exists(result_file):
-        with open(result_file, encoding="utf-8") as f:
-            for line in f:
-                try:
-                    res = json.loads(line)
-                    done_ids.add(str(res.get("episode_id", "")))
-                    results.append(res)
-                except json.JSONDecodeError:
-                    pass
+    if existing_results:
         if is_main:
             print(f"[Resume] Loaded {len(done_ids)} done episodes from {result_file}")
 
@@ -710,9 +675,10 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
     env_wrapper.close()
 
     if world_size > 1:
-        aggregate_distributed(results, world_size, args.output_path, args)
+        aggregate_distributed(result_file, args.output_path, args)
     else:
-        save_summary(results, args.output_path, args)
+        all_results = load_existing_results(result_file)
+        save_summary(all_results, args.output_path, args)
 
 
 # =====================================================================
@@ -756,7 +722,7 @@ def main():
         "--max_episodes",
         type=int,
         default=None,
-        help="Cap number of episodes per rank (for quick smoke/debug runs)",
+        help="Cap total episodes before distributed sharding (for quick smoke/debug runs)",
     )
     # Distributed args (populated by init_distributed)
     parser.add_argument("--world_size", default=1, type=int)

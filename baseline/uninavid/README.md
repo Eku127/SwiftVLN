@@ -83,10 +83,32 @@ bash baseline/uninavid/scripts/eval_satnav.sh \
   /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/<exp_name> \
   val_unseen 8
 ```
+
+## 训练模式
+
+`baseline/uninavid/scripts/train_satnav.sh` 现在支持两种起训模式：
+
+- `continue`：从 `model/Uni-Navid` 继续训练
+- `scratch`：从 `model/vicuna-7b-v1.5` 起训
+
+示例：
+
+```bash
+# 继续训练（默认）
+bash baseline/uninavid/scripts/train_satnav.sh continue
+
+# 从原始 Vicuna-7B 起训
+bash baseline/uninavid/scripts/train_satnav.sh scratch
+```
+
+默认实验名会自动带上模式前缀，例如：
+
+- `uninavid-baseline-continue-1ep-data260317-bs192-lr1e-5-...`
+- `uninavid-baseline-scratch-1ep-data260317-bs192-lr1e-5-...`
 baseline/uninavid/
 ├── model/
 │   ├── eva_vit_g.pth
-│   ├── uninavid-7b-full-224-video-fps-1-grid-2/
+│   ├── Uni-Navid/
 │   └── vicuna-7b-v1.5/          # 仅 --vicuna 时存在
 ├── scripts/
 │   └── download_uninavid_models.sh
