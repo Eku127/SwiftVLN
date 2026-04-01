@@ -85,6 +85,10 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
       `results/eval/<arch>/<model_name>/<split>/<timestamp>/`
       例：`results/eval/overlapvln/<model>/val_seen/20260319_143025/`
     - SatNav 默认同时跑 `val_seen` + `val_unseen`（不设置 `EVAL_SPLIT`），Habitat 默认 `EVAL_SPLIT=val_unseen`
+  - StreamVLN SatNav eval 约定（Updated: 2026-04-01）：
+    - 多卡汇总改为 rank0 从 `result.jsonl` 离线去重汇总，不再用末尾 `all_gather(...)` 汇总本地 `results`
+    - resume / 去重唯一键使用 `scene_id + episode_id`，避免仅按 `episode_id` 导致跨 scene 冲突
+    - `--max_episodes` 语义为“先截断总 episode，再做分布式切分”
 
 ### Baseline NaVILA Layout (Updated: 2026-03-12)
 
@@ -115,19 +119,43 @@ NaVILA SatNav eval 约定：
 - prompt 与上游 `NaVILA/evaluation/vlnce_baselines/navila_trainer.py` 保持一致
 - 动作解析沿用上游自然语言正则逻辑（`stop / move forward / turn left / turn right`）
 - 评测环境依赖 `navila-baseline` conda env + `pip install -e /mnt/data1/home/jiangjiajun/workspace/SatNav`
+- 输出解析只解码生成后缀（Updated: 2026-04-01）：
+  - `baseline/navila/src/eval_satnav.py` 在 `model.generate(...)` 后仅对 `output_ids[:, input_token_len:]` 做 `batch_decode`
+  - 避免把 prompt 一起解码后因模板中的 `stop` 文案污染动作正则匹配
+- forward 距离解析与训练标签对齐（Updated: 2026-04-01）：
+  - 训练标签默认是 `move forward 10 meters`
+  - 评测优先解析 `meters`，同时兼容上游遗留的 `cm` 写法
+- 断点续跑唯一键使用 `scene_id + episode_id`（Updated: 2026-04-01）：
+  - `baseline/navila/src/eval_satnav.py` 在读取 `result.jsonl` 时按联合键去重与跳过
+  - 避免仅使用 `episode_id` 导致跨 scene 冲突、误判“已完成”
+- 多卡汇总改为 rank0 离线汇总（Updated: 2026-04-01）：
+  - 不再依赖末尾 `dist.all_gather(...)` 做跨 rank 汇总
+  - rank0 直接读取 `result.jsonl`（联合键去重）并写 `evaluation_summary.json`
+  - 用于规避长尾 rank 导致的 NCCL/TCPStore 超时退出
+  - 汇总前增加 `dist.barrier()`，避免 rank0 在其他 rank 尚未写完 `result.jsonl` 时提前出 summary
 
 NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
 
+- `baseline/navila/scripts/train_satnav.sh` 现在支持两种初始化模式：
+  - `scratch`：从 `baseline/navila/model/navila-siglip-llama3-8b-v1.5-pretrain` 起训
+  - `continue`：从 `baseline/navila/model/navila-llama3-8b-8f` 继续训练
+  - 无参默认 `scratch`
+  - 兼容旧调用：若只传一个非模式参数，则视为 `EXP_NAME`
 - `baseline/navila/scripts/train_satnav.sh` 默认使用
   `MASTER_ADDR=127.0.0.1` + 显式 `MASTER_PORT`，
   避免 Docker 容器内 `torchrun --standalone` 的 hostname 解析卡死
+- `baseline/navila/scripts/train_satnav.sh` 现在会稳定落盘：
+  - `output/navila-baseline/<EXP_NAME>/train.log`
+  - `output/navila-baseline/<EXP_NAME>/gpu_metrics.log`
+  默认开启 GPU 监控（`ENABLE_GPU_MONITOR=true`），每 `60s` 用 `nvidia-smi` 采样
+  `temperature.gpu / utilization.gpu / memory.used / memory.total / power.draw`
 - `baseline/navila/scripts/train_satnav.sh` 中：
   - 默认 `MAX_STEPS=120`
   - 若显式传空值 `MAX_STEPS=`，则**不传 `--max_steps`**，用于全量训练
   - 默认 `SAVE_STEPS=20000`
   - 若显式传空值 `SAVE_STEPS=`，则按真实总 step 数自动推导：
     `SAVE_STEPS = ceil(total_steps / SAVE_COUNT_TARGET)`，默认 `SAVE_COUNT_TARGET=4`
-  - `SAVE_TOTAL_LIMIT` 默认 `4`
+  - `SAVE_TOTAL_LIMIT` 默认 `1`（保留最新一个 `checkpoint-*`；训练结束仍会在 `output/navila-baseline/<EXP_NAME>/` 根目录保存最终模型）
 - NaVILA SatNav train 默认采样策略（head+stop+turn-protect+fwd-stride，Updated: 2026-03-25）：
   - `SATNAV_HEAD_KEEP=7`：保留每条轨迹前 7 步（帧数 < num_video_frames=8 的独特分布区间，全部保留）
   - stop 步（每 episode 末尾）：**全部保留**（稀有关键动作）
@@ -140,6 +168,20 @@ NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
   - `SATNAV_MAX_SAMPLES`
   - `SATNAV_SAMPLE_RATIO`
   以上三个变量默认为空，**正式全量训练不要设置**
+
+### Baseline UniNaVid Train Modes (Updated: 2026-03-26)
+
+- 训练入口：`baseline/uninavid/scripts/train_satnav.sh`
+- 该脚本现在支持两种初始化模式：
+  - `continue`：从 `baseline/uninavid/model/Uni-Navid` 继续训练
+  - `scratch`：从 `baseline/uninavid/model/vicuna-7b-v1.5` 起训
+- 调用方式：
+  - `bash baseline/uninavid/scripts/train_satnav.sh continue [EXP_NAME]`
+  - `bash baseline/uninavid/scripts/train_satnav.sh scratch [EXP_NAME]`
+  - 兼容旧调用：若只传一个非模式参数，则视为 `EXP_NAME`，默认模式仍为 `continue`
+- 默认实验命名：
+  - `uninavid-baseline-continue-{epochs}ep-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
+  - `uninavid-baseline-scratch-{epochs}ep-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
 
 ## Eval Queue Path Convention
 
@@ -197,21 +239,21 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 ## Current SatNav Dataset Defaults
 
 - Dataset root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets`
-- 当前常用版本：`ver_260317`
+- 当前常用版本：`ver_260327`
 - Eval episodes (val_seen):
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/episodes/eval/val_seen/all_episodes.json`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/episodes/eval/val_seen/all_episodes.json`
 - Eval episodes (val_unseen):
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/episodes/eval/val_unseen/all_episodes.json`（当前无城市，目录暂不存在，后续引入新城市后生成）
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/episodes/eval/val_unseen/all_episodes.json`
 - **注意**：`episodes/eval/` 下只有 `val_seen/` 和 `val_unseen/` 子目录，不再有顶层扁平文件
 - QA JSONL:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/data/qa_swift.jsonl`
 - Trajectory data:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data`
 - Scene maps:
   - active: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
   - backup(old): `/mnt/data3/jiangjiajun/dataset/satnav_datasets/old_scenes`
 
-### SatNav Data Processing Convention (Updated: 2026-03-14)
+### SatNav Data Processing Convention (Updated: 2026-03-27)
 
 - 数据处理默认会先执行 trajectory type 标准化：
   - 删除不完整城市目录 `Venezia`
@@ -221,13 +263,15 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   `src/swiftvln/scripts/data_process/normalize_trajectory_types.py`
 - 默认入口 `src/swiftvln/scripts/data_process/run_all.py` 会先执行标准化，再生成 `episodes` 与 `qa_swift.jsonl`
 - 单独执行 `src/swiftvln/scripts/data_process/process_episodes.py` 时，也会自动先做同样的标准化
+- trajectory 生成默认并发（`generate_parallel.py`）为：
+  `min(num_scenes, cpu_count//4, 72)`（2026-03-27 更新，原上限 24）
 - `episodes/train/*.json` 与 `episodes/eval/*.json` 输出会保留 `trajectory_subtype` 字段
-- 当前默认城市划分（0316 起）：
-  - eval: `Amsterdam-1`, `Rome-1`, `NewYork-1`
-  - train: 其余全部城市
+- 当前默认城市划分（0327 起）：
+  - eval: `LosAngeles-1`, `Rome-1`, `NewYork-1`, `Auckland-1`, `Orlando-1`, `Rotterdam-1`
+  - train: 其余全部城市（含 `Amsterdam-1`, `Dube-1`）
 - Eval 城市按 seen/unseen 自动分类（0319 起）：
-  - **val_seen**：eval 城市的基础名（如 `Amsterdam`）在 train 中有任意 TIF → 当前全部 3 个 eval 城市均为 val_seen
-  - **val_unseen**：eval 城市的基础名完全不出现于 train → 当前无，后续引入新城市时自动归入
+  - **val_seen**：eval 城市的基础名（如 `LosAngeles`）在 train 中有任意 TIF → 当前为 `LosAngeles-1`, `Rome-1`, `NewYork-1`
+  - **val_unseen**：eval 城市的基础名完全不出现于 train → 当前为 `Auckland-1`, `Orlando-1`, `Rotterdam-1`
   - `episodes/eval/val_seen/` 和 `episodes/eval/val_unseen/` 在每次 `process_episodes.py` 时自动生成
   - `episodes/eval/all_episodes.json` 继续保留（全量 eval，向后兼容）
 
@@ -322,6 +366,10 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_streamvln_baseline_150200
   - 仅将最终 checkpoint 路径写到 stdout
   - cache 命中/rsync 进度等日志统一写到 stderr
   - 避免 `by_name` 模式下 `CHECKPOINT_DIR=$(...)` 被日志污染，导致 `--model_path` 变成多行字符串
+- Uni-NaVid SatNav eval 约定（Updated: 2026-04-01）：
+  - `baseline/uninavid/src/eval_satnav.py` 默认使用确定性解码（`do_sample=False`, `temperature=0.0`），确保基线评测可复现
+  - 动作解析按 prompt 语义最多执行 4 个动作词（`forward/left/right/stop`）
+  - 多卡 + resume 汇总改为在 rank0 从 `result.jsonl` 去重汇总（按 `episode_id` 最后写入覆盖），避免历史结果被各 rank 重复计入
 - DeepSpeed ZeRO-2 NaN 问题根因：详见 `baseline/uninavid/doc/deepspeed_zero2_nan_analysis.md`
 
 ## Dependency Note
