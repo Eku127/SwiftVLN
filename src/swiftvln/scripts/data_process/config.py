@@ -9,10 +9,11 @@ from typing import List, Tuple
 # 数据集根目录
 DATASET_ROOT = Path("/mnt/data3/jiangjiajun/dataset/satnav_datasets")
 
-# 城市分类配置（0316 默认划分）
-# eval: Amsterdam-1, Rome-1, NewYork-1
-# train: 其余全部城市
+# 城市分类配置（0327 默认划分）
+# eval: LosAngeles-1, Rome-1, NewYork-1, Auckland-1, Orlando-1, Rotterdam-1
+# train: 其余全部城市（含 Amsterdam-1, Dube-1）
 TRAIN_CITIES = [
+    "Amsterdam-1",
     "Amsterdam-2",
     "Berlin-1",
     "Berlin-2",
@@ -25,6 +26,7 @@ TRAIN_CITIES = [
     "Boston-4",
     "Boston-5",
     "Brugge-1",
+    "Dube-1",
     "Geneva-1",
     "Geneva-2",
     "Geneva-3",
@@ -34,7 +36,6 @@ TRAIN_CITIES = [
     "London-2",
     "London-3",
     "London-4",
-    "LosAngeles-1",
     "LosAngeles-2",
     "LosAngeles-3",
     "LosAngeles-4",
@@ -66,7 +67,14 @@ TRAIN_CITIES = [
     "TheBayArea-5",
     "TheBayArea-6",
 ]
-EVAL_CITIES = ["Amsterdam-1", "Rome-1", "NewYork-1"]
+EVAL_CITIES = [
+    "LosAngeles-1",
+    "Rome-1",
+    "NewYork-1",
+    "Auckland-1",
+    "Orlando-1",
+    "Rotterdam-1",
+]
 ALL_CITIES = TRAIN_CITIES + EVAL_CITIES
 
 
@@ -76,7 +84,7 @@ def classify_eval_cities(
 ) -> Tuple[List[str], List[str]]:
     """将 eval 城市按 seen/unseen 分类。
 
-    规则：eval 城市的基础城市名（如 "Amsterdam-1" → "Amsterdam"）
+    规则：eval 城市的基础城市名（如 "LosAngeles-1" → "LosAngeles"）
     若在 train_cities 中有任意 TIF 出现，则归入 val_seen；否则归入 val_unseen。
 
     Returns:

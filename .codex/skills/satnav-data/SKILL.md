@@ -20,9 +20,12 @@ Execute a 4-step pipeline **continuously without pausing between steps**. Only s
 - New city to `train` or `eval`.
 - New episode type to include or skip.
 4. Update data process configs accordingly.
-   - 当前默认划分（0316 起）：
-     - `eval`: `Amsterdam-1`, `Rome-1`, `NewYork-1`
-     - `train`: 其余全部城市
+   - 当前默认划分（0327 起）：
+     - `eval`: `LosAngeles-1`, `Rome-1`, `NewYork-1`, `Auckland-1`, `Orlando-1`, `Rotterdam-1`
+     - `train`: 其余全部城市（含 `Amsterdam-1`, `Dube-1`）
+   - 当前自动分类结果（由 `classify_eval_cities()` 判断）：
+     - `val_seen`: `LosAngeles-1`, `Rome-1`, `NewYork-1`
+     - `val_unseen`: `Auckland-1`, `Orlando-1`, `Rotterdam-1`
    - 当前默认 trajectory 归一化：
      - `highway / multiway / multway / waterway` -> `trajectory_type = Road`
      - 同时保留细分类到 `trajectory_subtype`，规范值为 `Highway / Multiway / Waterway`
@@ -53,7 +56,7 @@ python -m applications.trajectory_generation.generate_parallel \
     --config <temp_config> \
     --output_dir /mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/trajectory_data
 ```
-- 默认 `--num_workers` 自动计算：`min(num_scenes, cpu_count//4, 24)`，无需手动指定
+- 默认 `--num_workers` 自动计算：`min(num_scenes, cpu_count//4, 72)`，无需手动指定
 - 默认开启 Scene Affinity（按城市分组）以降低内存和 I/O 压力
 - 如需强制指定并发数：加 `--num_workers N`
 
