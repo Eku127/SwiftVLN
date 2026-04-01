@@ -527,19 +527,15 @@ def evaluate(model, tokenizer, args):
 
     # Resume: load already-done results
     result_file = os.path.join(args.output_path, "result.jsonl")
-    done_ids = set()
+    existing_results = load_dedup_results(result_file)
+    done_ids = {
+        build_episode_key(r.get("episode_id", ""), r.get("scene_id", ""))
+        for r in existing_results
+    }
+    done_ids.discard("")
     results = []
-    if os.path.exists(result_file):
-        with open(result_file, "r") as f:
-            for line in f:
-                try:
-                    res = json.loads(line)
-                    done_ids.add(str(res.get("episode_id", "")))
-                    results.append(res)
-                except json.JSONDecodeError:
-                    pass
-        if is_main:
-            print(f"[Resume] Loaded {len(done_ids)} done episodes from {result_file}")
+    if existing_results and is_main:
+        print(f"[Resume] Loaded {len(done_ids)} done episodes from {result_file}")
 
     # Evaluation loop
     pbar = tqdm.tqdm(
@@ -550,7 +546,9 @@ def evaluate(model, tokenizer, args):
 
     for episode in pbar:
         ep_id = str(episode.episode_id)
-        if ep_id in done_ids:
+        scene_id = getattr(episode, "scene_id", "unknown")
+        ep_key = build_episode_key(ep_id, scene_id)
+        if ep_key in done_ids:
             continue
 
         instruction = evaluator.get_instruction(episode)
@@ -561,7 +559,7 @@ def evaluate(model, tokenizer, args):
 
             result = {
                 "episode_id": ep_id,
-                "scene_id": getattr(episode, "scene_id", "unknown"),
+                "scene_id": scene_id,
                 "success": float(metrics.get("success", 0)),
                 "spl": float(metrics.get("spl", 0)),
                 "oracle_success": float(metrics.get("oracle_success", 0)),
@@ -578,7 +576,7 @@ def evaluate(model, tokenizer, args):
             traceback.print_exc()
             result = {
                 "episode_id": ep_id,
-                "scene_id": getattr(episode, "scene_id", "unknown"),
+                "scene_id": scene_id,
                 "success": 0.0,
                 "spl": 0.0,
                 "oracle_success": 0.0,
@@ -591,6 +589,7 @@ def evaluate(model, tokenizer, args):
                 result["trajectory_type"] = trajectory_type
 
         results.append(result)
+        done_ids.add(ep_key)
 
         # Append result immediately (for resume support)
         with open(result_file, "a") as f:
@@ -606,63 +605,52 @@ def evaluate(model, tokenizer, args):
 
     # ---- Gather and summarize results ----
     if world_size > 1:
-        aggregate_distributed(results, world_size, args.output_path)
+        aggregate_distributed(result_file, args.output_path, args)
     else:
-        save_summary(results, args.output_path, args)
+        all_results = load_dedup_results(result_file)
+        save_summary(all_results, args.output_path, args)
 
 
-def aggregate_distributed(results, world_size, output_path):
-    """Gather results from all ranks and save summary."""
-    device = torch.device("cuda")
+def build_episode_key(episode_id, scene_id):
+    ep_id = str(episode_id) if episode_id is not None else ""
+    scene = str(scene_id) if scene_id is not None else ""
+    if ep_id == "":
+        return ""
+    if scene == "":
+        return ep_id
+    return f"{scene}::{ep_id}"
+
+
+def load_dedup_results(result_file):
+    """Load jsonl results and keep the latest record per scene_id+episode_id."""
+    if not os.path.exists(result_file):
+        return []
+
+    results_by_ep = {}
+    with open(result_file, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                result = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ep_key = build_episode_key(
+                result.get("episode_id", ""),
+                result.get("scene_id", ""),
+            )
+            if not ep_key:
+                continue
+            results_by_ep[ep_key] = result
+    return list(results_by_ep.values())
+
+
+def aggregate_distributed(result_file, output_path, args):
+    """Wait all ranks, then summarize from deduplicated result.jsonl on rank 0."""
     rank = get_rank()
-
-    sucs = torch.tensor([r["success"] for r in results], device=device)
-    spls = torch.tensor([r["spl"] for r in results], device=device)
-    oss = torch.tensor([r["oracle_success"] for r in results], device=device)
-    nes = torch.tensor([r["distance_to_goal"] for r in results], device=device)
-    ep_num = torch.tensor(len(results), device=device)
-
-    ep_num_all = [torch.zeros_like(ep_num) for _ in range(world_size)]
-    dist.all_gather(ep_num_all, ep_num)
-
-    sucs_all = [torch.zeros(ep_num_all[i], dtype=sucs.dtype, device=device) for i in range(world_size)]
-    spls_all = [torch.zeros(ep_num_all[i], dtype=spls.dtype, device=device) for i in range(world_size)]
-    oss_all = [torch.zeros(ep_num_all[i], dtype=oss.dtype, device=device) for i in range(world_size)]
-    nes_all = [torch.zeros(ep_num_all[i], dtype=nes.dtype, device=device) for i in range(world_size)]
-
     dist.barrier()
-    dist.all_gather(sucs_all, sucs)
-    dist.all_gather(spls_all, spls)
-    dist.all_gather(oss_all, oss)
-    dist.all_gather(nes_all, nes)
-    dist.barrier()
-
     if rank == 0:
-        sucs_cat = torch.cat(sucs_all)
-        spls_cat = torch.cat(spls_all)
-        oss_cat = torch.cat(oss_all)
-        nes_cat = torch.cat(nes_all)
-        total = len(sucs_cat)
-
-        summary = {
-            "SR": (sucs_cat.sum() / total).item(),
-            "SPL": (spls_cat.sum() / total).item(),
-            "OS": (oss_cat.sum() / total).item(),
-            "NE": (nes_cat.sum() / total).item(),
-            "count": total,
-        }
-        print("\n" + "=" * 60)
-        print(f"StreamVLN SatNav Evaluation Summary")
-        print(f"=" * 60)
-        print(f"Success Rate: {summary['SR']:.2%}")
-        print(f"SPL:          {summary['SPL']:.4f}")
-        print(f"Oracle Succ:  {summary['OS']:.2%}")
-        print(f"Nav Error:    {summary['NE']:.2f}m")
-        print(f"Total:        {summary['count']}")
-        print(f"=" * 60)
-
-        with open(os.path.join(output_path, "evaluation_summary.json"), "w") as f:
-            json.dump(summary, f, indent=2)
+        all_results = load_dedup_results(result_file)
+        save_summary(all_results, output_path, args)
+    dist.barrier()
 
 
 def save_summary(results, output_path, args):
@@ -763,7 +751,7 @@ def main():
     parser.add_argument("--num_history", type=int, default=8)
     parser.add_argument("--model_max_length", type=int, default=32768)
     parser.add_argument("--max_episodes", type=int, default=None,
-                        help="Max episodes to evaluate (for debugging)")
+                        help="Cap total episodes before distributed sharding (for debugging)")
     # Distributed args
     parser.add_argument("--world_size", default=1, type=int)
     parser.add_argument("--rank", default=0, type=int)
