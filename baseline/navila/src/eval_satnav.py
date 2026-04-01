@@ -29,6 +29,7 @@ import time
 import argparse
 import traceback
 import re
+from collections import deque
 
 import tqdm
 import torch
@@ -52,7 +53,8 @@ from satnav.dataset.satnav_dataset import SatNavDataset
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 ERROR_NE_PENALTY = 500.0
-QUEUE_DISTANCE_CHOICES = [25, 50, 75]
+QUEUE_DISTANCE_CHOICES_CM = [25, 50, 75]
+QUEUE_DISTANCE_CHOICES_METERS = [10, 20, 30]
 QUEUE_DEGREE_CHOICES = [15, 30, 45]
 
 PROMPT_TEMPLATE = (
@@ -61,6 +63,15 @@ PROMPT_TEMPLATE = (
     "Analyze this series of images to decide your next action, which could be turning left or right by a specific "
     "degree, moving forward a certain distance, or stop if the task is completed."
 )
+
+
+def normalize_instruction(text: str) -> str:
+    text = text.replace("\r\n", " ").replace("\n", " ").strip()
+    text = re.sub(r"\s+\.", ".", text)
+    text = re.sub(r"\s+", " ", text)
+    text = text.capitalize()
+    text = re.sub(r"(?<=\.\s)([a-z])", lambda x: x.group().upper(), text)
+    return text
 
 
 def sample_and_pad_images(images, num_frames=8, width=512, height=512):
@@ -140,12 +151,13 @@ class NaVILASatNavEvaluator:
     def get_instruction(episode) -> str:
         instruction = getattr(episode, "instruction", "")
         if isinstance(instruction, dict):
-            return instruction.get("text", instruction.get("instruction_text", ""))
+            text = instruction.get("text", instruction.get("instruction_text", ""))
+            return normalize_instruction(text)
         if hasattr(instruction, "text"):
-            return instruction.text
+            return normalize_instruction(instruction.text)
         if hasattr(instruction, "instruction_text"):
-            return instruction.instruction_text
-        return str(instruction)
+            return normalize_instruction(instruction.instruction_text)
+        return normalize_instruction(str(instruction))
 
     def build_prompt(self, instruction: str, num_frames: int) -> str:
         history_tokens = "<image>\n" * max(num_frames - 1, 0)
@@ -181,13 +193,17 @@ class NaVILASatNavEvaluator:
                 input_ids,
                 images=images_tensor.half().to(self.model.device),
                 do_sample=False,
-                temperature=0.0,
+                temperature=1.0,
+                top_p=1.0,
                 max_new_tokens=32,
                 use_cache=True,
                 stopping_criteria=[stopping_criteria],
                 pad_token_id=self.tokenizer.eos_token_id,
             )
 
+        input_token_len = input_ids.shape[1]
+        if output_ids.shape[1] >= input_token_len:
+            output_ids = output_ids[:, input_token_len:]
         outputs = self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
         if outputs.endswith(stop_str):
             outputs = outputs[: -len(stop_str)]
@@ -207,17 +223,39 @@ class NaVILASatNavEvaluator:
             return min(choices, key=lambda x: abs(x - value))
         return value
 
+    @staticmethod
+    def _parse_forward_queue_steps(output_text: str) -> int:
+        match_m = re.search(r"move forward (\d+) meters?", output_text, re.IGNORECASE)
+        if match_m:
+            distance = int(match_m.group(1))
+            distance = NaVILASatNavEvaluator._snap_value(
+                distance,
+                10,
+                QUEUE_DISTANCE_CHOICES_METERS,
+            )
+            return max(int(distance // 10) - 1, 0)
+
+        match_cm = re.search(r"move forward (\d+) cm", output_text, re.IGNORECASE)
+        if match_cm:
+            distance = int(match_cm.group(1))
+            distance = NaVILASatNavEvaluator._snap_value(
+                distance,
+                25,
+                QUEUE_DISTANCE_CHOICES_CM,
+            )
+            return max(int(distance // 25) - 1, 0)
+
+        return 0
+
     def parse_action_and_queue(self, output_text: str):
         action = self.map_string_to_action(output_text)
         if action is None:
+            print(f"[Warning] Failed to parse action, fallback to MOVE_FORWARD: {output_text!r}")
             action = 1
 
         queue_actions = []
         if action == 1:
-            match = re.search(r"move forward (\d+) cm", output_text, re.IGNORECASE)
-            distance = int(match.group(1)) if match else 25
-            distance = self._snap_value(distance, 25, QUEUE_DISTANCE_CHOICES)
-            queue_actions.extend([1] * max(int(distance // 25) - 1, 0))
+            queue_actions.extend([1] * self._parse_forward_queue_steps(output_text))
         elif action == 2:
             match = re.search(r"turn left (\d+) degree", output_text, re.IGNORECASE)
             degree = int(match.group(1)) if match else 15
@@ -373,6 +411,38 @@ def save_summary(results: list, output_path: str, args) -> None:
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
 
+def load_dedup_results(result_file: str) -> list:
+    """Load jsonl results and keep the latest record per scene_id + episode_id."""
+    if not os.path.exists(result_file):
+        return []
+
+    results_by_ep = {}
+    with open(result_file, encoding="utf-8") as f:
+        for line in f:
+            try:
+                result = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ep_key = build_episode_key(
+                result.get("episode_id", ""),
+                result.get("scene_id", ""),
+            )
+            if not ep_key:
+                continue
+            results_by_ep[ep_key] = result
+    return list(results_by_ep.values())
+
+
+def build_episode_key(episode_id, scene_id) -> str:
+    ep_id = str(episode_id) if episode_id is not None else ""
+    scene = str(scene_id) if scene_id is not None else ""
+    if ep_id == "":
+        return ""
+    if scene == "":
+        return ep_id
+    return f"{scene}::{ep_id}"
+
+
 def aggregate_distributed(results: list, world_size: int, output_path: str, args) -> None:
     rank = get_rank()
     device = torch.device(f"cuda:{rank}")
@@ -460,18 +530,29 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
 
     result_file = os.path.join(args.output_path, "result.jsonl")
     done_ids = set()
-    results = []
     if os.path.exists(result_file):
         with open(result_file, encoding="utf-8") as f:
             for line in f:
                 try:
                     result = json.loads(line)
-                    done_ids.add(str(result.get("episode_id", "")))
-                    results.append(result)
+                    done_key = build_episode_key(
+                        result.get("episode_id", ""),
+                        result.get("scene_id", ""),
+                    )
+                    if done_key:
+                        done_ids.add(done_key)
                 except json.JSONDecodeError:
                     pass
         if is_main:
             print(f"[Resume] Loaded {len(done_ids)} done episodes from {result_file}")
+
+    local_done_before_resume = sum(
+        1
+        for ep in my_episodes
+        if build_episode_key(getattr(ep, "episode_id", ""), getattr(ep, "scene_id", "unknown")) in done_ids
+    )
+    local_results = []
+    recent_results = deque(maxlen=20)
 
     pbar = tqdm.tqdm(
         my_episodes,
@@ -481,7 +562,9 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
 
     for episode in pbar:
         ep_id = str(episode.episode_id)
-        if ep_id in done_ids:
+        scene_id = getattr(episode, "scene_id", "unknown")
+        ep_key = build_episode_key(ep_id, scene_id)
+        if ep_key in done_ids:
             continue
 
         instruction = evaluator.get_instruction(episode)
@@ -492,7 +575,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             metrics = evaluator.eval_episode(env_wrapper, episode)
             result = {
                 "episode_id": ep_id,
-                "scene_id": getattr(episode, "scene_id", "unknown"),
+                "scene_id": scene_id,
                 "success": float(metrics.get("success", 0)),
                 "spl": float(metrics.get("spl", 0)),
                 "oracle_success": float(metrics.get("oracle_success", 0)),
@@ -506,7 +589,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             traceback.print_exc()
             result = {
                 "episode_id": ep_id,
-                "scene_id": getattr(episode, "scene_id", "unknown"),
+                "scene_id": scene_id,
                 "success": 0.0,
                 "spl": 0.0,
                 "oracle_success": 0.0,
@@ -519,24 +602,33 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
         if trajectory_type is not None:
             result["trajectory_type"] = trajectory_type
 
-        results.append(result)
+        local_results.append(result)
+        recent_results.append(result)
+        done_ids.add(ep_key)
+
         with open(result_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(result, ensure_ascii=False) + "\n")
 
-        recent = results[-min(20, len(results)) :]
-        avg_sr = np.mean([r["success"] for r in recent])
+        avg_sr = np.mean([r["success"] for r in recent_results])
         avg_ne = np.mean(
-            [r["distance_to_goal"] for r in recent if r["distance_to_goal"] < 1e6]
+            [r["distance_to_goal"] for r in recent_results if r["distance_to_goal"] < 1e6]
             or [0]
         )
-        pbar.set_postfix(SR=f"{avg_sr:.2%}", NE=f"{avg_ne:.1f}m", done=len(results))
+        pbar.set_postfix(
+            SR=f"{avg_sr:.2%}",
+            NE=f"{avg_ne:.1f}m",
+            done=local_done_before_resume + len(local_results),
+        )
 
     env_wrapper.close()
 
-    if world_size > 1:
-        aggregate_distributed(results, world_size, args.output_path, args)
-    else:
-        save_summary(results, args.output_path, args)
+    if world_size > 1 and dist.is_available() and dist.is_initialized():
+        dist.barrier()
+
+    if is_main:
+        merged_results = load_dedup_results(result_file)
+        print(f"[Summary] Loaded {len(merged_results)} deduplicated episodes from {result_file}")
+        save_summary(merged_results, args.output_path, args)
 
 
 def main():

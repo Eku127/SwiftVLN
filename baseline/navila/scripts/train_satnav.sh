@@ -1,11 +1,15 @@
 #!/bin/bash
 # Train NaVILA baseline on SatNav trajectory data.
 # Usage:
-#   bash baseline/navila/scripts/train_satnav.sh [EXP_NAME]
+#   bash baseline/navila/scripts/train_satnav.sh [scratch|continue] [EXP_NAME]
+#   bash baseline/navila/scripts/train_satnav.sh [EXP_NAME]   # backward-compatible, defaults to scratch
 #
 # Optional env overrides:
 #   DATA_PATH=...
 #   IMAGE_FOLDER=...
+#   MODEL_PATH=...
+#   SCRATCH_MODEL=...
+#   CONTINUE_MODEL=...
 #   NUM_GPUS=8
 #   TRAIN_BSZ=4
 #   GRAD_ACCUM=1
@@ -14,7 +18,7 @@
 #   MAX_STEPS=120
 #   SAVE_STEPS=20000
 #   SAVE_COUNT_TARGET=4
-#   SAVE_TOTAL_LIMIT=4
+#   SAVE_TOTAL_LIMIT=1
 #   MODEL_MAX_LENGTH=4096
 #   DATALOADER_WORKERS=16
 #   MASTER_PORT=29500
@@ -23,6 +27,8 @@
 #   SATNAV_SAMPLE_RATIO=...
 #   SATNAV_SAMPLE_STRIDE=...      (forward stride in middle when HEAD_KEEP is set; turns always kept)
 #   SATNAV_HEAD_KEEP=...          (enable head+stop+turn-protect mode; default 7)
+#   ENABLE_GPU_MONITOR=true
+#   GPU_MONITOR_INTERVAL=60
 #   USE_SWANLAB=false
 #   SWANLAB_PROJECT=baseline
 #   SWANLAB_MODE=cloud
@@ -32,12 +38,12 @@ set -euo pipefail
 SWIFTVLN_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 BASELINE_DIR="${SWIFTVLN_ROOT}/baseline/navila"
 
-MODEL_PATH="${MODEL_PATH:-${BASELINE_DIR}/model/navila-siglip-llama3-8b-v1.5-pretrain}"
-VISION_TOWER="${VISION_TOWER:-${BASELINE_DIR}/model/navila-siglip-llama3-8b-v1.5-pretrain/vision_tower}"
+SCRATCH_MODEL="${SCRATCH_MODEL:-${BASELINE_DIR}/model/navila-siglip-llama3-8b-v1.5-pretrain}"
+CONTINUE_MODEL="${CONTINUE_MODEL:-${BASELINE_DIR}/model/navila-llama3-8b-8f}"
 DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero2.json}"
 
-DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data/annotations.json}"
-IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data}"
+DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data/annotations.json}"
+IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data}"
 
 # Sample reduction strategy: head + stop + turn-protected forward stride.
 #   - Head  steps 1..HEAD_KEEP : always kept (unique <8-frame input distribution)
@@ -64,7 +70,7 @@ MAX_STEPS="${MAX_STEPS-120}"
 # Explicit empty SAVE_STEPS= switches back to auto scheduling from SAVE_COUNT_TARGET.
 SAVE_STEPS="${SAVE_STEPS-20000}"
 SAVE_COUNT_TARGET="${SAVE_COUNT_TARGET:-4}"
-SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-4}"
+SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-1}"
 MODEL_MAX_LENGTH="${MODEL_MAX_LENGTH:-4096}"
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-16}"
 MASTER_PORT="${MASTER_PORT:-29500}"
@@ -73,7 +79,39 @@ REPORT_TO="${REPORT_TO:-}"
 USE_SWANLAB="${USE_SWANLAB:-false}"
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-baseline}"
 SWANLAB_MODE="${SWANLAB_MODE:-cloud}"
-CUSTOM_EXP_NAME="${1:-}"
+ENABLE_GPU_MONITOR="${ENABLE_GPU_MONITOR:-true}"
+GPU_MONITOR_INTERVAL="${GPU_MONITOR_INTERVAL:-60}"
+TRAIN_MODE="${NAVILA_INIT_MODE:-scratch}"
+CUSTOM_EXP_NAME=""
+
+if [[ $# -ge 1 ]]; then
+    case "${1}" in
+        scratch|continue)
+            TRAIN_MODE="${1}"
+            CUSTOM_EXP_NAME="${2:-}"
+            ;;
+        *)
+            CUSTOM_EXP_NAME="${1}"
+            ;;
+    esac
+fi
+
+case "${TRAIN_MODE}" in
+    scratch)
+        DEFAULT_MODEL_PATH="${SCRATCH_MODEL}"
+        ;;
+    continue)
+        DEFAULT_MODEL_PATH="${CONTINUE_MODEL}"
+        ;;
+    *)
+        echo "Unsupported training mode: ${TRAIN_MODE}" >&2
+        echo "Expected one of: scratch, continue" >&2
+        exit 2
+        ;;
+esac
+
+MODEL_PATH="${MODEL_PATH:-${DEFAULT_MODEL_PATH}}"
+VISION_TOWER="${VISION_TOWER:-${MODEL_PATH}/vision_tower}"
 
 VERSION_NUM="$(echo "${DATA_PATH}" | grep -oP 'ver_\K\d+' | head -1 || true)"
 if [[ -z "${VERSION_NUM}" ]]; then
@@ -86,12 +124,79 @@ EFFECTIVE_BATCH_SIZE=$((TRAIN_BSZ * GRAD_ACCUM * NUM_GPUS))
 if [[ -n "${CUSTOM_EXP_NAME}" ]]; then
     EXP_NAME="${CUSTOM_EXP_NAME}"
 else
-    EXP_NAME="navila-baseline-${NUM_EPOCHS}ep-8f-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+    EXP_NAME="navila-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-8f-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 fi
 
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/navila-baseline/${EXP_NAME}"
+mkdir -p "${OUTPUT_DIR}"
+TRAIN_LOG="${OUTPUT_DIR}/train.log"
+GPU_LOG="${OUTPUT_DIR}/gpu_metrics.log"
 MAX_STEPS_ARG=()
 REPORT_TO_ARG=()
+GPU_MONITOR_PID=""
+
+exec > >(tee -a "${TRAIN_LOG}") 2>&1
+
+cleanup_gpu_monitor() {
+    local rc=$?
+    if [[ -n "${GPU_MONITOR_PID}" ]] && kill -0 "${GPU_MONITOR_PID}" 2>/dev/null; then
+        kill "${GPU_MONITOR_PID}" 2>/dev/null || true
+        wait "${GPU_MONITOR_PID}" 2>/dev/null || true
+    fi
+    return "${rc}"
+}
+
+start_gpu_monitor() {
+    if [[ "${ENABLE_GPU_MONITOR}" != "true" ]]; then
+        echo "[INFO] GPU monitor disabled (ENABLE_GPU_MONITOR=${ENABLE_GPU_MONITOR})"
+        return
+    fi
+
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo "[WARN] nvidia-smi not found; skip GPU temperature logging."
+        return
+    fi
+
+    if ! [[ "${GPU_MONITOR_INTERVAL}" =~ ^[0-9]+$ ]] || [[ "${GPU_MONITOR_INTERVAL}" -lt 1 ]]; then
+        echo "[WARN] Invalid GPU_MONITOR_INTERVAL=${GPU_MONITOR_INTERVAL}; skip GPU temperature logging."
+        return
+    fi
+
+    : > "${GPU_LOG}"
+    {
+        echo "# ts,index,uuid,name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw"
+        while true; do
+            local ts
+            ts="$(date '+%Y-%m-%d %H:%M:%S')"
+            if ! nvidia-smi \
+                --query-gpu=index,uuid,name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw \
+                --format=csv,noheader,nounits 2>/dev/null | sed "s/^/${ts},/"; then
+                echo "${ts},ERROR,nvidia-smi_failed"
+            fi
+            sleep "${GPU_MONITOR_INTERVAL}"
+        done
+    } >> "${GPU_LOG}" &
+    GPU_MONITOR_PID=$!
+    echo "[INFO] GPU monitor enabled: interval=${GPU_MONITOR_INTERVAL}s"
+    echo "[INFO] GPU metrics log: ${GPU_LOG}"
+}
+
+trap cleanup_gpu_monitor EXIT
+
+if [[ ! -d "${MODEL_PATH}" ]]; then
+    echo "Base model directory not found: ${MODEL_PATH}" >&2
+    exit 2
+fi
+
+if [[ ! -d "${VISION_TOWER}" ]]; then
+    echo "Vision tower directory not found: ${VISION_TOWER}" >&2
+    exit 2
+fi
+
+if [[ ! -f "${DATA_PATH}" ]]; then
+    echo "Data path not found: ${DATA_PATH}" >&2
+    exit 2
+fi
 
 compute_effective_samples() {
     DATA_PATH="${DATA_PATH}" \
@@ -228,6 +333,7 @@ export SATNAV_MAX_EPISODES SATNAV_MAX_SAMPLES SATNAV_SAMPLE_RATIO
 echo "=========================================="
 echo "NaVILA Baseline Training"
 echo "=========================================="
+echo "  Init mode  : ${TRAIN_MODE}"
 echo "  Model      : ${MODEL_PATH}"
 echo "  Data path  : ${DATA_PATH}"
 echo "  Image root : ${IMAGE_FOLDER}"
@@ -240,9 +346,13 @@ echo "  LR         : ${LEARNING_RATE}"
 echo "  Total step : ${TOTAL_STEPS}"
 echo "  Save every : ${SAVE_STEPS} steps"
 echo "  Sampling   : head_keep=${SATNAV_HEAD_KEEP:-off}, stride=${SATNAV_SAMPLE_STRIDE:-off}, max_ep=${SATNAV_MAX_EPISODES:-off}, max_samples=${SATNAV_MAX_SAMPLES:-off}"
+echo "  Train log  : ${TRAIN_LOG}"
+echo "  GPU log    : ${GPU_LOG} (enabled=${ENABLE_GPU_MONITOR}, interval=${GPU_MONITOR_INTERVAL}s)"
 echo "  SwanLab    : ${USE_SWANLAB}"
 echo "  Report To  : ${REPORT_TO_ARG[*]}"
 echo "=========================================="
+
+start_gpu_monitor
 
 torchrun \
     --nproc_per_node="${NUM_GPUS}" \
