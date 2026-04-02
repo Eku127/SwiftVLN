@@ -80,14 +80,13 @@ DATASET:
   TYPE: SatNav
   
   # Dataset split: train, val_seen, val_unseen, test
-  SPLIT: test
+  SPLIT: val_seen
   
-  # Path to the dataset JSON file
-  # Supports both .json and .json.gz formats
-  # Use {split} placeholder to be replaced with the SPLIT value
-  # For example testing, use: tests/test_data/satnav_dataset_complex.json
+  # Path to the dataset JSON file. {split} is replaced with --eval_split at runtime.
+  # e.g. val_seen → eval/val_seen/all_episodes.json
+  # If the resolved path does not exist, evaluation will fail with a clear error.
   # DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260115/episodes/MN_VLN_Episodes_2.5flash.json
-  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/episodes/eval/all_episodes.json
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/episodes/eval/{split}/all_episodes.json
   # DATA_PATH: /mnt/data1/home/jiangjiajun/workspace/SatNav/tests/test_data/satnav_debug_merged.json
   # DATA_PATH: /mnt/data1/home/jiangjiajun/workspace/SatNav/tests/test_data/satnav_dataset_merged_2.json
   

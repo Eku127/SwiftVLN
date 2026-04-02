@@ -14,7 +14,8 @@
 #
 # Arguments:
 #   exp_name_or_subpath / path  First argument: experiment name/subpath or checkpoint path
-#   split            Evaluation split: val_unseen (default), val_seen, test
+#   split            Evaluation split: val_seen / val_unseen / test
+#                    If omitted, SatNav runs both val_seen and val_unseen
 #   gpus             Number of GPUs (default: 8)
 #   max_episodes     Limit episodes for debugging (optional)
 #
@@ -43,7 +44,7 @@ print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # ---- Args ----
 INPUT="${1:-}"
-SPLIT="${2:-val_unseen}"
+SPLIT_ARG="${2:-}"
 NUM_GPUS="${3:-8}"
 MAX_EPISODES="${4:-}"
 
@@ -60,6 +61,12 @@ if [ -z "$INPUT" ]; then
     echo "  # Eval by checkpoint path (legacy)"
     echo "  bash scripts/eval_satnav.sh /path/to/checkpoint val_unseen 8"
     exit 1
+fi
+
+if [ -n "$SPLIT_ARG" ]; then
+    SPLITS_LIST="$SPLIT_ARG"
+else
+    SPLITS_LIST="val_seen val_unseen"
 fi
 
 # ---- Paths ----
@@ -108,7 +115,7 @@ if [ "$EVAL_MODE" = "by_name" ]; then
     fi
 
     # Extract data version from EXP_NAME: data{XXXXXX} -> ver_XXXXXX
-    if [ -z "$SATNAV_VERSION" ]; then
+    if [ -z "${SATNAV_VERSION:-}" ]; then
         PARSED_VER=$(echo "$EXP_NAME" | grep -oP 'data\K\d+' | head -1)
         if [ -n "$PARSED_VER" ]; then
             SATNAV_VERSION="ver_${PARSED_VER}"
@@ -116,7 +123,7 @@ if [ "$EVAL_MODE" = "by_name" ]; then
         fi
     fi
 
-    OUTPUT_DIR="${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}/${SPLIT}"
+    OUTPUT_BASE_DIR="${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}"
 
 else
     CHECKPOINT_DIR="$INPUT"
@@ -127,11 +134,11 @@ else
         exit 1
     fi
 
-    OUTPUT_DIR="${REPO_ROOT}/results/streamvln-baseline/by-path/${EXP_NAME}/${SPLIT}"
+    OUTPUT_BASE_DIR="${REPO_ROOT}/results/streamvln-baseline/by-path/${EXP_NAME}"
 fi
 
 # ---- Resolve SatNav version ----
-if [ -z "$SATNAV_VERSION" ]; then
+if [ -z "${SATNAV_VERSION:-}" ]; then
     SATNAV_VERSION=$(ls -d "${SATNAV_DATA_ROOT}"/ver_* 2>/dev/null | sort | tail -1 | xargs basename)
     if [ -z "$SATNAV_VERSION" ]; then
         print_error "No SatNav data versions found in ${SATNAV_DATA_ROOT}"
@@ -142,21 +149,7 @@ else
     print_info "Using SatNav version: ${SATNAV_VERSION}"
 fi
 
-SATNAV_EPISODES="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/episodes/eval/all_episodes.json"
 SATNAV_SCENES="${SATNAV_DATA_ROOT}/scenes"
-
-if [ ! -f "$SATNAV_EPISODES" ]; then
-    print_error "Episodes file not found: ${SATNAV_EPISODES}"
-    exit 1
-fi
-
-# ---- Generate version-specific config ----
-SATNAV_CONFIG="${BASELINE_DIR}/configs/.satnav_task_eval_tmp.yaml"
-trap 'rm -f "$SATNAV_CONFIG"' EXIT
-cp "$SATNAV_CONFIG_TEMPLATE" "$SATNAV_CONFIG"
-# Patch DATA_PATH and SCENES_DIR to match selected version
-sed -i "s|DATA_PATH:.*|DATA_PATH: ${SATNAV_EPISODES}|" "$SATNAV_CONFIG"
-sed -i "s|SCENES_DIR:.*|SCENES_DIR: ${SATNAV_SCENES}|" "$SATNAV_CONFIG"
 
 # ---- Tokenizer ----
 TOKENIZER_PATH="${CHECKPOINT_DIR}"
@@ -165,45 +158,10 @@ if [ ! -f "${CHECKPOINT_DIR}/tokenizer_config.json" ]; then
     print_info "No tokenizer in checkpoint, using local base model: ${TOKENIZER_PATH}"
 fi
 
-mkdir -p "${OUTPUT_DIR}"
-
-echo ""
-echo "=========================================="
-echo "StreamVLN Baseline Evaluation"
-echo "=========================================="
-echo "  Eval mode  : ${EVAL_MODE}"
-echo "  EXP_NAME   : ${EXP_NAME}"
-echo "  Checkpoint : ${CHECKPOINT_DIR}"
-echo "  Tokenizer  : ${TOKENIZER_PATH}"
-echo "  Config     : ${SATNAV_CONFIG}"
-echo "  Data ver   : ${SATNAV_VERSION}"
-echo "  Split      : ${SPLIT}"
-echo "  Output     : ${OUTPUT_DIR}"
-echo "  GPUs       : ${NUM_GPUS}"
-[ -n "$MAX_EPISODES" ] && echo "  Max Episodes: ${MAX_EPISODES}"
-echo "=========================================="
-
 # ---- PYTHONPATH ----
 export PYTHONPATH="/mnt/data1/home/jiangjiajun/workspace/StreamVLN:\
 /mnt/data1/home/jiangjiajun/workspace/StreamVLN/streamvln:\
 ${BASELINE_DIR}:${PYTHONPATH:-}"
-
-# ---- Build common args ----
-COMMON_ARGS=(
-    --model_path "${CHECKPOINT_DIR}"
-    --tokenizer_path "${TOKENIZER_PATH}"
-    --satnav_config_path "${SATNAV_CONFIG}"
-    --eval_split "${SPLIT}"
-    --output_path "${OUTPUT_DIR}"
-    --num_frames 32
-    --num_future_steps 4
-    --num_history 8
-    --model_max_length 32768
-)
-
-if [ -n "$MAX_EPISODES" ]; then
-    COMMON_ARGS+=(--max_episodes "${MAX_EPISODES}")
-fi
 
 # ---- Launch ----
 if command -v torchrun >/dev/null 2>&1; then
@@ -213,24 +171,77 @@ else
     TORCHRUN_CMD=(python -m torch.distributed.run)
 fi
 
-if [ "$NUM_GPUS" -gt 1 ]; then
-    "${TORCHRUN_CMD[@]}" \
-        --nproc_per_node="${NUM_GPUS}" \
-        --master_port=$((RANDOM % 10000 + 20000)) \
-        "${EVAL_SCRIPT}" \
-        "${COMMON_ARGS[@]}" \
-        --world_size "${NUM_GPUS}" \
-        2>&1 | tee "${OUTPUT_DIR}/eval.log"
-else
-    python "${EVAL_SCRIPT}" \
-        "${COMMON_ARGS[@]}" \
-        --world_size 1 \
-        --rank 0 \
-        --gpu 0 \
-        2>&1 | tee "${OUTPUT_DIR}/eval.log"
-fi
+run_single_split() {
+    local split="$1"
+    local satnav_episodes="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/episodes/eval/${split}/all_episodes.json"
+    local satnav_config="${BASELINE_DIR}/configs/.satnav_task_eval_${split}_$$.yaml"
+    local output_dir="${OUTPUT_BASE_DIR}/${split}"
 
-echo ""
-print_success "Evaluation completed!"
-echo "  Results: ${OUTPUT_DIR}"
-echo ""
+    if [ ! -f "$satnav_episodes" ]; then
+        print_error "Episodes file not found: ${satnav_episodes}"
+        return 1
+    fi
+
+    cp "$SATNAV_CONFIG_TEMPLATE" "$satnav_config"
+    sed -i "s|DATA_PATH:.*|DATA_PATH: ${satnav_episodes}|" "$satnav_config"
+    sed -i "s|SCENES_DIR:.*|SCENES_DIR: ${SATNAV_SCENES}|" "$satnav_config"
+
+    mkdir -p "${output_dir}"
+
+    echo ""
+    echo "=========================================="
+    echo "StreamVLN Baseline Evaluation"
+    echo "=========================================="
+    echo "  Eval mode  : ${EVAL_MODE}"
+    echo "  EXP_NAME   : ${EXP_NAME}"
+    echo "  Checkpoint : ${CHECKPOINT_DIR}"
+    echo "  Tokenizer  : ${TOKENIZER_PATH}"
+    echo "  Config     : ${satnav_config}"
+    echo "  Data ver   : ${SATNAV_VERSION}"
+    echo "  Split      : ${split}"
+    echo "  Output     : ${output_dir}"
+    echo "  GPUs       : ${NUM_GPUS}"
+    [ -n "$MAX_EPISODES" ] && echo "  Max Episodes: ${MAX_EPISODES}"
+    echo "=========================================="
+
+    COMMON_ARGS=(
+        --model_path "${CHECKPOINT_DIR}"
+        --tokenizer_path "${TOKENIZER_PATH}"
+        --satnav_config_path "${satnav_config}"
+        --eval_split "${split}"
+        --output_path "${output_dir}"
+        --num_frames 32
+        --num_future_steps 4
+        --num_history 8
+        --model_max_length 32768
+    )
+
+    if [ -n "$MAX_EPISODES" ]; then
+        COMMON_ARGS+=(--max_episodes "${MAX_EPISODES}")
+    fi
+
+    if [ "$NUM_GPUS" -gt 1 ]; then
+        "${TORCHRUN_CMD[@]}" \
+            --nproc_per_node="${NUM_GPUS}" \
+            --master_port=$((RANDOM % 10000 + 20000)) \
+            "${EVAL_SCRIPT}" \
+            "${COMMON_ARGS[@]}" \
+            --world_size "${NUM_GPUS}" \
+            2>&1 | tee "${output_dir}/eval.log"
+    else
+        python "${EVAL_SCRIPT}" \
+            "${COMMON_ARGS[@]}" \
+            --world_size 1 \
+            --rank 0 \
+            --gpu 0 \
+            2>&1 | tee "${output_dir}/eval.log"
+    fi
+
+    rm -f "${satnav_config}"
+    print_success "Evaluation completed for split=${split}!"
+    echo "  Results: ${output_dir}"
+}
+
+for SPLIT in ${SPLITS_LIST}; do
+    run_single_split "${SPLIT}"
+done

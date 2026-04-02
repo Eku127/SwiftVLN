@@ -18,6 +18,7 @@ from pathlib import Path
 from config import get_data_dir, get_dataset_path, TRAIN_CITIES, EVAL_CITIES
 from process_episodes import process_episodes
 from convert_qa_to_swift import convert_qa_to_swift
+from normalize_trajectory_types import normalize_dataset
 
 
 def run_all(
@@ -59,14 +60,25 @@ def run_all(
         sys.exit(1)
     
     results = {}
-    
+
+    print("\n" + "=" * 70)
+    print("STEP 0: Normalizing Trajectory Types")
+    print("=" * 70)
+    try:
+        results["normalize"] = normalize_dataset(version)
+        print(f"  Removed cities: {results['normalize']['removed_cities']}")
+        print(f"  Normalized episodes: {results['normalize']['normalized_episodes']}")
+    except Exception as e:
+        print(f"Error normalizing trajectory types: {e}")
+        results["normalize"] = {"error": str(e)}
+
     # Step 1: Process episodes
     if not qa_only:
         print("\n" + "=" * 70)
         print("STEP 1: Processing Episodes")
         print("=" * 70)
         try:
-            results["episodes"] = process_episodes(version)
+            results["episodes"] = process_episodes(version, normalize_first=False)
         except Exception as e:
             print(f"Error processing episodes: {e}")
             results["episodes"] = {"error": str(e)}

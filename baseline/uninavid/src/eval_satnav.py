@@ -87,6 +87,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 # Fixed NE penalty for episodes that error during evaluation.
 ERROR_NE_PENALTY = 500.0
+ACTIONS_PER_QUERY = 4
 
 # Action text → SatNav action index
 ACTION_TEXT_MAP = {"forward": 1, "left": 2, "right": 3, "stop": 0}
@@ -301,8 +302,9 @@ class UniNaVidEvaluator:
         output_ids = self.model.generate(
             input_ids,
             images=imgs,
-            do_sample=True,
-            temperature=0.5,
+            # Use deterministic decoding for stable benchmark metrics.
+            do_sample=False,
+            temperature=0.0,
             max_new_tokens=1024,   # same as offline_eval_uninavid.py
             use_cache=True,
             stopping_criteria=[stopping_criteria],
@@ -326,9 +328,9 @@ class UniNaVidEvaluator:
 
     @staticmethod
     def parse_actions(output: str) -> list:
-        """Parse action words from model output text."""
+        """Parse action words from model output text and keep at most 4."""
         words = re.findall(r"\b(forward|left|right|stop)\b", output.lower())
-        return [ACTION_TEXT_MAP[w] for w in words]
+        return [ACTION_TEXT_MAP[w] for w in words[:ACTIONS_PER_QUERY]]
 
     # ------------------------------------------------------------------
     # Instruction extraction
@@ -450,9 +452,55 @@ def init_distributed(args):
         args.local_rank = 0
 
 
+def distributed_barrier(args) -> None:
+    """Run barrier on the current rank's device to avoid NCCL device warnings."""
+    if not (dist.is_available() and dist.is_initialized()):
+        return
+    device_ids = [args.local_rank] if torch.cuda.is_available() else None
+    dist.barrier(device_ids=device_ids)
+
+
+def cleanup_distributed() -> None:
+    """Destroy the process group so NCCL can exit cleanly."""
+    if dist.is_available() and dist.is_initialized():
+        dist.destroy_process_group()
+
+
 # =====================================================================
 # Distributed result aggregation
 # =====================================================================
+
+
+def build_episode_key(episode_id, scene_id) -> str:
+    ep_id = str(episode_id) if episode_id is not None else ""
+    scene = str(scene_id) if scene_id is not None else ""
+    if ep_id == "":
+        return ""
+    if scene == "":
+        return ep_id
+    return f"{scene}::{ep_id}"
+
+
+def load_dedup_results(result_file: str) -> list:
+    """Load result.jsonl and keep the latest record per scene_id + episode_id."""
+    if not os.path.exists(result_file):
+        return []
+
+    by_episode: dict = {}
+    with open(result_file, encoding="utf-8") as f:
+        for line in f:
+            try:
+                result = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ep_key = build_episode_key(
+                result.get("episode_id", ""),
+                result.get("scene_id", ""),
+            )
+            if not ep_key:
+                continue
+            by_episode[ep_key] = result
+    return list(by_episode.values())
 
 
 def save_summary(results: list, output_path: str, args) -> None:
@@ -533,64 +581,14 @@ def save_summary(results: list, output_path: str, args) -> None:
     print(f"Results saved to {output_path}")
 
 
-def aggregate_distributed(results: list, world_size: int, output_path: str, args) -> None:
-    """Gather results from all ranks, then print/save summary on rank 0."""
-    device = torch.device(f"cuda:{get_rank()}")
+def aggregate_distributed(result_file: str, output_path: str, args) -> None:
+    """Wait all ranks, then summarize from deduplicated result.jsonl on rank 0."""
     rank = get_rank()
-
-    sucs = torch.tensor([r["success"] for r in results], device=device)
-    spls = torch.tensor([r["spl"] for r in results], device=device)
-    oss = torch.tensor([r["oracle_success"] for r in results], device=device)
-    nes = torch.tensor([r["distance_to_goal"] for r in results], device=device)
-    ep_num = torch.tensor(len(results), device=device)
-
-    ep_num_all = [torch.zeros_like(ep_num) for _ in range(world_size)]
-    dist.all_gather(ep_num_all, ep_num)
-
-    sucs_all = [torch.zeros(ep_num_all[i].item(), dtype=sucs.dtype, device=device) for i in range(world_size)]
-    spls_all = [torch.zeros(ep_num_all[i].item(), dtype=spls.dtype, device=device) for i in range(world_size)]
-    oss_all = [torch.zeros(ep_num_all[i].item(), dtype=oss.dtype, device=device) for i in range(world_size)]
-    nes_all = [torch.zeros(ep_num_all[i].item(), dtype=nes.dtype, device=device) for i in range(world_size)]
-
-    dist.barrier()
-    dist.all_gather(sucs_all, sucs)
-    dist.all_gather(spls_all, spls)
-    dist.all_gather(oss_all, oss)
-    dist.all_gather(nes_all, nes)
-    dist.barrier()
-
+    distributed_barrier(args)
     if rank == 0:
-        sucs_cat = torch.cat(sucs_all).cpu().numpy()
-        spls_cat = torch.cat(spls_all).cpu().numpy()
-        oss_cat = torch.cat(oss_all).cpu().numpy()
-        nes_cat = torch.cat(nes_all).cpu().numpy()
-        total = len(sucs_cat)
-
-        summary = {
-            "eval_split": args.eval_split,
-            "SR": float(sucs_cat.mean()),
-            "SPL": float(spls_cat.mean()),
-            "OS": float(oss_cat.mean()),
-            "NE": float(nes_cat.mean()),
-            "total_episodes": total,
-            "model_path": args.model_path,
-        }
-
-        print("\n" + "=" * 60)
-        print(f"Uni-NaVid SatNav Evaluation Summary ({args.eval_split})")
-        print("=" * 60)
-        print(f"Success Rate: {summary['SR']:.2%}")
-        print(f"SPL:          {summary['SPL']:.4f}")
-        print(f"Oracle Succ:  {summary['OS']:.2%}")
-        print(f"Nav Error:    {summary['NE']:.2f}m")
-        print(f"Total:        {summary['total_episodes']}")
-        print("=" * 60)
-
-        summary_path = os.path.join(output_path, "evaluation_summary.json")
-        with open(summary_path, "w") as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False)
-
-        print(f"Results saved to {output_path}")
+        all_results = load_dedup_results(result_file)
+        save_summary(all_results, output_path, args)
+    distributed_barrier(args)
 
 
 # =====================================================================
@@ -634,19 +632,25 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
 
     # Resume support
     result_file = os.path.join(args.output_path, "result.jsonl")
-    done_ids: set = set()
+    existing_results = load_dedup_results(result_file)
+    done_ids = {
+        build_episode_key(r.get("episode_id", ""), r.get("scene_id", ""))
+        for r in existing_results
+    }
+    done_ids.discard("")
     results = []
-    if os.path.exists(result_file):
-        with open(result_file, encoding="utf-8") as f:
-            for line in f:
-                try:
-                    res = json.loads(line)
-                    done_ids.add(str(res.get("episode_id", "")))
-                    results.append(res)
-                except json.JSONDecodeError:
-                    pass
+    if existing_results:
         if is_main:
             print(f"[Resume] Loaded {len(done_ids)} done episodes from {result_file}")
+
+    local_done_before_resume = sum(
+        1
+        for ep in my_episodes
+        if build_episode_key(
+            getattr(ep, "episode_id", ""),
+            getattr(ep, "scene_id", "unknown"),
+        ) in done_ids
+    )
 
     pbar = tqdm.tqdm(
         my_episodes,
@@ -656,7 +660,9 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
 
     for episode in pbar:
         ep_id = str(episode.episode_id)
-        if ep_id in done_ids:
+        scene_id = getattr(episode, "scene_id", "unknown")
+        ep_key = build_episode_key(ep_id, scene_id)
+        if ep_key in done_ids:
             continue
 
         instruction = evaluator.get_instruction(episode)
@@ -666,7 +672,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             metrics = evaluator.eval_episode(env_wrapper, episode)
             result = {
                 "episode_id": ep_id,
-                "scene_id": getattr(episode, "scene_id", "unknown"),
+                "scene_id": scene_id,
                 "success": float(metrics.get("success", 0)),
                 "spl": float(metrics.get("spl", 0)),
                 "oracle_success": float(metrics.get("oracle_success", 0)),
@@ -681,7 +687,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             traceback.print_exc()
             result = {
                 "episode_id": ep_id,
-                "scene_id": getattr(episode, "scene_id", "unknown"),
+                "scene_id": scene_id,
                 "success": 0.0,
                 "spl": 0.0,
                 "oracle_success": 0.0,
@@ -695,6 +701,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             result["trajectory_type"] = trajectory_type
 
         results.append(result)
+        done_ids.add(ep_key)
         with open(result_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(result, ensure_ascii=True) + "\n")
 
@@ -705,14 +712,19 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             [r["distance_to_goal"] for r in recent if r["distance_to_goal"] < 1e6]
             or [0]
         )
-        pbar.set_postfix(SR=f"{avg_sr:.2%}", NE=f"{avg_ne:.1f}m", done=len(results))
+        pbar.set_postfix(
+            SR=f"{avg_sr:.2%}",
+            NE=f"{avg_ne:.1f}m",
+            done=local_done_before_resume + len(results),
+        )
 
     env_wrapper.close()
 
     if world_size > 1:
-        aggregate_distributed(results, world_size, args.output_path, args)
+        aggregate_distributed(result_file, args.output_path, args)
     else:
-        save_summary(results, args.output_path, args)
+        all_results = load_dedup_results(result_file)
+        save_summary(all_results, args.output_path, args)
 
 
 # =====================================================================
@@ -756,7 +768,7 @@ def main():
         "--max_episodes",
         type=int,
         default=None,
-        help="Cap number of episodes per rank (for quick smoke/debug runs)",
+        help="Cap total episodes before distributed sharding (for quick smoke/debug runs)",
     )
     # Distributed args (populated by init_distributed)
     parser.add_argument("--world_size", default=1, type=int)
@@ -767,32 +779,35 @@ def main():
     init_distributed(args)
     device = torch.device(f"cuda:{args.local_rank}")
 
-    # ---- Load model ----
-    # load_pretrained_model dispatches on 'vid' in model_name to load
-    # LlavaLlamaAttForCausalLM. Our checkpoint directories may not have
-    # a "vid"-containing name, so we force a canonical name here.
-    #
-    # Use device_map={"": local_rank} to pin all layers to this rank's GPU.
-    # device_map="auto" (the default) distributes layers across all visible
-    # GPUs which breaks distributed eval where each rank owns exactly one GPU.
-    model_name = "uninavid"
-    tokenizer, model, image_processor, context_len = load_pretrained_model(
-        args.model_path,
-        args.model_base,
-        model_name,
-        device_map={"": args.local_rank},
-        device=f"cuda:{args.local_rank}",
-    )
+    try:
+        # ---- Load model ----
+        # load_pretrained_model dispatches on 'vid' in model_name to load
+        # LlavaLlamaAttForCausalLM. Our checkpoint directories may not have
+        # a "vid"-containing name, so we force a canonical name here.
+        #
+        # Use device_map={"": local_rank} to pin all layers to this rank's GPU.
+        # device_map="auto" (the default) distributes layers across all visible
+        # GPUs which breaks distributed eval where each rank owns exactly one GPU.
+        model_name = "uninavid"
+        tokenizer, model, image_processor, context_len = load_pretrained_model(
+            args.model_path,
+            args.model_base,
+            model_name,
+            device_map={"": args.local_rank},
+            device=f"cuda:{args.local_rank}",
+        )
 
-    model.eval()
+        model.eval()
 
-    # ---- Verify flash attention (smoke check) ----
-    attn_class = type(model.model.layers[0].self_attn).__name__
-    print(f"[FlashAttn Check] attention class: {attn_class}")
-    print(f"[FlashAttn Check] using LlamaFlashAttention2: {attn_class == 'LlamaFlashAttention2'}")
+        # ---- Verify flash attention (smoke check) ----
+        attn_class = type(model.model.layers[0].self_attn).__name__
+        print(f"[FlashAttn Check] attention class: {attn_class}")
+        print(f"[FlashAttn Check] using LlamaFlashAttention2: {attn_class == 'LlamaFlashAttention2'}")
 
-    os.makedirs(args.output_path, exist_ok=True)
-    evaluate(model, tokenizer, image_processor, args)
+        os.makedirs(args.output_path, exist_ok=True)
+        evaluate(model, tokenizer, image_processor, args)
+    finally:
+        cleanup_distributed()
 
 
 if __name__ == "__main__":

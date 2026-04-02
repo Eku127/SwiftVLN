@@ -16,8 +16,9 @@ from typing import List, Dict, Any
 
 from config import (
     TRAIN_CITIES, EVAL_CITIES, EPISODE_TYPES, EPISODE_FILES,
-    get_data_dir, get_episodes_dir
+    get_data_dir, get_episodes_dir, classify_eval_cities
 )
+from normalize_trajectory_types import normalize_dataset
 
 
 def load_episodes(city_path: Path) -> List[Dict[str, Any]]:
@@ -96,7 +97,12 @@ def process_cities(data_dir: Path, cities: List[str], output_dir: Path, split_na
     }
 
 
-def process_episodes(version: str, train_only: bool = False, eval_only: bool = False):
+def process_episodes(
+    version: str,
+    train_only: bool = False,
+    eval_only: bool = False,
+    normalize_first: bool = True,
+):
     """
     处理指定版本的episodes数据
     
@@ -114,19 +120,61 @@ def process_episodes(version: str, train_only: bool = False, eval_only: bool = F
     print(f"Processing episodes for version: {version}")
     print(f"Data directory: {data_dir}")
     print(f"Output directory: {output_dir}")
+
+    if normalize_first:
+        normalize_result = normalize_dataset(version)
+        print(
+            "Normalization complete: "
+            f"removed={normalize_result['removed_cities']}, "
+            f"normalized={normalize_result['normalized_episodes']}"
+        )
     
     results = {}
-    
+
     if not eval_only:
         results["train"] = process_cities(data_dir, TRAIN_CITIES, output_dir, "train")
-    
+
     if not train_only:
-        results["eval"] = process_cities(data_dir, EVAL_CITIES, output_dir, "eval")
-    
+        results.update(_process_eval_splits(data_dir, output_dir))
+
     print(f"\n{'=' * 60}")
     print("Processing complete!")
     print(f"{'=' * 60}")
-    
+
+    return results
+
+
+def _process_eval_splits(data_dir: Path, output_dir: Path) -> dict:
+    """在 eval/ 下生成 val_seen/ 和 val_unseen/ 子目录。
+
+    seen/unseen 按城市名前缀自动判断：eval 城市的基础名若在 train 中有任意
+    TIF，则为 val_seen；否则为 val_unseen。
+    """
+    val_seen_cities, val_unseen_cities = classify_eval_cities()
+
+    print(f"\n{'=' * 60}")
+    print("Classifying eval cities into val_seen / val_unseen")
+    print(f"  val_seen  ({len(val_seen_cities)}): {', '.join(val_seen_cities) or '(none)'}")
+    print(f"  val_unseen({len(val_unseen_cities)}): {', '.join(val_unseen_cities) or '(none)'}")
+    print(f"{'=' * 60}")
+
+    results = {}
+    if val_seen_cities:
+        results["val_seen"] = process_cities(
+            data_dir, val_seen_cities, output_dir / "eval", "val_seen"
+        )
+    else:
+        print("  val_seen: no cities, skipping.")
+        results["val_seen"] = None
+
+    if val_unseen_cities:
+        results["val_unseen"] = process_cities(
+            data_dir, val_unseen_cities, output_dir / "eval", "val_unseen"
+        )
+    else:
+        print("  val_unseen: no cities, skipping.")
+        results["val_unseen"] = None
+
     return results
 
 
@@ -155,7 +203,11 @@ def main():
     if args.train_only and args.eval_only:
         parser.error("Cannot specify both --train-only and --eval-only")
     
-    process_episodes(args.version, args.train_only, args.eval_only)
+    process_episodes(
+        args.version,
+        train_only=args.train_only,
+        eval_only=args.eval_only,
+    )
 
 
 if __name__ == "__main__":

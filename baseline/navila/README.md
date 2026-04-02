@@ -65,6 +65,26 @@ SatNav 训练入口：
 bash baseline/navila/scripts/train_satnav.sh
 ```
 
+训练模式约定：
+
+- `scratch`：从 `baseline/navila/model/navila-siglip-llama3-8b-v1.5-pretrain` 起训
+- `continue`：从 `baseline/navila/model/navila-llama3-8b-8f` 继续训练
+- 默认无参调用等价于 `scratch`
+- 兼容旧调用：若只传一个非模式参数，仍视为 `EXP_NAME`
+
+示例：
+
+```bash
+# 默认 scratch
+bash baseline/navila/scripts/train_satnav.sh
+
+# 显式 scratch
+bash baseline/navila/scripts/train_satnav.sh scratch
+
+# 显式 continue
+bash baseline/navila/scripts/train_satnav.sh continue
+```
+
 常用覆盖项：
 
 ```bash
@@ -75,6 +95,13 @@ TRAIN_BSZ=10 \
 GRAD_ACCUM=2 \
 bash baseline/navila/scripts/train_satnav.sh
 ```
+
+训练日志约定：
+
+- 主日志：`output/navila-baseline/<EXP_NAME>/train.log`
+- GPU 指标日志：`output/navila-baseline/<EXP_NAME>/gpu_metrics.log`
+- 默认每 `60s` 采样一次 `nvidia-smi`，记录 `temperature.gpu / utilization.gpu / memory.used / power.draw`
+- 可通过 `ENABLE_GPU_MONITOR=false` 关闭，或用 `GPU_MONITOR_INTERVAL=<秒>` 调整采样周期
 
 实现方式：
 
@@ -87,13 +114,18 @@ bash baseline/navila/scripts/train_satnav.sh
 SatNav 评测入口：
 
 ```bash
-bash baseline/navila/scripts/eval_satnav.sh navila-llama3-8b-8f val_unseen 1 5
+bash baseline/navila/scripts/eval_satnav.sh navila-llama3-8b-8f
 ```
 
 支持两种模式：
 
 - 按实验名评测：从 `output/navila-baseline/<EXP_NAME>/` 自动解析 checkpoint
 - 按 checkpoint 路径评测：直接传入绝对路径
+
+SatNav 评测 split 约定：
+
+- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
+- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
 
 常用覆盖项：
 

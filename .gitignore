@@ -16,6 +16,7 @@ results/
 reports/*.tmp
 runtime/
 swanlog/
+/test_data/
 
 # Generated analysis artifacts
 src/swiftvln/scripts/analysis/trajectory_analysis/*.png
@@ -45,3 +46,9 @@ baseline/*/checkpoints/
 
 # Ignore pycache under baseline
 baseline/**/__pycache__/
+
+# Sidecar packages (installed by Codex, not part of the repo)
+.sidecar_pkgs/
+
+# Virtual environments
+.venvs/

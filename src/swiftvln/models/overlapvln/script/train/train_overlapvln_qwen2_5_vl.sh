@@ -33,7 +33,8 @@ MODEL_TYPE="overlapvln_qwen2_5_vl"
 TRAIN_STAGE="stage1"
 
 # Model paths for each stage
-STAGE1_MODEL_PATH="Qwen/Qwen2.5-VL-3B-Instruct"
+# Stage1 defaults to the local offline cache path to avoid ModelScope hub resolution.
+STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
 STAGE2_MODEL_PATH="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239"
 
 # Select model path based on stage
@@ -223,7 +224,7 @@ fi
 QA_SUFFIX=""
 if [ "$USE_QA_MIXED_TRAINING" = true ]; then
     # Convert ratio to percentage (e.g., 0.15 -> 15)
-    QA_PCT=$(echo "$QA_RATIO * 100" | bc | cut -d'.' -f1)
+    QA_PCT=$(awk "BEGIN {printf \"%.0f\", ${QA_RATIO} * 100}")
     QA_SUFFIX="-qa${QA_PCT}"
 fi
 
@@ -349,7 +350,7 @@ echo "------------------------------------------"
 if [ "$USE_QA_MIXED_TRAINING" = true ]; then
     echo "Mixed Training: ENABLED"
     echo "  QA Dataset: $QA_DATASET"
-    echo "  QA Ratio: ${QA_RATIO} (QA $(echo "scale=0; $QA_RATIO * 100" | bc)%, VLN $(echo "scale=0; (1 - $QA_RATIO) * 100" | bc)%)"
+    echo "  QA Ratio: ${QA_RATIO} (QA $(awk "BEGIN {printf \"%.0f\", ${QA_RATIO} * 100}")%, VLN $(awk "BEGIN {printf \"%.0f\", (1 - ${QA_RATIO}) * 100}")%)"
     [ "$QA_MAX_SAMPLES" -gt 0 ] 2>/dev/null && echo "  QA Max Samples: $QA_MAX_SAMPLES"
 else
     echo "Mixed Training: DISABLED (VLN only)"
@@ -479,3 +480,36 @@ echo "=========================================="
 echo "Training completed!"
 echo "Model saved to: $OUTPUT_DIR"
 echo "=========================================="
+
+# Persist training metadata (SwanLab URL etc.) for downstream eval/CSV collection
+if [ "$USE_SWANLAB" = true ]; then
+    _swanlab_url=""
+    _latest_run_dir=$(ls -td "${OUTPUT_DIR}"/v0-* 2>/dev/null | head -1)
+    if [ -n "$_latest_run_dir" ] && [ -f "${_latest_run_dir}/logging.jsonl" ]; then
+        _swanlab_url=$(grep -oP 'https://swanlab\.cn/@[^\s"]+/runs/[^\s"]+' "${_latest_run_dir}/logging.jsonl" 2>/dev/null | tail -1)
+    fi
+    if [ -z "$_swanlab_url" ] && [ -n "${TRAIN_LOG_FILE:-}" ] && [ -f "$TRAIN_LOG_FILE" ]; then
+        _swanlab_url=$(grep -oP 'https://swanlab\.cn/@[^\s"]+/runs/[^\s"]+' "$TRAIN_LOG_FILE" 2>/dev/null | tail -1)
+    fi
+    _SWANLAB_URL="$_swanlab_url" \
+    _SWANLAB_PROJECT="$SWANLAB_PROJECT" \
+    _SWANLAB_EXP="$SWANLAB_EXP_NAME" \
+    _OUTPUT_DIR="$OUTPUT_DIR" \
+    python3 -c "
+import json, pathlib, os
+meta = {}
+url = os.environ.get('_SWANLAB_URL', '')
+if url:
+    meta['swanlab_url'] = url
+proj = os.environ.get('_SWANLAB_PROJECT', '')
+if proj:
+    meta['swanlab_project'] = proj
+exp = os.environ.get('_SWANLAB_EXP', '')
+if exp:
+    meta['swanlab_exp_name'] = exp
+if meta:
+    out = pathlib.Path(os.environ['_OUTPUT_DIR']) / 'train_metadata.json'
+    out.write_text(json.dumps(meta, indent=2))
+    print(f'Saved train metadata: {out}')
+" 2>/dev/null || true
+fi

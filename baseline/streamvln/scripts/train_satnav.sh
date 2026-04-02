@@ -83,15 +83,17 @@ GRAD_ACCUM="${GRAD_ACCUM:-2}"
 GPUS_PER_NODE="${GPUS_PER_NODE:-8}"
 SAVE_STRATEGY="${SAVE_STRATEGY:-epoch}"
 SAVE_STEPS="${SAVE_STEPS:-1000}"
+MAX_STEPS="${MAX_STEPS:-}"
+LOGGING_STEPS="${LOGGING_STEPS:-10}"
 SMOKE_TEST="${SMOKE_TEST:-false}"
 
 # ---- SwanLab configuration ----
 USE_SWANLAB="${USE_SWANLAB:-false}"
-SWANLAB_PROJECT="StreamVLN"
+SWANLAB_PROJECT="${SWANLAB_PROJECT:-baseline}"
 SWANLAB_MODE="cloud"
 USE_WXWORK_NOTIFICATION="${USE_WXWORK_NOTIFICATION:-false}"
 SWANLAB_NOTIFICATION_METHOD="wxwork"
-SWANLAB_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d78d3128-7b16-4bf1-a6a7-403bf0915fe0"
+SWANLAB_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
 SWANLAB_SECRET=""
 
 # ---- VLN parameters ----
@@ -151,6 +153,12 @@ fi
 SAVE_ARGS=(--save_strategy "${SAVE_STRATEGY}" --save_total_limit 1)
 if [ "$SAVE_STRATEGY" = "steps" ]; then
     SAVE_ARGS+=(--save_steps "${SAVE_STEPS}")
+fi
+
+# ---- Max steps (optional, for smoke test) ----
+MAX_STEPS_ARG=()
+if [[ -n "${MAX_STEPS}" ]]; then
+    MAX_STEPS_ARG=(--max_steps "${MAX_STEPS}")
 fi
 
 echo "=========================================="
@@ -221,6 +229,7 @@ fi
     --run_name "${EXP_NAME}" \
     --output_dir "${OUTPUT_DIR}" \
     --num_train_epochs ${NUM_EPOCHS} \
+    "${MAX_STEPS_ARG[@]}" \
     --per_device_train_batch_size ${BATCH_SIZE} \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps ${GRAD_ACCUM} \
@@ -232,7 +241,7 @@ fi
     --warmup_ratio 0.075 \
     --lr_scheduler_type "cosine_with_min_lr" \
     --lr_scheduler_kwargs '{"min_lr": 1.85e-05}' \
-    --logging_steps 10 \
+    --logging_steps ${LOGGING_STEPS} \
     --tf32 True \
     --model_max_length 32768 \
     --gradient_checkpointing True \

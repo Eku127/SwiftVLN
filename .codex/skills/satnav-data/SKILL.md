@@ -20,9 +20,23 @@ Execute a 4-step pipeline **continuously without pausing between steps**. Only s
 - New city to `train` or `eval`.
 - New episode type to include or skip.
 4. Update data process configs accordingly.
-5. Run episodes processing to produce grouped outputs under `episodes/train` and `episodes/eval`.
+   - 当前默认划分（0327 起）：
+     - `eval`: `LosAngeles-1`, `Rome-1`, `NewYork-1`, `Auckland-1`, `Orlando-1`, `Rotterdam-1`
+     - `train`: 其余全部城市（含 `Amsterdam-1`, `Dube-1`）
+   - 当前自动分类结果（由 `classify_eval_cities()` 判断）：
+     - `val_seen`: `LosAngeles-1`, `Rome-1`, `NewYork-1`
+     - `val_unseen`: `Auckland-1`, `Orlando-1`, `Rotterdam-1`
+   - 当前默认 trajectory 归一化：
+     - `highway / multiway / multway / waterway` -> `trajectory_type = Road`
+     - 同时保留细分类到 `trajectory_subtype`，规范值为 `Highway / Multiway / Waterway`
+5. Run episodes processing to produce grouped outputs:
+   - `episodes/train/` — 训练集（all_episodes.json + 各类型）
+   - `episodes/eval/val_seen/` — seen eval 城市（基础城市名在 train 中有 TIF）
+   - `episodes/eval/val_unseen/` — unseen eval 城市（基础城市名完全不在 train 中）
+   - **注意**：`episodes/eval/` 下没有顶层扁平文件，只有 `val_seen/` 和 `val_unseen/` 子目录
+   - 分类逻辑由 `config.py` 中 `classify_eval_cities()` 自动判断，无需手动维护
 6. Convert `qa.json` to Swift-compatible JSONL (`qa_swift.jsonl`).
-7. Report summary and **proceed to Step 2 automatically**.
+7. Report summary and **proceed to Step 2 automatically** unless the user explicitly asks to stop after Step 1.
 
 ## Step 2: Trajectory Generation
 
@@ -32,18 +46,37 @@ Use SatNav repository application, not a copied `trajectory_data`.
 - `/mnt/data1/home/jiangjiajun/workspace/SatNav/configs/satnav_task.yaml`
 - Set `DATASET.DATA_PATH` to:
   `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/episodes/train/all_episodes.json`
-2. Run in `satnav` conda env:
-- `cd /mnt/data1/home/jiangjiajun/workspace/SatNav`
-- `python -m applications.trajectory_generation.generate_parallel --config <temp_config> --output_dir /mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/trajectory_data --num_workers 64`
-3. Verify outputs exist:
+- Set `DATASET.SCENES_DIR` to:
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
+
+2. Run in `satnav` conda env (在 tmux 中启动):
+```bash
+cd /mnt/data1/home/jiangjiajun/workspace/SatNav
+python -m applications.trajectory_generation.generate_parallel \
+    --config <temp_config> \
+    --output_dir /mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/trajectory_data
+```
+- 默认 `--num_workers` 自动计算：`min(num_scenes, cpu_count//4, 72)`，无需手动指定
+- 默认开启 Scene Affinity（按城市分组）以降低内存和 I/O 压力
+- 如需强制指定并发数：加 `--num_workers N`
+
+3. **Resume 机制说明（重要）**：
+   - 每个 episode 完成后在目录内写 `.done` + `.annotation.json`
+   - 重跑时：有 `.annotation.json` → 直接读缓存；有 `.done` 无 `.annotation.json` → 重模拟取 actions；无 `.done` → 完整重跑
+   - 中途被 kill 的 half-killed episodes（有图片但 actions 不一致）会被自动检测并重新生成
+
+4. Verify outputs exist:
 - `trajectory_data/images/`
 - `trajectory_data/annotations.json`
 - `trajectory_data/summary.json`
-4. Verify quality stats:
-- `summary.json` line count == generated trajectory count
-- `annotations.json` count matches `summary.json` lines
-- Record failed/discarded counts from generator log
-5. Report runtime and throughput estimate, then **proceed to Step 3 automatically**.
+
+5. Verify quality stats:
+- `annotations.json` 的条数 = 成功生成的 episodes 数（< 总 episode 数，失败/超步的会被排除）
+- `summary.json` 行数 == `annotations.json` 条数
+- 查看生成器日志中的 failed / discarded (max_steps) 统计
+- 失败的 episode 不写 `.annotation.json`，不进入训练数据，属预期行为
+
+6. Report runtime and throughput estimate, then **proceed to Step 3 automatically**.
 
 ## Step 3: Sync and Verify
 

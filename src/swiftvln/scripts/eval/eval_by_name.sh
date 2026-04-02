@@ -48,7 +48,7 @@
 #
 # 环境变量:
 #   ENV_TYPE     - habitat (默认) 或 satnav (如果模型名包含 env_type，会自动解析)
-#   EVAL_SPLIT   - val_unseen (默认), val_seen, test 等
+#   EVAL_SPLIT   - satnav 默认 val_seen, habitat 默认 val_unseen (可手动覆盖)
 #   CUDA_DEVICES - GPU设备 (default: 0,1,2,3,4,5,6,7)
 #   MASTER_PORT  - 分布式端口 (default: 29600)
 #   MAX_EPISODES - 限制episode数量 (用于调试)
@@ -736,7 +736,18 @@ fi
 # ============================================================================
 export MODEL_PATH="$CHECKPOINT_PATH"
 export ENV_TYPE="$ENV_TYPE"  # 已在前面从模型名解析或使用用户指定值
-export EVAL_SPLIT="${EVAL_SPLIT:-val_unseen}"
+
+# 确定要评测的 split 列表
+# 若用户已显式设置 EVAL_SPLIT，仅跑该 split；否则 SatNav 默认同时跑两个 split，Habitat 默认 val_unseen
+if [ -n "$EVAL_SPLIT" ]; then
+    EVAL_SPLITS_LIST="$EVAL_SPLIT"
+else
+    if [ "$ENV_TYPE" == "satnav" ]; then
+        EVAL_SPLITS_LIST="val_seen val_unseen"
+    else
+        EVAL_SPLITS_LIST="val_unseen"
+    fi
+fi
 export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
 export MASTER_PORT
 export SAVE_VIDEO="${SAVE_VIDEO:-false}"
@@ -817,7 +828,7 @@ echo "模型架构:       ${MODEL_ARCH}"
 echo "模型名称:       ${MODEL_NAME}"
 echo "Checkpoint:     ${CHECKPOINT_PATH}"
 echo "环境类型:       ${ENV_TYPE}"
-echo "评估集:         ${EVAL_SPLIT}"
+echo "评估集:         ${EVAL_SPLITS_LIST}"
 echo "CUDA设备:       ${CUDA_DEVICES}"
 echo "保存视频:       ${SAVE_VIDEO}"
 if [ -n "$MAX_EPISODES" ]; then
@@ -859,41 +870,44 @@ echo "=============================================="
 echo ""
 
 # ============================================================================
-# 运行评估
+# 运行评估（逐 split 循环）
 # ============================================================================
-print_info "开始评估..."
+print_info "开始评估... splits: ${EVAL_SPLITS_LIST}"
 
 cd "$SWIFTVLN_ROOT"
-bash "$EVAL_SCRIPT"
+OVERALL_STATUS=0
 
-EVAL_STATUS=$?
+for _SPLIT in ${EVAL_SPLITS_LIST}; do
+    export EVAL_SPLIT="${_SPLIT}"
 
-# ============================================================================
-# 输出结果位置
-# ============================================================================
-echo ""
-echo "=============================================="
-if [ $EVAL_STATUS -eq 0 ]; then
-    print_success "评估完成!"
-    
-    # 根据eval脚本的输出目录格式推断结果位置
-    TIMESTAMP=$(date +"%Y%m%d")
-    RESULTS_DIR="./results/eval/${MODEL_ARCH}/${MODEL_NAME}/${ENV_TYPE}_${EVAL_SPLIT}_${TIMESTAMP}*"
-    
-    # 查找最新的结果目录
-    LATEST_RESULT=$(ls -td ${SWIFTVLN_ROOT}/results/eval/${MODEL_ARCH}/${MODEL_NAME}/* 2>/dev/null | head -1)
-    
-    if [ -n "$LATEST_RESULT" ] && [ -d "$LATEST_RESULT" ]; then
-        echo ""
-        print_success "评估结果保存在: ${LATEST_RESULT}"
-        echo ""
-        echo "结果文件:"
-        ls -la "$LATEST_RESULT" 2>/dev/null || true
+    echo ""
+    echo "=============================================="
+    echo "评测 split: ${_SPLIT}"
+    echo "=============================================="
+
+    bash "$EVAL_SCRIPT"
+    EVAL_STATUS=$?
+
+    echo ""
+    echo "----------------------------------------------"
+    if [ $EVAL_STATUS -eq 0 ]; then
+        print_success "评估完成 [split=${_SPLIT}]!"
+
+        # 格式: results/eval/<arch>/<model>/<split>/<timestamp>/
+        SPLIT_RESULTS_DIR="${SWIFTVLN_ROOT}/results/eval/${MODEL_ARCH}/${MODEL_NAME}/${_SPLIT}"
+        LATEST_RESULT=$(ls -td ${SPLIT_RESULTS_DIR}/* 2>/dev/null | head -1)
+
+        if [ -n "$LATEST_RESULT" ] && [ -d "$LATEST_RESULT" ]; then
+            print_success "评估结果保存在: ${LATEST_RESULT}"
+            ls -la "$LATEST_RESULT" 2>/dev/null || true
+        else
+            print_info "评估结果保存在: ${SWIFTVLN_ROOT}/results/eval/${MODEL_ARCH}/${MODEL_NAME}/${_SPLIT}/"
+        fi
     else
-        echo ""
-        print_info "评估结果保存在: ${SWIFTVLN_ROOT}/results/eval/${MODEL_ARCH}/${MODEL_NAME}/"
+        print_error "评估失败 [split=${_SPLIT}]! 退出码: $EVAL_STATUS"
+        OVERALL_STATUS=$EVAL_STATUS
     fi
-else
-    print_error "评估失败! 退出码: $EVAL_STATUS"
-fi
-echo "=============================================="
+    echo "----------------------------------------------"
+done
+
+EVAL_STATUS=$OVERALL_STATUS

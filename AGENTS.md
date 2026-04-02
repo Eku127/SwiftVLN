@@ -31,10 +31,10 @@
   - `.codex/skills/gpu-health-monitor/SKILL.md`
 - If task is smoke test / 冒烟测试 for train+eval validation, use:
   - `.codex/skills/swiftvln-smoke-test/SKILL.md`
-- If task is baseline/streamvln smoke test (especially SatNav baseline smoke), use:
-  - `.codex/skills/baseline-streamvln-smoke-test/SKILL.md`
-- If task is Uni-NaVid baseline smoke test (train/eval validation, feature-change loss comparison), use:
-  - `.codex/skills/uninavid-smoke-test/SKILL.md`
+- If task is any baseline smoke test (streamvln / navila / uninavid — 冒烟测试、smoke test、baseline train+eval quick validation), use:
+  - `.codex/skills/baseline-smoke-test/SKILL.md`
+- If user asks to run an experiment plan, 执行实验计划, 跑 runtime/plans/…, orchestrate experiments, or run multiple experiment settings end-to-end (train + eval + results), use:
+  - `.codex/skills/orchestrate-plan/SKILL.md`
 
 ## Execution Rules
 

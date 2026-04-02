@@ -14,7 +14,7 @@ TODO_FILE="${EVAL_QUEUE_DIR}/eval_todo.txt"
 mkdir -p "${EVAL_QUEUE_DIR}"
 touch "${TODO_FILE}"
 
-HOST_98="${HOST_98:-10.246.132.98}"
+HOST_98="${HOST_98:-10.246.152.98}"
 HOST_73="${HOST_73:-10.246.152.73}"
 HOST_17="${HOST_17:-10.246.132.17}"
 SSH_USER="${SSH_USER:-jiangjiajun}"
@@ -174,17 +174,35 @@ run_eval_round() {
     bash "$EVAL_QUEUE_SCRIPT"
 }
 
+# 检查本机是否已经可以跑 eval：无训练进程 + GPU 空闲
+local_host_ready() {
+    if has_local_training_proc; then
+        log "local host has active training processes, waiting..."
+        return 1
+    fi
+    local stats
+    stats="$(get_local_gpu_stats)"
+    if is_gpu_busy_from_stats "$stats"; then
+        log "local GPU is busy (util or memory above threshold), waiting..."
+        return 1
+    fi
+    return 0
+}
+
 main() {
     log "start monitor: CHECK_INTERVAL=${CHECK_INTERVAL}s IDLE_GPU_UTIL_MAX=${IDLE_GPU_UTIL_MAX} IDLE_GPU_MEM_MAX_MIB=${IDLE_GPU_MEM_MAX_MIB} SSH_FAILURE_AS_IDLE=${SSH_FAILURE_AS_IDLE} SSH_RELAX_HOSTKEY=${SSH_RELAX_HOSTKEY}"
     while true; do
         if [[ -s "$TODO_FILE" ]]; then
-            log "todo detected, start one eval round"
-            run_eval_round
-            log "eval round finished, checking cluster idle status"
-            if all_hosts_idle; then
-                log "all hosts idle and no training process detected, stop monitor"
-                break
+            if local_host_ready; then
+                log "todo detected and local GPU ready, starting eval round"
+                run_eval_round
+                log "eval round finished, checking cluster idle status"
+                if all_hosts_idle; then
+                    log "all hosts idle, stop monitor"
+                    break
+                fi
             fi
+            # else: already logged "waiting..." inside local_host_ready
         fi
         sleep "$CHECK_INTERVAL"
     done

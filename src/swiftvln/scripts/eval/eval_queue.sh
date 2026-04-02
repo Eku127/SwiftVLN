@@ -24,7 +24,7 @@
 #   4. 脚本会在每次评估完成后自动检测并添加新任务到队列
 #
 # 环境变量:
-#   EVAL_SPLIT   - val_unseen (默认), val_seen, test 等
+#   EVAL_SPLIT   - SatNav 默认 val_seen / Habitat 默认 val_unseen (可手动覆盖)
 #   CUDA_DEVICES - GPU设备 (default: 0,1,2,3,4,5,6,7)
 #   SAVE_VIDEO   - 保存视频 (true/false)
 #   MAX_EPISODES - 限制episode数量 (用于调试)
@@ -452,7 +452,7 @@ interactive_setup() {
     # 3. 其他评估配置
     print_header "⚙️  Step 3: 其他评估配置"
     echo "当前配置:"
-    echo "  EVAL_SPLIT:   ${EVAL_SPLIT:-val_unseen}"
+    echo "  EVAL_SPLIT:   ${EVAL_SPLIT:-auto (SatNav: val_seen+val_unseen, Habitat: val_unseen)}"
     echo "  CUDA_DEVICES: ${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
     echo "  SAVE_VIDEO:   ${SAVE_VIDEO:-false}"
     echo ""
@@ -460,8 +460,9 @@ interactive_setup() {
     
     if [[ "$modify_env" =~ ^[Yy]$ ]]; then
         echo ""
-        read -p "EVAL_SPLIT [${EVAL_SPLIT:-val_unseen}]: " new_eval_split
-        EVAL_SPLIT=${new_eval_split:-${EVAL_SPLIT:-val_unseen}}
+        echo "EVAL_SPLIT 留空 = auto (SatNav 跑 val_seen+val_unseen, Habitat 跑 val_unseen)"
+        read -p "EVAL_SPLIT [${EVAL_SPLIT:-}]: " new_eval_split
+        EVAL_SPLIT="${new_eval_split:-${EVAL_SPLIT:-}}"
         
         read -p "CUDA_DEVICES [${CUDA_DEVICES:-0,1,2,3,4,5,6,7}]: " new_cuda_devices
         CUDA_DEVICES=${new_cuda_devices:-${CUDA_DEVICES:-0,1,2,3,4,5,6,7}}
@@ -472,7 +473,8 @@ interactive_setup() {
     
     # 导出环境变量 (不再导出 ENV_TYPE，让 eval_by_name.sh 自动从模型名解析)
     unset ENV_TYPE  # 确保不覆盖模型名中的 env_type
-    export EVAL_SPLIT="${EVAL_SPLIT:-val_unseen}"
+    # EVAL_SPLIT 留空时由 eval_by_name.sh 决定 (SatNav: 两个 split; Habitat: val_unseen)
+    [ -n "${EVAL_SPLIT}" ] && export EVAL_SPLIT || unset EVAL_SPLIT
     export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
     export SAVE_VIDEO="${SAVE_VIDEO:-false}"
     
@@ -504,9 +506,10 @@ show_summary() {
     echo -e "                    ${BOLD}评估配置汇总${NC}"
     print_header "╚══════════════════════════════════════════════════════════════╝"
     
+    local _split_display="${EVAL_SPLIT:-auto (SatNav: val_seen+val_unseen, Habitat: val_unseen)}"
     echo -e "${BOLD}评估配置:${NC}"
     echo "  ENV_TYPE:     (自动从模型名解析)"
-    echo "  EVAL_SPLIT:   $EVAL_SPLIT"
+    echo "  EVAL_SPLIT:   ${_split_display}"
     echo "  CUDA_DEVICES: $CUDA_DEVICES"
     echo "  SAVE_VIDEO:   $SAVE_VIDEO"
     echo "  TODO_FILE:    $TODO_FILE"
@@ -590,9 +593,6 @@ run_evaluation() {
     local duration=$((end_time - start_time))
     local duration_str=$(printf '%02d:%02d:%02d' $((duration/3600)) $((duration%3600/60)) $((duration%60)))
     
-    # 查找结果路径
-    local result_path=""
-    
     # 解析模型架构
     local model_arch=""
     if [[ "$model" == streamvln-* ]]; then
@@ -606,17 +606,48 @@ run_evaluation() {
     elif [[ "$model" == overlapvln-* ]]; then
         model_arch="overlapvln"
     fi
-    
-    # 查找最新的结果目录
-    if [[ -n "$model_arch" ]]; then
-        local results_base="${SWIFTVLN_ROOT}/results/eval/${model_arch}/${model}"
-        if [[ -d "$results_base" ]]; then
-            result_path=$(ls -td "${results_base}"/* 2>/dev/null | head -1)
+
+    # 确定本次实际评测的 split 列表（与 eval_by_name.sh 的逻辑保持一致）
+    local _actual_splits
+    if [[ -n "${EVAL_SPLIT:-}" ]]; then
+        _actual_splits="${EVAL_SPLIT}"
+    else
+        local _model_env_type
+        _model_env_type=$(parse_env_type_from_model "$model")
+        if [[ "$_model_env_type" == "satnav" ]]; then
+            _actual_splits="val_seen val_unseen"
+        else
+            _actual_splits="val_unseen"
         fi
     fi
-    
+
+    # 查找各 split 结果路径（格式: results/eval/<arch>/<model>/<split>/<timestamp>/）
+    local result_path=""         # 用于 webhook/摘要展示（取第一个有效 split）
+    declare -a _split_result_paths=()
+    if [[ -n "$model_arch" ]]; then
+        local results_base="${SWIFTVLN_ROOT}/results/eval/${model_arch}/${model}"
+        for _s in ${_actual_splits}; do
+            local _split_dir="${results_base}/${_s}"
+            local _candidate=""
+            if [[ -d "$_split_dir" ]]; then
+                _candidate=$(ls -td "${_split_dir}/"* 2>/dev/null | head -1)
+            fi
+            if [[ -n "$_candidate" && -d "$_candidate" ]]; then
+                _split_result_paths+=("${_s}|${_candidate}")
+                [[ -z "$result_path" ]] && result_path="$_candidate"
+            else
+                _split_result_paths+=("${_s}|N/A")
+            fi
+        done
+        # 兜底：找 <model>/*/<timestamp>/ 下最新的目录（任意 split）
+        if [[ -z "$result_path" && -d "$results_base" ]]; then
+            result_path=$(find "$results_base" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | \
+                xargs -I{} stat -c '%Y %n' {} 2>/dev/null | sort -rn | awk 'NR==1{print $2}')
+        fi
+    fi
+
     if [[ $eval_status -eq 0 ]]; then
-        # 尝试从结果目录读取评估指标
+        # 尝试从首个 split 结果目录读取评估指标（供摘要展示）
         local sr="--"
         local spl="--"
         local ne="--"
@@ -626,19 +657,35 @@ run_evaluation() {
             spl=$(grep -oP '"mean_spl":\s*\K[0-9.]+' "${result_path}/evaluation_summary.json" 2>/dev/null || echo "--")
             ne=$(grep -oP '"navigation_error":\s*\K[0-9.]+' "${result_path}/evaluation_summary.json" 2>/dev/null || echo "--")
         fi
-        
-        EXP_RESULTS+=("$exp_idx|$model|SUCCESS|$duration_str|SR:$sr SPL:$spl NE:$ne")
-        RESULT_PATHS+=("$exp_idx|$model|${result_path:-N/A}")
-        print_success "评估 $exp_idx 完成! 耗时: $duration_str"
-        send_webhook "Eval Finished" "model=${model}\nindex=${exp_idx}/${total}\nstatus=SUCCESS\nduration=${duration_str}\nmetrics=SR:${sr} SPL:${spl} NE:${ne}"
 
-        # 自动收集到 results/eval_collected/eval_results_data<version>.csv
-        if [[ -f "$COLLECT_SCRIPT" && -n "$result_path" && -d "$result_path" ]]; then
-            python3 "$COLLECT_SCRIPT" \
-                --model-name "$model" \
-                --result-path "$result_path" \
-                --output-dir "${SWIFTVLN_ROOT}/results/eval_collected" >/dev/null 2>&1 || \
-                print_warning "CSV收集失败: $model"
+        # 构建多 split 结果路径展示字符串
+        local _paths_str=""
+        for _sp in "${_split_result_paths[@]}"; do
+            local _sname="${_sp%%|*}"
+            local _spath="${_sp##*|}"
+            _paths_str+="[${_sname}] ${_spath}  "
+        done
+
+        EXP_RESULTS+=("$exp_idx|$model|SUCCESS|$duration_str|SR:$sr SPL:$spl NE:$ne")
+        RESULT_PATHS+=("$exp_idx|$model|${_paths_str:-${result_path:-N/A}}")
+        print_success "评估 $exp_idx 完成! 耗时: $duration_str"
+        send_webhook "Eval Finished" "model=${model}\nindex=${exp_idx}/${total}\nstatus=SUCCESS\nduration=${duration_str}\nmetrics=SR:${sr} SPL:${spl} NE:${ne}\nsplits=${_actual_splits}"
+
+        # 自动收集到 results/eval_collected/<split>/eval_results_data<version>.csv
+        # 对每个实际评测的 split 分别收集
+        if [[ -f "$COLLECT_SCRIPT" ]]; then
+            for _sp in "${_split_result_paths[@]}"; do
+                local _sname="${_sp%%|*}"
+                local _spath="${_sp##*|}"
+                if [[ "$_spath" != "N/A" && -d "$_spath" ]]; then
+                    python3 "$COLLECT_SCRIPT" \
+                        --model-name "$model" \
+                        --result-path "$_spath" \
+                        --eval-split "$_sname" \
+                        --output-dir "${SWIFTVLN_ROOT}/results/eval_collected" >/dev/null 2>&1 || \
+                        print_warning "CSV收集失败 [${_sname}]: $model"
+                fi
+            done
         fi
         
         export CUDA_DEVICES="$original_cuda_devices"
@@ -664,6 +711,62 @@ run_evaluation() {
 }
 
 # ============================================================================
+# 写入机器可读的完成状态（供 eval_watchdog / 外部工具使用）
+# ============================================================================
+write_completion_status() {
+    local result_file="${1:-}"
+    local success_count="${2:-0}"
+    local fail_count="${3:-0}"
+    local _hostname
+    _hostname="$(hostname | sed 's/[^a-zA-Z0-9._-]/_/g')"
+
+    # per-host 状态文件（多服务器并发安全）
+    local status_file="${EVAL_QUEUE_DIR}/eval_queue_last_run_${_hostname}.json"
+
+    # 如果调用方设置了 EVAL_RUN_DIR，同时写入 per-run 目录
+    local run_status_file=""
+    if [[ -n "${EVAL_RUN_DIR:-}" && -d "${EVAL_RUN_DIR}" ]]; then
+        run_status_file="${EVAL_RUN_DIR}/eval_queue_status.json"
+    fi
+
+    local success_list=""
+    local failed_list=""
+    for result in "${EXP_RESULTS[@]}"; do
+        IFS='|' read -r _idx model status _dur _metrics <<< "$result"
+        if [[ "$status" == "SUCCESS" ]]; then
+            [[ -n "$success_list" ]] && success_list="${success_list},"
+            success_list="${success_list}\"${model}\""
+        else
+            [[ -n "$failed_list" ]] && failed_list="${failed_list},"
+            failed_list="${failed_list}\"${model}\""
+        fi
+    done
+
+    local json_body
+    json_body=$(cat <<EOF
+{
+    "completed_at": "$(date -Iseconds)",
+    "eval_split": "${EVAL_SPLIT:-val_unseen}",
+    "success_count": ${success_count},
+    "fail_count": ${fail_count},
+    "total_count": ${#EXP_RESULTS[@]},
+    "success_models": [${success_list}],
+    "failed_models": [${failed_list}],
+    "result_file": "${result_file}",
+    "hostname": "${_hostname}"
+}
+EOF
+)
+    echo "$json_body" > "$status_file"
+    print_info "完成状态已写入: $status_file"
+
+    if [[ -n "$run_status_file" ]]; then
+        echo "$json_body" > "$run_status_file"
+        print_info "Per-run 状态已写入: $run_status_file"
+    fi
+}
+
+# ============================================================================
 # 显示最终结果
 # ============================================================================
 show_final_results() {
@@ -681,7 +784,7 @@ show_final_results() {
         echo ""
         echo "评估配置:"
         echo "  ENV_TYPE:     (自动从模型名解析)"
-        echo "  EVAL_SPLIT:   $EVAL_SPLIT"
+        echo "  EVAL_SPLIT:   ${EVAL_SPLIT:-auto (SatNav: val_seen+val_unseen, Habitat: val_unseen)}"
         echo "  CUDA_DEVICES: $CUDA_DEVICES"
         echo "  SAVE_VIDEO:   $SAVE_VIDEO"
         if [[ "$SAVE_VIDEO" == "true" ]]; then
@@ -760,7 +863,10 @@ show_final_results() {
     done
 
     send_webhook "Eval Queue Finished" "success=${success_count}\nfailed=${fail_count}\ntotal=${#EXP_RESULTS[@]}"
-    
+
+    # 写入机器可读的完成状态文件（供 eval_watchdog 等外部工具使用）
+    write_completion_status "$RESULT_FILE" "$success_count" "$fail_count"
+
     echo ""
     print_success "结果已保存到: $RESULT_FILE"
 }
@@ -788,7 +894,8 @@ main() {
         fi
 
         unset ENV_TYPE
-        export EVAL_SPLIT="${EVAL_SPLIT:-val_unseen}"
+        # 若用户未显式设置 EVAL_SPLIT，留空由 eval_by_name.sh 决定（SatNav: 两个 split；Habitat: val_unseen）
+        [ -n "${EVAL_SPLIT}" ] && export EVAL_SPLIT
         export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
         export SAVE_VIDEO="${SAVE_VIDEO:-false}"
         if [[ "$SAVE_VIDEO" == "true" ]]; then
@@ -828,7 +935,8 @@ main() {
         
         # 导出环境变量 (不再导出 ENV_TYPE，让 eval_by_name.sh 自动从模型名解析)
         unset ENV_TYPE  # 确保不覆盖模型名中的 env_type
-        export EVAL_SPLIT="${EVAL_SPLIT:-val_unseen}"
+        # 若用户未显式设置 EVAL_SPLIT，留空由 eval_by_name.sh 决定（SatNav: 两个 split；Habitat: val_unseen）
+        [ -n "${EVAL_SPLIT}" ] && export EVAL_SPLIT
         export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
         export SAVE_VIDEO="${SAVE_VIDEO:-false}"
         

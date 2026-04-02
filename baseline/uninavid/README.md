@@ -57,10 +57,58 @@ HuggingFace 模型通过 `hf-mirror.com` 直连下载，无需代理，支持断
 ## 目录结构
 
 ```
+
+## 评测
+
+SatNav 评测入口：
+
+```bash
+bash baseline/uninavid/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
+```
+
+SatNav 评测 split 约定：
+
+- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
+- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
+
+示例：
+
+```bash
+# 默认双 split
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/<exp_name>
+
+# 单独跑 val_unseen
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/<exp_name> \
+  val_unseen 8
+```
+
+## 训练模式
+
+`baseline/uninavid/scripts/train_satnav.sh` 现在支持两种起训模式：
+
+- `continue`：从 `model/Uni-Navid` 继续训练
+- `scratch`：从 `model/vicuna-7b-v1.5` 起训
+
+示例：
+
+```bash
+# 继续训练（默认）
+bash baseline/uninavid/scripts/train_satnav.sh continue
+
+# 从原始 Vicuna-7B 起训
+bash baseline/uninavid/scripts/train_satnav.sh scratch
+```
+
+默认实验名会自动带上模式前缀，例如：
+
+- `uninavid-baseline-continue-1ep-data260317-bs192-lr1e-5-...`
+- `uninavid-baseline-scratch-1ep-data260317-bs192-lr1e-5-...`
 baseline/uninavid/
 ├── model/
 │   ├── eva_vit_g.pth
-│   ├── uninavid-7b-full-224-video-fps-1-grid-2/
+│   ├── Uni-Navid/
 │   └── vicuna-7b-v1.5/          # 仅 --vicuna 时存在
 ├── scripts/
 │   └── download_uninavid_models.sh

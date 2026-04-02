@@ -61,11 +61,13 @@ AUTO_ENQUEUE_EVAL="${AUTO_ENQUEUE_EVAL:-true}"
 EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL="${EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL:-false}"
 EVAL_ENQUEUE_RETRIES="${EVAL_ENQUEUE_RETRIES:-3}"
 EVAL_ENQUEUE_RETRY_SLEEP="${EVAL_ENQUEUE_RETRY_SLEEP:-3}"
+USE_SWANLAB=true
+SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
 
 # QA 混合训练配置
 USE_QA_MIXED_TRAINING=false
 QA_RATIO=0.15
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/data/qa_swift.jsonl"
+QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/data/qa_swift.jsonl"
 
 # Stage2 默认基础模型路径
 declare -A STAGE2_DEFAULT_MODELS=(
@@ -84,6 +86,14 @@ send_webhook() {
     curl -sS -m 8 -X POST "$WEBHOOK_URL" \
       -H "Content-Type: application/json" \
       -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" >/dev/null 2>&1 || true
+}
+
+# ── 事件日志（供 train_watchdog 消费）──────────────────────────────────────
+# 写入 TRAIN_EVENTS_FILE（由 watchdog export），回退到 TRAIN_RUN_DIR 下的文件
+_emit_train_event() {
+    local event_file="${TRAIN_EVENTS_FILE:-${TRAIN_RUN_DIR:+${TRAIN_RUN_DIR}/train_events.log}}"
+    [[ -z "$event_file" ]] && return 0
+    echo "$*" >> "$event_file"
 }
 
 enqueue_model_for_eval() {
@@ -511,25 +521,51 @@ format_config_display() {
 # 交互式配置
 # ============================================================================
 interactive_setup() {
+    # ── Non-interactive mode ──────────────────────────────────────────────────
+    # If TRAIN_EXPERIMENTS_FILE is set, source it to load all config variables
+    # and skip the interactive wizard entirely.
+    #
+    # The file must define (at minimum):
+    #   EXPERIMENTS=("model|config|changes|ds_names|ds_paths||qa_ratio" ...)
+    #   TRAIN_STAGE="stage1"   (or "stage2")
+    #   ENV_TYPE="satnav"      (or "habitat")
+    #
+    # Optional:
+    #   SWANLAB_PROJECT="YourProject"   # train_queue 默认强制启用 SwanLab
+    #   USE_QA_MIXED_TRAINING="false"
+    #   QA_DATASET="..."
+    if [[ -n "${TRAIN_EXPERIMENTS_FILE:-}" ]]; then
+        if [[ ! -f "$TRAIN_EXPERIMENTS_FILE" ]]; then
+            print_error "TRAIN_EXPERIMENTS_FILE 指定的文件不存在: $TRAIN_EXPERIMENTS_FILE"
+            exit 1
+        fi
+        print_info "非交互模式：从文件加载实验配置 → $TRAIN_EXPERIMENTS_FILE"
+        # shellcheck source=/dev/null
+        source "$TRAIN_EXPERIMENTS_FILE"
+        if [[ "${USE_SWANLAB:-true}" != "true" ]]; then
+            print_warning "TRAIN_EXPERIMENTS_FILE 中的 USE_SWANLAB=${USE_SWANLAB} 将被忽略，train_queue 现统一强制启用 SwanLab"
+        fi
+        USE_SWANLAB=true
+        SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
+        if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
+            print_error "TRAIN_EXPERIMENTS_FILE 加载后 EXPERIMENTS 数组为空，请检查文件内容"
+            exit 1
+        fi
+        print_success "已加载 ${#EXPERIMENTS[@]} 个实验，stage=${TRAIN_STAGE}, env=${ENV_TYPE}, SwanLab=${SWANLAB_PROJECT}"
+        return 0
+    fi
+    # ─────────────────────────────────────────────────────────────────────────
+
     print_header "╔══════════════════════════════════════════════════════════════╗"
     echo -e "         ${BOLD}VLN 串行训练配置向导${NC}"
     print_header "╚══════════════════════════════════════════════════════════════╝"
     
     # 1. SwanLab 配置
     print_header "📊 Step 1: SwanLab 配置"
-    read -p "是否使用 SwanLab 记录实验? [Y/n]: " use_swanlab
-    use_swanlab=${use_swanlab:-Y}
-    
-    if [[ "$use_swanlab" =~ ^[Yy]$ ]]; then
-        USE_SWANLAB=true
-        read -p "SwanLab Project 名称 [SatNav]: " swanlab_project
-        SWANLAB_PROJECT=${swanlab_project:-SatNav}
-        print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
-    else
-        USE_SWANLAB=false
-        SWANLAB_PROJECT=""
-        print_info "SwanLab: 禁用"
-    fi
+    print_info "train_queue 现统一启用 SwanLab 记录实验"
+    read -p "SwanLab Project 名称 [${SWANLAB_PROJECT}]: " swanlab_project
+    SWANLAB_PROJECT=${swanlab_project:-$SWANLAB_PROJECT}
+    print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
     
     # 2. 选择模型
     print_header "🤖 Step 2: 选择训练模型"
@@ -707,7 +743,7 @@ interactive_setup() {
         fi
     else
         # SatNav 环境
-        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data"
+        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data"
         echo "默认 SatNav 数据路径:"
         echo "  $default_satnav_path"
         echo ""
@@ -1262,11 +1298,41 @@ run_experiment() {
         local exp_name=$(basename "$output_path" 2>/dev/null)
         exp_name=${exp_name:-"unknown"}
         
+        # Write train_metadata.json if not already created by the training script
+        if [[ -n "$output_path" && -d "$output_path" && ! -f "${output_path}/train_metadata.json" ]]; then
+            local _swanlab_url=""
+            if [[ "$USE_SWANLAB" == true ]]; then
+                _swanlab_url=$(grep -oP 'https://swanlab\.cn/@[^\s"]+/runs/[^\s"]+' "$run_log_file" 2>/dev/null | tail -1)
+            fi
+            _SWANLAB_URL="$_swanlab_url" \
+            _SWANLAB_PROJECT="${SWANLAB_PROJECT:-}" \
+            _SWANLAB_EXP="$exp_name" \
+            _OUTPUT_DIR="$output_path" \
+            python3 -c "
+import json, pathlib, os
+meta = {}
+url = os.environ.get('_SWANLAB_URL', '')
+if url:
+    meta['swanlab_url'] = url
+proj = os.environ.get('_SWANLAB_PROJECT', '')
+if proj:
+    meta['swanlab_project'] = proj
+exp = os.environ.get('_SWANLAB_EXP', '')
+if exp:
+    meta['swanlab_exp_name'] = exp
+if meta:
+    out = pathlib.Path(os.environ['_OUTPUT_DIR']) / 'train_metadata.json'
+    out.write_text(json.dumps(meta, indent=2))
+    print(f'Saved train metadata: {out}')
+" 2>/dev/null || true
+        fi
+
         # 格式: idx|model|changes|ds_names|status|duration|exp_name|base_model|qa_ratio
         EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|SUCCESS|$duration_str|$exp_name|$stage2_path|$qa_ratio")
         print_success "实验 $exp_idx 完成! 耗时: $duration_str"
         enqueue_model_for_eval "$exp_name" || true
         send_webhook "Train Success" "experiment=${exp_idx}\nmodel=${model}\nduration=${duration_str}\noutput=${output_path:-N/A}\nlog=${run_log_file}"
+        _emit_train_event "EXPERIMENT_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${output_path:-N/A}|$(date -Iseconds)"
         
         rm -f "$temp_script"
         return 0
@@ -1278,6 +1344,7 @@ run_experiment() {
         EXP_ERRORS+=("实验 $exp_idx ($model): $error_msg")
         print_error "实验 $exp_idx 失败!"
         send_webhook "Train Failed" "experiment=${exp_idx}\nmodel=${model}\nerror=${error_msg}\nlog=${run_log_file}\nattempted_fixes=${attempted_fixes:-none}\nresult=marked FAILED and continue queue"
+        _emit_train_event "EXPERIMENT_FAILED|${exp_idx}|${total:-0}|${model}|unknown|${error_msg:0:200}|${run_log_file}|$(date -Iseconds)"
         
         rm -f "$temp_script"
         return 1
@@ -1432,9 +1499,65 @@ show_final_results() {
 
     send_webhook "Train Queue Finished" "stage=${TRAIN_STAGE}\nenv=${ENV_TYPE}\nsuccess=${success_count}\nfailed=${fail_count}\ntotal=${#EXP_RESULTS[@]}\nreport=${RESULT_FILE}"
 
+    # 事件日志: QUEUE_DONE
+    _emit_train_event "QUEUE_DONE|${success_count}|${fail_count}|${#EXP_RESULTS[@]}|$(date -Iseconds)"
+
+    # 写入机器可读完成状态（供 train_watchdog / 外部工具）
+    _write_train_completion_status "$RESULT_FILE" "$success_count" "$fail_count"
+
     # 带颜色输出到终端（额外显示）
     echo ""
     print_success "结果已保存到: $RESULT_FILE"
+}
+
+_write_train_completion_status() {
+    local result_file="${1:-}" success_count="${2:-0}" fail_count="${3:-0}"
+    local _hostname
+    _hostname="$(hostname | sed 's/[^a-zA-Z0-9._-]/_/g')"
+
+    local success_list="" failed_list=""
+    for result in "${EXP_RESULTS[@]}"; do
+        IFS='|' read -r _idx _model _changes _ds _status _dur exp_name _base _qa <<< "$result"
+        if [[ "$_status" == "SUCCESS" ]]; then
+            [[ -n "$success_list" ]] && success_list="${success_list},"
+            success_list="${success_list}\"${exp_name}\""
+        else
+            [[ -n "$failed_list" ]] && failed_list="${failed_list},"
+            failed_list="${failed_list}\"${_model}\""
+        fi
+    done
+
+    local json_body
+    json_body=$(cat <<EOF
+{
+    "completed_at": "$(date -Iseconds)",
+    "train_stage": "${TRAIN_STAGE}",
+    "env_type": "${ENV_TYPE}",
+    "success_count": ${success_count},
+    "fail_count": ${fail_count},
+    "total_count": ${#EXP_RESULTS[@]},
+    "success_models": [${success_list}],
+    "failed_models": [${failed_list}],
+    "result_file": "${result_file}",
+    "hostname": "${_hostname}"
+}
+EOF
+)
+
+    local queue_dir="${TRAIN_RUN_DIR:-${SWIFTVLN_ROOT}/runtime/train_queue}"
+    mkdir -p "$queue_dir"
+
+    # Per-host global file
+    local host_file="${SWIFTVLN_ROOT}/runtime/train_queue/train_queue_last_run_${_hostname}.json"
+    mkdir -p "$(dirname "$host_file")"
+    echo "$json_body" > "$host_file"
+    print_info "完成状态已写入: $host_file"
+
+    # Per-run file (if TRAIN_RUN_DIR set by watchdog)
+    if [[ -n "${TRAIN_RUN_DIR:-}" && -d "${TRAIN_RUN_DIR}" ]]; then
+        echo "$json_body" > "${TRAIN_RUN_DIR}/train_queue_status.json"
+        print_info "Per-run 状态已写入: ${TRAIN_RUN_DIR}/train_queue_status.json"
+    fi
 }
 
 # ============================================================================
