@@ -27,6 +27,7 @@
 #   SATNAV_SAMPLE_RATIO=...
 #   SATNAV_SAMPLE_STRIDE=...      (forward stride in middle when HEAD_KEEP is set; turns always kept)
 #   SATNAV_HEAD_KEEP=...          (enable head+stop+turn-protect mode; default 7)
+#   SATNAV_STOP_REPEAT=...        (repeat stop samples this many times; default 1)
 #   ENABLE_GPU_MONITOR=true
 #   GPU_MONITOR_INTERVAL=60
 #   USE_SWANLAB=false
@@ -50,10 +51,12 @@ IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver
 #   - Stop  (last step)        : always kept (rare but critical)
 #   - Middle turns             : always kept (decision-critical minority class)
 #   - Middle forward runs      : keep every SAMPLE_STRIDE-th consecutive forward step
-# Default (head=7, fwd_stride=5): 4.76M -> ~2.64M samples (55%), full turn coverage.
+# Default (head=7, fwd_stride=7, stop_repeat=4): ~2.87M samples, full turn coverage,
+# and stronger stop supervision without fully balancing the classes.
 # Pass empty string to disable: SATNAV_HEAD_KEEP= SATNAV_SAMPLE_STRIDE= (full raw data).
 SATNAV_HEAD_KEEP="${SATNAV_HEAD_KEEP-7}"
-SATNAV_SAMPLE_STRIDE="${SATNAV_SAMPLE_STRIDE-5}"
+SATNAV_SAMPLE_STRIDE="${SATNAV_SAMPLE_STRIDE-7}"
+SATNAV_STOP_REPEAT="${SATNAV_STOP_REPEAT-4}"
 # Smoke / debug limits (unset by default for full training).
 SATNAV_MAX_EPISODES="${SATNAV_MAX_EPISODES-}"
 SATNAV_MAX_SAMPLES="${SATNAV_MAX_SAMPLES-}"
@@ -121,10 +124,25 @@ fi
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 EFFECTIVE_BATCH_SIZE=$((TRAIN_BSZ * GRAD_ACCUM * NUM_GPUS))
 
-if [[ -n "${CUSTOM_EXP_NAME}" ]]; then
-    EXP_NAME="${CUSTOM_EXP_NAME}"
+if [[ -n "${SATNAV_HEAD_KEEP}" ]]; then
+    SAMPLE_TAG="sample-hk${SATNAV_HEAD_KEEP}-fs${SATNAV_SAMPLE_STRIDE:-1}-stopx${SATNAV_STOP_REPEAT:-1}"
 else
-    EXP_NAME="navila-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-8f-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+    SAMPLE_TAG="sample-legacy-stride${SATNAV_SAMPLE_STRIDE:-off}-ratio${SATNAV_SAMPLE_RATIO:-1.0}-stopx${SATNAV_STOP_REPEAT:-1}"
+fi
+
+append_sample_tag() {
+    local base_name="$1"
+    if [[ "${base_name}" == *"${SAMPLE_TAG}"* ]]; then
+        printf '%s\n' "${base_name}"
+    else
+        printf '%s-%s\n' "${base_name}" "${SAMPLE_TAG}"
+    fi
+}
+
+if [[ -n "${CUSTOM_EXP_NAME}" ]]; then
+    EXP_NAME="$(append_sample_tag "${CUSTOM_EXP_NAME}")"
+else
+    EXP_NAME="navila-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-8f-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${SAMPLE_TAG}-${TIMESTAMP}"
 fi
 
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/navila-baseline/${EXP_NAME}"
@@ -135,7 +153,11 @@ MAX_STEPS_ARG=()
 REPORT_TO_ARG=()
 GPU_MONITOR_PID=""
 
-exec > >(tee -a "${TRAIN_LOG}") 2>&1
+if [[ -t 1 ]]; then
+    exec > >(tee -a "${TRAIN_LOG}") 2>&1
+else
+    exec >> "${TRAIN_LOG}" 2>&1
+fi
 
 cleanup_gpu_monitor() {
     local rc=$?
@@ -198,6 +220,16 @@ if [[ ! -f "${DATA_PATH}" ]]; then
     exit 2
 fi
 
+# Ensure python is available for sample counting and launcher scripts.
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda activate navila-baseline
+
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+if [[ -z "${PYTHON_BIN}" ]]; then
+    echo "python interpreter not found after activating navila-baseline" >&2
+    exit 2
+fi
+
 compute_effective_samples() {
     DATA_PATH="${DATA_PATH}" \
     SATNAV_MAX_EPISODES="${SATNAV_MAX_EPISODES}" \
@@ -205,7 +237,8 @@ compute_effective_samples() {
     SATNAV_SAMPLE_RATIO="${SATNAV_SAMPLE_RATIO}" \
     SATNAV_SAMPLE_STRIDE="${SATNAV_SAMPLE_STRIDE}" \
     SATNAV_HEAD_KEEP="${SATNAV_HEAD_KEEP}" \
-    python3 - <<'PY'
+    SATNAV_STOP_REPEAT="${SATNAV_STOP_REPEAT}" \
+    "${PYTHON_BIN}" - <<'PY'
 import json
 import os
 import zlib
@@ -218,12 +251,14 @@ max_samples_env = os.getenv("SATNAV_MAX_SAMPLES", "").strip()
 sample_ratio_env = os.getenv("SATNAV_SAMPLE_RATIO", "").strip()
 sample_stride_env = os.getenv("SATNAV_SAMPLE_STRIDE", "").strip()
 head_keep_env = os.getenv("SATNAV_HEAD_KEEP", "").strip()
+stop_repeat_env = os.getenv("SATNAV_STOP_REPEAT", "").strip()
 
 max_episodes = int(max_episodes_env) if max_episodes_env else None
 max_samples = int(max_samples_env) if max_samples_env else None
 sample_ratio = float(sample_ratio_env) if sample_ratio_env else None
 sample_stride = int(sample_stride_env) if sample_stride_env else None
 head_keep = int(head_keep_env) if head_keep_env else None
+stop_repeat = int(stop_repeat_env) if stop_repeat_env else 1
 
 with open(data_path) as f:
     episodes = json.load(f)
@@ -283,7 +318,8 @@ for episode in episodes:
                     continue
             step_indices.append(i)
 
-    count += len(step_indices)
+    for i in step_indices:
+        count += stop_repeat if actions[i] == 0 else 1
     if max_samples is not None and count >= max_samples:
         print(min(count, max_samples))
         raise SystemExit(0)
@@ -324,10 +360,7 @@ else
     REPORT_TO_ARG=(--report_to none)
 fi
 
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate navila-baseline
-
-export SATNAV_HEAD_KEEP SATNAV_SAMPLE_STRIDE
+export SATNAV_HEAD_KEEP SATNAV_SAMPLE_STRIDE SATNAV_STOP_REPEAT
 export SATNAV_MAX_EPISODES SATNAV_MAX_SAMPLES SATNAV_SAMPLE_RATIO
 
 echo "=========================================="
@@ -345,7 +378,7 @@ echo "  Batch      : ${TRAIN_BSZ} x ${GRAD_ACCUM} x ${NUM_GPUS} = ${EFFECTIVE_BA
 echo "  LR         : ${LEARNING_RATE}"
 echo "  Total step : ${TOTAL_STEPS}"
 echo "  Save every : ${SAVE_STEPS} steps"
-echo "  Sampling   : head_keep=${SATNAV_HEAD_KEEP:-off}, stride=${SATNAV_SAMPLE_STRIDE:-off}, max_ep=${SATNAV_MAX_EPISODES:-off}, max_samples=${SATNAV_MAX_SAMPLES:-off}"
+echo "  Sampling   : head_keep=${SATNAV_HEAD_KEEP:-off}, stride=${SATNAV_SAMPLE_STRIDE:-off}, stop_repeat=${SATNAV_STOP_REPEAT:-1}, max_ep=${SATNAV_MAX_EPISODES:-off}, max_samples=${SATNAV_MAX_SAMPLES:-off}"
 echo "  Train log  : ${TRAIN_LOG}"
 echo "  GPU log    : ${GPU_LOG} (enabled=${ENABLE_GPU_MONITOR}, interval=${GPU_MONITOR_INTERVAL}s)"
 echo "  SwanLab    : ${USE_SWANLAB}"

@@ -16,6 +16,7 @@ import os
 import re
 import sys
 import zlib
+from collections import Counter
 from typing import Dict, List
 
 import torch
@@ -144,10 +145,12 @@ class SatNavNaVILADataset(Dataset):
         sample_ratio_env = os.getenv("SATNAV_SAMPLE_RATIO", "").strip()
         sample_stride_env = os.getenv("SATNAV_SAMPLE_STRIDE", "").strip()
         head_keep_env = os.getenv("SATNAV_HEAD_KEEP", "").strip()
+        stop_repeat_env = os.getenv("SATNAV_STOP_REPEAT", "").strip()
         max_episodes = int(max_episodes_env) if max_episodes_env else None
         max_samples = int(max_samples_env) if max_samples_env else None
         sample_ratio = float(sample_ratio_env) if sample_ratio_env else None
         sample_stride = int(sample_stride_env) if sample_stride_env else None
+        stop_repeat = int(stop_repeat_env) if stop_repeat_env else 1
         # head_keep enables the "head + stop + strided middle" sampling mode.
         # When set, SATNAV_SAMPLE_STRIDE is used as the middle-section stride.
         head_keep = int(head_keep_env) if head_keep_env else None
@@ -160,6 +163,7 @@ class SatNavNaVILADataset(Dataset):
         self.data_args = data_args
         self.image_folder = image_folder
         self.samples = []
+        self.action_counts = Counter()
 
         for episode in episodes:
             episode_id = str(episode.get("id", ""))
@@ -192,16 +196,22 @@ class SatNavNaVILADataset(Dataset):
                     os.path.join(image_folder, video_dir, "rgb", f"{frame_idx:03d}.jpg")
                     for frame_idx in range(1, step_idx + 1)
                 ]
-                self.samples.append(
-                    {
-                        "episode_id": episode.get("id"),
-                        "trajectory_id": episode.get("trajectory_id"),
-                        "step_idx": step_idx,
-                        "instruction": instruction,
-                        "frame_paths": frame_paths,
-                        "answer": ACTION_TO_TEXT[actions[step_idx]],
-                    }
-                )
+                action = actions[step_idx]
+                sample = {
+                    "episode_id": episode.get("id"),
+                    "trajectory_id": episode.get("trajectory_id"),
+                    "step_idx": step_idx,
+                    "instruction": instruction,
+                    "frame_paths": frame_paths,
+                    "answer": ACTION_TO_TEXT[action],
+                    "action": action,
+                }
+                repeat = stop_repeat if action == 0 else 1
+                for _ in range(repeat):
+                    self.samples.append(sample.copy())
+                    self.action_counts[action] += 1
+                    if max_samples is not None and len(self.samples) >= max_samples:
+                        break
                 if max_samples is not None and len(self.samples) >= max_samples:
                     break
 
@@ -214,7 +224,8 @@ class SatNavNaVILADataset(Dataset):
             f"samples={len(self.samples)}, "
             f"max_episodes={max_episodes}, max_samples={max_samples}, "
             f"sample_ratio={sample_ratio}, sample_stride={sample_stride}, "
-            f"head_keep={head_keep}",
+            f"head_keep={head_keep}, stop_repeat={stop_repeat}, "
+            f"action_counts={dict(self.action_counts)}",
             flush=True,
         )
 

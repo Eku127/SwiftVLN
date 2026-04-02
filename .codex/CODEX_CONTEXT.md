@@ -156,13 +156,15 @@ NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
   - 若显式传空值 `SAVE_STEPS=`，则按真实总 step 数自动推导：
     `SAVE_STEPS = ceil(total_steps / SAVE_COUNT_TARGET)`，默认 `SAVE_COUNT_TARGET=4`
   - `SAVE_TOTAL_LIMIT` 默认 `1`（保留最新一个 `checkpoint-*`；训练结束仍会在 `output/navila-baseline/<EXP_NAME>/` 根目录保存最终模型）
-- NaVILA SatNav train 默认采样策略（head+stop+turn-protect+fwd-stride，Updated: 2026-03-25）：
+- NaVILA SatNav train 默认采样策略（head+stop+turn-protect+fwd-stride+stop-oversample，Updated: 2026-04-02）：
   - `SATNAV_HEAD_KEEP=7`：保留每条轨迹前 7 步（帧数 < num_video_frames=8 的独特分布区间，全部保留）
-  - stop 步（每 episode 末尾）：**全部保留**（稀有关键动作）
+  - stop 步（每 episode 末尾）：**全部保留**
   - 中间区间 turn 步（left/right）：**全部保留**（决策关键少数类，不做 stride）
-  - `SATNAV_SAMPLE_STRIDE=5`：中间区间连续 forward run 每 5 步取 1 步（遇 turn 重置计数）
-  - 效果：原始 476 万 → **约 264 万（55%）**，turn 覆盖率 100%（旧均匀 stride 仅 33.7%）
-  - 若需完整全量训练（不做采样），显式传空值：`SATNAV_HEAD_KEEP= SATNAV_SAMPLE_STRIDE=`
+  - `SATNAV_SAMPLE_STRIDE=7`：中间区间连续 forward run 每 7 步取 1 步（遇 turn 重置计数）
+  - `SATNAV_STOP_REPEAT=4`：对 stop 样本重复 4 次，增强 stop 监督，但不做完全类均衡
+  - 效果：默认采样后约 **286.9 万**条样本；其中 `forward≈128.7 万`、`left≈62.6 万`、`right≈56.6 万`、`stop≈39.0 万`
+  - 若需完整全量训练（不做采样），显式传空值：`SATNAV_HEAD_KEEP= SATNAV_SAMPLE_STRIDE=`，并可选 `SATNAV_STOP_REPEAT=1`
+  - 默认自动实验名会带 sample 标识，例如：`sample-hk7-fs7-stopx4`
 - smoke / 调试时可额外叠加：
   - `SATNAV_MAX_EPISODES`
   - `SATNAV_MAX_SAMPLES`
