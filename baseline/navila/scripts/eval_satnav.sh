@@ -14,6 +14,7 @@
 # Environment variables:
 #   SATNAV_VERSION   Override dataset version (e.g. ver_260306)
 #   MODEL_BASE       Base model path for adapter-only checkpoints
+#   SATNAV_ACTION_FORMAT  sentence|compact (default compact)
 #   LOCAL_CACHE_DIR  Local disk dir to cache checkpoint (avoids NFS D-state).
 #                    Auto-detected: uses /mnt/data4/jiangjiajun/navila_ckpt_cache
 #                    if checkpoint is on NFS. Set to "" to disable caching.
@@ -38,7 +39,8 @@ NUM_GPUS="${3:-8}"
 MAX_EPISODES="${4:-}"
 SATNAV_VERSION="${SATNAV_VERSION:-}"
 MODEL_BASE="${MODEL_BASE:-}"
-LOCAL_CACHE_DIR="${LOCAL_CACHE_DIR:-/mnt/data4/jiangjiajun/navila_ckpt_cache}"
+SATNAV_ACTION_FORMAT="${SATNAV_ACTION_FORMAT:-compact}"
+LOCAL_CACHE_DIR="${LOCAL_CACHE_DIR-/mnt/data4/jiangjiajun/navila_ckpt_cache}"
 
 if [ -z "${INPUT}" ]; then
     print_error "Usage: bash scripts/eval_satnav.sh <exp_name_or_subpath | checkpoint_path> [split] [gpus] [max_episodes]"
@@ -142,6 +144,12 @@ maybe_cache_checkpoint() {
             return
         fi
 
+        if ! command -v rsync >/dev/null 2>&1; then
+            print_warning "Checkpoint is on NFS (${mount_type}), but rsync is not available. Skipping local cache." >&2
+            echo "$src"
+            return
+        fi
+
         print_warning "Checkpoint is on NFS (${mount_type}). Caching model weights to local disk to avoid I/O D-state..." >&2
         print_info "Source      : ${src}" >&2
         print_info "Destination : ${local_ckpt}" >&2
@@ -149,9 +157,14 @@ maybe_cache_checkpoint() {
 
         # Rsync model files only — exclude DeepSpeed optimizer states (global_step*)
         # which can be 80-100G and are not needed for inference
-        rsync -ah --progress \
+        if ! rsync -ah --progress \
             --exclude="global_step*" \
-            "${src}/" "${local_ckpt}/" >&2
+            "${src}/" "${local_ckpt}/" >&2; then
+            print_warning "Checkpoint cache failed; falling back to source checkpoint." >&2
+            rm -rf "$local_ckpt"
+            echo "$src"
+            return
+        fi
 
         touch "${local_ckpt}/.cache_complete"
         local cached_size
@@ -207,6 +220,7 @@ run_single_split() {
     echo "  Split      : ${split}"
     echo "  Output     : ${output_dir}"
     echo "  GPUs       : ${NUM_GPUS}"
+    echo "  Action fmt : ${SATNAV_ACTION_FORMAT}"
     [ -n "${MAX_EPISODES}" ] && echo "  Max Episodes: ${MAX_EPISODES}"
     [ -n "${MODEL_BASE}" ] && echo "  Model Base  : ${MODEL_BASE}"
     echo "=========================================="

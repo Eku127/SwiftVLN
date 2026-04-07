@@ -15,7 +15,10 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from config import get_data_dir
+try:
+    from .config import get_data_dir
+except ImportError:
+    from config import get_data_dir
 
 ROAD_SUBTYPE_MAP = {
     "highway": "Highway",

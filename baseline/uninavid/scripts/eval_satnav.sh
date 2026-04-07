@@ -7,6 +7,7 @@
 #   1. Eval by name (recommended):
 #      bash scripts/eval_satnav.sh <exp_name_or_subpath> [split] [gpus] [max_episodes]
 #      - Looks for checkpoint in output/uninavid-baseline/<exp_name_or_subpath>/
+#        (fallback: output/uninavid-baseline/legacy/<exp_name_or_subpath>/)
 #      - Extracts data version from exp_name (data{XXXXXX} -> ver_XXXXXX)
 #
 #   2. Eval by checkpoint path:
@@ -96,8 +97,15 @@ if [ "$EVAL_MODE" = "by_name" ]; then
     MODEL_DIR="${REPO_ROOT}/output/uninavid-baseline/${EXP_NAME}"
 
     if [ ! -d "$MODEL_DIR" ]; then
-        print_error "Experiment directory not found: output/uninavid-baseline/${EXP_NAME}"
-        exit 1
+        LEGACY_MODEL_DIR="${REPO_ROOT}/output/uninavid-baseline/legacy/${EXP_NAME}"
+        if [ -d "$LEGACY_MODEL_DIR" ]; then
+            MODEL_DIR="$LEGACY_MODEL_DIR"
+            print_warning "Experiment directory found in legacy path: ${MODEL_DIR}"
+        else
+            print_error "Experiment directory not found: output/uninavid-baseline/${EXP_NAME}"
+            print_error "Legacy path also not found: output/uninavid-baseline/legacy/${EXP_NAME}"
+            exit 1
+        fi
     fi
 
     # Find latest checkpoint (checkpoint-N sorted by N descending)
@@ -165,8 +173,16 @@ maybe_cache_checkpoint() {
     mount_type=$(stat -f -c "%T" "$src" 2>/dev/null || echo "unknown")
     if [ "$mount_type" = "nfs" ] || findmnt -n -o FSTYPE --target "$src" 2>/dev/null | grep -q "^nfs"; then
         local ckpt_name
+        local parent_name
+        local src_hash
         ckpt_name=$(basename "$src")
-        local local_ckpt="${LOCAL_CACHE_DIR}/${ckpt_name}"
+        parent_name=$(basename "$(dirname "$src")")
+        if command -v sha1sum >/dev/null 2>&1; then
+            src_hash=$(printf '%s' "$src" | sha1sum | awk '{print substr($1, 1, 12)}')
+        else
+            src_hash=$(printf '%s' "$src" | cksum | awk '{print $1}')
+        fi
+        local local_ckpt="${LOCAL_CACHE_DIR}/${parent_name}_${ckpt_name}_${src_hash}"
 
         # Check if already cached (use sentinel file to mark complete cache)
         if [ -f "${local_ckpt}/.cache_complete" ]; then
@@ -212,14 +228,60 @@ else
     TORCHRUN_CMD=(python -m torch.distributed.run)
 fi
 
+resolve_visible_gpu_list() {
+    if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
+        echo "${CUDA_VISIBLE_DEVICES}"
+        return
+    fi
+
+    python3 - <<'PY'
+import subprocess
+try:
+    out = subprocess.check_output(
+        [
+            "nvidia-smi",
+            "--query-gpu=index",
+            "--format=csv,noheader",
+        ],
+        text=True,
+    )
+except Exception:
+    print("")
+else:
+    gpus = [line.strip() for line in out.splitlines() if line.strip()]
+    print(",".join(gpus))
+PY
+}
+
+count_visible_gpus() {
+    local gpu_list="$1"
+    if [ -z "$gpu_list" ]; then
+        echo 0
+        return
+    fi
+    awk -F',' '{print NF}' <<< "$gpu_list"
+}
+
 run_single_split() {
     local split="$1"
     local satnav_episodes="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/episodes/eval/${split}/all_episodes.json"
     local satnav_config="${BASELINE_DIR}/configs/.satnav_task_eval_${split}_$$.yaml"
     local output_dir="${OUTPUT_BASE_DIR}/${split}"
+    local visible_gpu_list
+    local available_gpu_count
 
     if [ ! -f "$satnav_episodes" ]; then
         print_error "Episodes file not found: ${satnav_episodes}"
+        return 1
+    fi
+
+    visible_gpu_list="$(resolve_visible_gpu_list)"
+    available_gpu_count="$(count_visible_gpus "$visible_gpu_list")"
+
+    if [ "$NUM_GPUS" -gt "$available_gpu_count" ]; then
+        print_error "Requested ${NUM_GPUS} GPUs, but only ${available_gpu_count} are visible on this host."
+        print_error "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}"
+        print_error "Detected visible GPUs: ${visible_gpu_list:-<none>}"
         return 1
     fi
 
@@ -241,6 +303,7 @@ run_single_split() {
     echo "  Split      : ${split}"
     echo "  Output     : ${output_dir}"
     echo "  GPUs       : ${NUM_GPUS}"
+    echo "  VisibleGPU : ${visible_gpu_list:-<none>}"
     [ -n "$MAX_EPISODES" ] && echo "  Max Episodes: ${MAX_EPISODES}"
     [ -n "$MODEL_BASE"   ] && echo "  Model Base  : ${MODEL_BASE}"
     echo "=========================================="
@@ -261,19 +324,25 @@ run_single_split() {
     fi
 
     if [ "$NUM_GPUS" -gt 1 ]; then
-        "${TORCHRUN_CMD[@]}" \
-            --nproc_per_node="${NUM_GPUS}" \
-            --master_port=$((RANDOM % 10000 + 20000)) \
-            "${EVAL_SCRIPT}" \
-            "${COMMON_ARGS[@]}" \
-            --world_size "${NUM_GPUS}" \
-            2>&1 | tee "${output_dir}/eval.log"
+        (
+            unset RANK WORLD_SIZE LOCAL_RANK LOCAL_WORLD_SIZE GROUP_RANK ROLE_RANK ROLE_NAME MASTER_ADDR MASTER_PORT MASTER_PORTS
+            export CUDA_VISIBLE_DEVICES="${visible_gpu_list}"
+            "${TORCHRUN_CMD[@]}" \
+                --nproc_per_node="${NUM_GPUS}" \
+                --master_port=$((RANDOM % 10000 + 20000)) \
+                "${EVAL_SCRIPT}" \
+                "${COMMON_ARGS[@]}" \
+                --world_size "${NUM_GPUS}"
+        ) 2>&1 | tee "${output_dir}/eval.log"
     else
-        python "${EVAL_SCRIPT}" \
-            "${COMMON_ARGS[@]}" \
-            --world_size 1 \
-            --rank 0 \
-            2>&1 | tee "${output_dir}/eval.log"
+        (
+            unset RANK WORLD_SIZE LOCAL_RANK LOCAL_WORLD_SIZE GROUP_RANK ROLE_RANK ROLE_NAME MASTER_ADDR MASTER_PORT MASTER_PORTS
+            export CUDA_VISIBLE_DEVICES="${visible_gpu_list}"
+            python "${EVAL_SCRIPT}" \
+                "${COMMON_ARGS[@]}" \
+                --world_size 1 \
+                --rank 0
+        ) 2>&1 | tee "${output_dir}/eval.log"
     fi
 
     rm -f "${satnav_config}"

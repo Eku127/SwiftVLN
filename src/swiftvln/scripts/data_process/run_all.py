@@ -15,10 +15,16 @@ import argparse
 import sys
 from pathlib import Path
 
-from config import get_data_dir, get_dataset_path, TRAIN_CITIES, EVAL_CITIES
-from process_episodes import process_episodes
-from convert_qa_to_swift import convert_qa_to_swift
-from normalize_trajectory_types import normalize_dataset
+try:
+    from .config import get_data_dir, get_dataset_path, TRAIN_CITIES, EVAL_CITIES
+    from .process_episodes import process_episodes
+    from .convert_qa_to_swift import convert_qa_to_swift
+    from .normalize_trajectory_types import normalize_dataset
+except ImportError:
+    from config import get_data_dir, get_dataset_path, TRAIN_CITIES, EVAL_CITIES
+    from process_episodes import process_episodes
+    from convert_qa_to_swift import convert_qa_to_swift
+    from normalize_trajectory_types import normalize_dataset
 
 
 def run_all(

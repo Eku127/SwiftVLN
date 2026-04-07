@@ -76,6 +76,7 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
     
     # Pixel embedding enhancement (set by trainer)
     use_pixel_embed: bool = False
+    use_uav_adapter: bool = False
     
     def __init__(
         self, 

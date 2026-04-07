@@ -17,10 +17,22 @@ import argparse
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
-from config import (
-    TRAIN_CITIES, EVAL_CITIES, QA_OUTPUT_FILE,
-    get_data_dir, get_qa_output_path
-)
+try:
+    from .config import (
+        TRAIN_CITIES,
+        EVAL_CITIES,
+        QA_OUTPUT_FILE,
+        get_data_dir,
+        get_qa_output_path,
+    )
+except ImportError:
+    from config import (
+        TRAIN_CITIES,
+        EVAL_CITIES,
+        QA_OUTPUT_FILE,
+        get_data_dir,
+        get_qa_output_path,
+    )
 
 
 def convert_message_content(content: List[Dict]) -> Tuple[str, List[str]]:

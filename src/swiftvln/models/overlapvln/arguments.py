@@ -153,6 +153,37 @@ class OverlapVLNTrainArguments(BaseVLNTrainArguments):
         }
     )
 
+    use_uav_adapter: bool = field(
+        default=False,
+        metadata={
+            "help": "Enable Stage-A UAV adapter enhancement. "
+                    "Applies the sim-to-real token adapter inside embed_enhance. Default: False."
+        }
+    )
+
+    uav_adapter_path: str = field(
+        default='',
+        metadata={
+            "help": "Optional external Stage-A checkpoint (.pt or s2r output dir) used to "
+                    "initialize the UAV adapter."
+        }
+    )
+
+    uav_adapter_type: str = field(
+        default='transformer_v1',
+        metadata={
+            "help": "UAV adapter implementation type. Default: transformer_v1."
+        }
+    )
+
+    uav_adapter_apply_scope: str = field(
+        default='all_images',
+        metadata={
+            "help": "Where to apply the UAV adapter. Current Stage-B implementation only "
+                    "supports 'all_images'."
+        }
+    )
+
     pose_fusion_method: str = field(
         default='additive',
         metadata={

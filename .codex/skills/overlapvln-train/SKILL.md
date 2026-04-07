@@ -56,7 +56,11 @@ Before starting, confirm with the user:
    - `98` — local `nvidia-smi`
    - `73` — `ssh -o BatchMode=yes -o ConnectTimeout=8 10.246.152.73 nvidia-smi`
    - `17` — `ssh -o BatchMode=yes -o ConnectTimeout=8 10.246.132.17 nvidia-smi` + Docker check
-2. For multi-server launch, verify each requested server has 8 free GPUs.
+2. For multi-server launch, verify each requested server has enough **currently visible** GPUs for the planned run.
+   - 默认不再假设必须 8 卡。
+   - 默认行为：训练脚本自动使用当前环境里**可见的全部 GPU**。
+   - 若需要指定卡数：设置 `TRAIN_NUM_GPUS=<N>`。
+   - 若需要指定具体卡列表：设置 `TRAIN_CUDA_DEVICES=0,1,3,5`。
 3. **Wait for user confirmation**.
 
 ## Step 3 → Pin Dataset Version & Config
@@ -90,6 +94,8 @@ mkdir -p logs/train_launch
 tmux new-session -d -s "${session_name}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
    conda activate swift-vln-train && \
+   TRAIN_NUM_GPUS=${TRAIN_NUM_GPUS:-} \
+   TRAIN_CUDA_DEVICES=${TRAIN_CUDA_DEVICES:-} \
    bash src/swiftvln/scripts/train/train_queue.sh 2>&1 | tee ${run_log}"
 ```
 
@@ -99,6 +105,8 @@ tmux new-session -d -s "${session_name}" \
 ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
   'source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
    conda activate swift-vln-train && \
+   TRAIN_NUM_GPUS=${TRAIN_NUM_GPUS:-} \
+   TRAIN_CUDA_DEVICES=${TRAIN_CUDA_DEVICES:-} \
    bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
    tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}'"
 ```
@@ -110,6 +118,8 @@ ssh 10.246.132.17 "docker exec -d streamvln-container bash -c \
   'tmux new-session -d -s ${session_name} \
     \"source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
      conda activate swift-vln-train && \
+     TRAIN_NUM_GPUS=${TRAIN_NUM_GPUS:-} \
+     TRAIN_CUDA_DEVICES=${TRAIN_CUDA_DEVICES:-} \
      bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
      tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}\"'"
 ```
@@ -231,11 +241,13 @@ Downstream consumers: eval runner (`runner.py`) and CSV collector (`collect_eval
 
 1. **Pause for user confirmation** on Step 1→2→3 transitions. Once confirmed, **proceed through Steps 4→5→6 automatically**.
 2. **Always launch training in tmux**. Use naming: `train_<short_desc>_<HHMMSS>`.
-3. **🚨 MANDATORY: tmux 启动后必须立即注册 watchdog（Step 5）并验证存活。** 不可跳过。
-4. **Watchdog 在 tmux session 结束后自动退出**，无需手动清理。
-5. **报告中必须包含 watchdog PID**。没有 PID 说明 Step 5 被跳过了。
-6. **Multi-server**: each server gets its own tmux session + watchdog. They run independently.
-7. **Prefer existing project scripts** over ad-hoc logic.
-8. **Eval enqueue is always a local file operation** (shared filesystem).
-9. **Do not commit** unless user explicitly asks.
+3. 默认不指定 GPU 参数时，训练脚本会自动使用当前环境里全部可见 GPU；不要再默认假设是 8 卡。
+4. 若用户指定卡数，用 `TRAIN_NUM_GPUS=<N>`；若用户指定具体卡位，用 `TRAIN_CUDA_DEVICES=<csv>`。
+5. **🚨 MANDATORY: tmux 启动后必须立即注册 watchdog（Step 5）并验证存活。** 不可跳过。
+6. **Watchdog 在 tmux session 结束后自动退出**，无需手动清理。
+7. **报告中必须包含 watchdog PID**。没有 PID 说明 Step 5 被跳过了。
+8. **Multi-server**: each server gets its own tmux session + watchdog. They run independently.
+9. **Prefer existing project scripts** over ad-hoc logic.
+10. **Eval enqueue is always a local file operation** (shared filesystem).
+11. **Do not commit** unless user explicitly asks.
 10. **Fail fast** on missing datasets, checkpoints, or conda envs.

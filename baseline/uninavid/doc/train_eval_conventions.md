@@ -40,12 +40,14 @@
   - 需要实验面板时手动开启：`USE_SWANLAB=true`
   - 调试/压测也可显式传：`REPORT_TO=none`
 
-## 评测配置约定（Updated: 2026-04-01）
+## 评测配置约定（Updated: 2026-04-02）
 
 - `baseline/uninavid/src/eval_satnav.py` 默认使用确定性解码（`do_sample=False`, `temperature=0.0`），用于稳定复现实验指标
 - prompt 语义是“预测 next four actions”，评测端会将解析出的动作词截断为最多 4 个（`forward/left/right/stop`）
 - 多卡 + resume 汇总使用 `result.jsonl` 去重（按 `episode_id` 最后写入覆盖），避免历史结果被每个 rank 重复计入 summary
 - `--max_episodes` 语义为“先截断总 episode，再做分布式切分”，不是“每卡独立上限”
+- `baseline/uninavid/scripts/eval_satnav.sh` 的本地 checkpoint cache 不再只按 `checkpoint-6000` 命名
+- cache key 现在包含父实验目录和源路径 hash，避免不同实验同名 checkpoint 发生缓存冲突
 
 ## Smoke Test 约定（Updated: 2026-03-11）
 

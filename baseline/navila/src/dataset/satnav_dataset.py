@@ -29,28 +29,10 @@ if _NAVILA_ROOT not in sys.path:
 
 from llava.data.dataset import preprocess
 from llava.mm_utils import process_image, vlnce_frame_sampling
+from action_formats import ACTION_TO_NAME, build_prompt, get_action_to_text
 
 
-# Action text targets must match NaVILA's evaluation regex patterns:
-#   stop    -> r"\bstop\b"
-#   forward -> r"\bis move forward\b"  (distance fallback: 25 cm = 1 step)
-#   left    -> r"\bis turn left\b"     + r"turn left (\d+) degree"
-#   right   -> r"\bis turn right\b"    + r"turn right (\d+) degree"
-# SatNav outdoor forward is ~10 m per step; the "cm" in evaluation fallback
-# to 25 cm (1 VLN-CE step) is irrelevant for SatNav eval.
-ACTION_TO_TEXT = {
-    0: "The next action is stop.",
-    1: "The next action is move forward 10 meters.",
-    2: "The next action is turn left 15 degree.",
-    3: "The next action is turn right 15 degree.",
-}
-
-PROMPT_TEMPLATE = (
-    "Imagine you are a robot programmed for navigation tasks. You have been given a video "
-    'of historical observations {history_tokens}, and current observation <image>\n. Your assigned task is: "{instruction}" '
-    "Analyze this series of images to decide your next action, which could be turning left or right by a specific "
-    "degree, moving forward a certain distance, or stop if the task is completed."
-)
+VALID_ACTIONS = set(ACTION_TO_NAME)
 
 
 def _normalize_instruction(text: str) -> str:
@@ -103,11 +85,11 @@ def _select_steps_head_stop_stride(actions: list, head_keep: int, fwd_stride: in
 
     # Head: steps 1..head_keep (clamped to episode length)
     for i in range(1, min(head_keep + 1, last_step + 1)):
-        if actions[i] in ACTION_TO_TEXT:
+        if actions[i] in VALID_ACTIONS:
             kept.add(i)
 
     # Stop: the last step (always stop in SatNav)
-    if actions[last_step] in ACTION_TO_TEXT:
+    if actions[last_step] in VALID_ACTIONS:
         kept.add(last_step)
 
     # Middle: (head_keep+1)..(last_step-1)
@@ -118,7 +100,7 @@ def _select_steps_head_stop_stride(actions: list, head_keep: int, fwd_stride: in
         consecutive_fwd = 0
         for i in range(mid_start, mid_end + 1):
             a = actions[i]
-            if a not in ACTION_TO_TEXT:
+            if a not in VALID_ACTIONS:
                 consecutive_fwd = 0
                 continue
             if a == 1:  # move forward: stride
@@ -162,6 +144,8 @@ class SatNavNaVILADataset(Dataset):
         self.tokenizer = tokenizer
         self.data_args = data_args
         self.image_folder = image_folder
+        self.action_format = os.getenv("SATNAV_ACTION_FORMAT", "compact")
+        self.action_to_text = get_action_to_text(self.action_format)
         self.samples = []
         self.action_counts = Counter()
 
@@ -181,7 +165,7 @@ class SatNavNaVILADataset(Dataset):
                 # Legacy mode: iterate all steps and apply ratio/stride filters.
                 step_indices = [
                     i for i in range(1, len(actions))
-                    if actions[i] in ACTION_TO_TEXT
+                    if actions[i] in VALID_ACTIONS
                     and _sample_kept(
                         episode_id=episode_id,
                         trajectory_id=trajectory_id,
@@ -203,7 +187,7 @@ class SatNavNaVILADataset(Dataset):
                     "step_idx": step_idx,
                     "instruction": instruction,
                     "frame_paths": frame_paths,
-                    "answer": ACTION_TO_TEXT[action],
+                    "answer": self.action_to_text[action],
                     "action": action,
                 }
                 repeat = stop_repeat if action == 0 else 1
@@ -224,6 +208,7 @@ class SatNavNaVILADataset(Dataset):
             f"samples={len(self.samples)}, "
             f"max_episodes={max_episodes}, max_samples={max_samples}, "
             f"sample_ratio={sample_ratio}, sample_stride={sample_stride}, "
+            f"action_format={self.action_format}, "
             f"head_keep={head_keep}, stop_repeat={stop_repeat}, "
             f"action_counts={dict(self.action_counts)}",
             flush=True,
@@ -261,10 +246,10 @@ class SatNavNaVILADataset(Dataset):
             [process_image(image, self.data_args, image_folder=None) for image in sampled_frames]
         )
 
-        history_count = max(self.data_args.num_video_frames - 1, 0)
-        prompt = PROMPT_TEMPLATE.format(
-            history_tokens="<image>\n" * history_count,
+        prompt = build_prompt(
             instruction=sample["instruction"],
+            history_count=max(self.data_args.num_video_frames - 1, 0),
+            action_format=self.action_format,
         )
         conversation = [[
             {"from": "human", "value": prompt},

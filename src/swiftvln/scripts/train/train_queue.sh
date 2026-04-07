@@ -63,11 +63,14 @@ EVAL_ENQUEUE_RETRIES="${EVAL_ENQUEUE_RETRIES:-3}"
 EVAL_ENQUEUE_RETRY_SLEEP="${EVAL_ENQUEUE_RETRY_SLEEP:-3}"
 USE_SWANLAB=true
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
+TRAIN_CUDA_DEVICES="${TRAIN_CUDA_DEVICES:-}"
+TRAIN_NUM_GPUS="${TRAIN_NUM_GPUS:-}"
+TRAIN_DRY_RUN="${TRAIN_DRY_RUN:-false}"
 
 # QA 混合训练配置
 USE_QA_MIXED_TRAINING=false
 QA_RATIO=0.15
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/data/qa_swift.jsonl"
+QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/data/qa_swift.jsonl"
 
 # Stage2 默认基础模型路径
 declare -A STAGE2_DEFAULT_MODELS=(
@@ -743,7 +746,7 @@ interactive_setup() {
         fi
     else
         # SatNav 环境
-        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data"
+        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data"
         echo "默认 SatNav 数据路径:"
         echo "  $default_satnav_path"
         echo ""
@@ -1147,6 +1150,16 @@ run_experiment() {
     echo "数据集: $ds_names"
     echo "环境: $ENV_TYPE"
     echo "QA 配置: $(format_qa_ratio "$qa_ratio")"
+    if [[ -n "$TRAIN_CUDA_DEVICES" ]]; then
+        echo "GPU 配置: TRAIN_CUDA_DEVICES=$TRAIN_CUDA_DEVICES"
+    elif [[ -n "$TRAIN_NUM_GPUS" ]]; then
+        echo "GPU 配置: TRAIN_NUM_GPUS=$TRAIN_NUM_GPUS"
+    else
+        echo "GPU 配置: auto (使用当前可见 GPU)"
+    fi
+    if [[ "$TRAIN_DRY_RUN" == "true" ]]; then
+        echo "Dry Run: true"
+    fi
     echo ""
     
     # 获取训练脚本路径
@@ -1251,6 +1264,7 @@ run_experiment() {
     
     print_info "日志文件: $log_file"
     print_info "开始训练..."
+    export TRAIN_CUDA_DEVICES TRAIN_NUM_GPUS TRAIN_DRY_RUN
     
     # 修复 SWIFTVLN_ROOT 路径问题
     # 原始脚本使用 BASH_SOURCE 计算 SWIFTVLN_ROOT，但复制到临时文件后路径会错误
@@ -1288,7 +1302,12 @@ run_experiment() {
         break
     done
 
-    if [[ -f "$run_log_file" ]] && grep -q "Training completed!" "$run_log_file"; then
+    local dry_run_completed=false
+    if [[ "$TRAIN_DRY_RUN" == "true" ]] && [[ -f "$run_log_file" ]] && grep -q "TRAIN_DRY_RUN=true, skip torchrun launch after config validation." "$run_log_file"; then
+        dry_run_completed=true
+    fi
+
+    if [[ -f "$run_log_file" ]] && { grep -q "Training completed!" "$run_log_file" || [[ "$dry_run_completed" == "true" ]]; }; then
         local end_time=$(date +%s)
         local duration=$((end_time - start_time))
         local duration_str=$(printf '%02d:%02d:%02d' $((duration/3600)) $((duration%3600/60)) $((duration%60)))
@@ -1296,7 +1315,11 @@ run_experiment() {
         # 从日志中提取实际的输出目录（从 "Model saved to:" 行）
         local output_path=$(grep -oP 'Model saved to: \K.*' "$run_log_file" | tail -1)
         local exp_name=$(basename "$output_path" 2>/dev/null)
-        exp_name=${exp_name:-"unknown"}
+        if [[ "$dry_run_completed" == "true" ]]; then
+            exp_name=${exp_name:-"dry-run"}
+        else
+            exp_name=${exp_name:-"unknown"}
+        fi
         
         # Write train_metadata.json if not already created by the training script
         if [[ -n "$output_path" && -d "$output_path" && ! -f "${output_path}/train_metadata.json" ]]; then
@@ -1329,10 +1352,15 @@ if meta:
 
         # 格式: idx|model|changes|ds_names|status|duration|exp_name|base_model|qa_ratio
         EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|SUCCESS|$duration_str|$exp_name|$stage2_path|$qa_ratio")
-        print_success "实验 $exp_idx 完成! 耗时: $duration_str"
-        enqueue_model_for_eval "$exp_name" || true
-        send_webhook "Train Success" "experiment=${exp_idx}\nmodel=${model}\nduration=${duration_str}\noutput=${output_path:-N/A}\nlog=${run_log_file}"
-        _emit_train_event "EXPERIMENT_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${output_path:-N/A}|$(date -Iseconds)"
+        if [[ "$dry_run_completed" == "true" ]]; then
+            print_success "实验 $exp_idx Dry Run 完成! 耗时: $duration_str"
+            _emit_train_event "EXPERIMENT_DRY_RUN_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${run_log_file}|$(date -Iseconds)"
+        else
+            print_success "实验 $exp_idx 完成! 耗时: $duration_str"
+            enqueue_model_for_eval "$exp_name" || true
+            send_webhook "Train Success" "experiment=${exp_idx}\nmodel=${model}\nduration=${duration_str}\noutput=${output_path:-N/A}\nlog=${run_log_file}"
+            _emit_train_event "EXPERIMENT_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${output_path:-N/A}|$(date -Iseconds)"
+        fi
         
         rm -f "$temp_script"
         return 0

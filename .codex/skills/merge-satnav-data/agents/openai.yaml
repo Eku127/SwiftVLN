@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merge SatNav Data"
+  short_description: "Analyze and merge SatNav dataset versions safely"
+  default_prompt: "Use $merge-satnav-data to analyze two SatNav dataset versions, verify overlap and conflicts, merge them into a new version with duplicate-safe remapping, and summarize the validation results."

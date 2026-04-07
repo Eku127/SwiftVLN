@@ -154,7 +154,7 @@ cleanup_old_runs() {
     if [[ -d "$RUNS_DIR" ]]; then
         while IFS= read -r -d '' dir; do
             rm -rf "$dir"
-            ((count++))
+            count=$((count + 1))
         done < <(find "$RUNS_DIR" -mindepth 1 -maxdepth 1 -type d -mtime +"$days" -print0 2>/dev/null)
     fi
 
