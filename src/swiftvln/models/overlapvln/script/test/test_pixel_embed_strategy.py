@@ -3,10 +3,18 @@
 
 import importlib.util
 import os
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import torch
+
+CURRENT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = CURRENT_DIR.parents[5]
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
 
 def _load_overlap_model_module(repo_root: str):
@@ -69,9 +77,7 @@ def _run_case(module, use_pixel_embed: bool, use_pose_embed: bool):
 
 
 def main():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(script_dir, '..', '..', '..', '..', '..'))
-    module = _load_overlap_model_module(repo_root)
+    module = _load_overlap_model_module(str(REPO_ROOT))
 
     model_with_pixel = _run_case(module, use_pixel_embed=True, use_pose_embed=False)
     assert model_with_pixel.pixel_embed is not None, 'pixel_embed should be attached when use_pixel_embed=True'
