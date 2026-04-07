@@ -44,6 +44,10 @@ baseline/*/logs/
 baseline/*/results/
 baseline/*/checkpoints/
 
+# Baseline eval generated temp configs
+baseline/*/configs/.satnav_task_eval_*.yaml
+baseline/*/configs/.debug_eval*.yaml
+
 # Ignore pycache under baseline
 baseline/**/__pycache__/
 

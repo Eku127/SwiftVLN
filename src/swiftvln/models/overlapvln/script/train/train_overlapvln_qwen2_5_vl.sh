@@ -18,11 +18,106 @@ conda activate swift-vln-train
 # ============================================================================
 # GPU Configuration
 # ============================================================================
-CUDA_DEVICES="0,1,2,3,4,5,6,7"    # GPUs to use (comma-separated)
-MASTER_PORT=29500                  # Master port for distributed training
+TRAIN_CUDA_DEVICES="${TRAIN_CUDA_DEVICES:-}"   # Explicit GPU list, e.g. "0,1,2"
+TRAIN_NUM_GPUS="${TRAIN_NUM_GPUS:-}"           # Number of GPUs to take from current visible set
+TRAIN_DRY_RUN="${TRAIN_DRY_RUN:-false}"        # true = print config and exit before torchrun
+CUDA_DEVICES="${CUDA_DEVICES:-auto}"           # "auto" = all currently visible GPUs
+MASTER_PORT="${MASTER_PORT:-29500}"            # Master port for distributed training
 
-# Auto-detect GPU count from CUDA_DEVICES
-GPUS_PER_NODE=$(echo "$CUDA_DEVICES" | tr ',' '\n' | wc -l)
+normalize_cuda_device_list() {
+    local raw="$1"
+    echo "$raw" | tr -d '[:space:]' | sed 's/^,*//; s/,*$//; s/,,*/,/g'
+}
+
+get_current_visible_cuda_devices() {
+    if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+        normalize_cuda_device_list "${CUDA_VISIBLE_DEVICES}"
+        return 0
+    fi
+
+    python - <<'PY'
+import sys
+import torch
+
+count = torch.cuda.device_count()
+if count <= 0:
+    sys.exit(1)
+print(",".join(str(i) for i in range(count)))
+PY
+}
+
+take_first_n_cuda_devices() {
+    local device_list="$1"
+    local request_count="$2"
+    local -a devices=()
+    local -a selected=()
+    local idx=0
+
+    IFS=',' read -r -a devices <<< "$device_list"
+    if (( request_count < 1 )); then
+        echo "[ERROR] TRAIN_NUM_GPUS must be >= 1, got: ${request_count}" >&2
+        return 1
+    fi
+    if (( request_count > ${#devices[@]} )); then
+        echo "[ERROR] TRAIN_NUM_GPUS=${request_count} exceeds available visible GPUs (${#devices[@]}): ${device_list}" >&2
+        return 1
+    fi
+
+    while (( idx < request_count )); do
+        selected+=("${devices[$idx]}")
+        ((idx++))
+    done
+
+    local joined=""
+    local item=""
+    for item in "${selected[@]}"; do
+        if [[ -n "$joined" ]]; then
+            joined+=","
+        fi
+        joined+="$item"
+    done
+    echo "$joined"
+}
+
+resolve_cuda_devices() {
+    local visible_devices=""
+
+    if [[ -n "$TRAIN_CUDA_DEVICES" ]]; then
+        normalize_cuda_device_list "$TRAIN_CUDA_DEVICES"
+        return 0
+    fi
+
+    if [[ -n "$CUDA_DEVICES" && "$CUDA_DEVICES" != "auto" ]]; then
+        normalize_cuda_device_list "$CUDA_DEVICES"
+        return 0
+    fi
+
+    visible_devices="$(get_current_visible_cuda_devices)" || {
+        echo "[ERROR] No visible CUDA devices detected in current environment." >&2
+        return 1
+    }
+    visible_devices="$(normalize_cuda_device_list "$visible_devices")"
+
+    if [[ -n "$TRAIN_NUM_GPUS" ]]; then
+        take_first_n_cuda_devices "$visible_devices" "$TRAIN_NUM_GPUS"
+        return 0
+    fi
+
+    echo "$visible_devices"
+}
+
+CUDA_DEVICES="$(resolve_cuda_devices)"
+if [[ -z "$CUDA_DEVICES" ]]; then
+    echo "[ERROR] Failed to resolve CUDA devices." >&2
+    exit 1
+fi
+
+# Auto-detect GPU count from resolved CUDA_DEVICES
+GPUS_PER_NODE=$(echo "$CUDA_DEVICES" | tr ',' '\n' | sed '/^$/d' | wc -l)
+if [[ "$GPUS_PER_NODE" -lt 1 ]]; then
+    echo "[ERROR] Resolved GPU count is invalid: ${GPUS_PER_NODE} (CUDA_DEVICES=${CUDA_DEVICES})" >&2
+    exit 1
+fi
 
 # ============================================================================
 # Model Configuration
@@ -321,6 +416,13 @@ fi
 echo "Output: $OUTPUT_DIR"
 echo "------------------------------------------"
 echo "GPUs: $GPUS_PER_NODE ($CUDA_DEVICES)"
+if [[ -n "$TRAIN_CUDA_DEVICES" ]]; then
+    echo "GPU Override: TRAIN_CUDA_DEVICES=$TRAIN_CUDA_DEVICES"
+elif [[ -n "$TRAIN_NUM_GPUS" ]]; then
+    echo "GPU Override: TRAIN_NUM_GPUS=$TRAIN_NUM_GPUS"
+else
+    echo "GPU Override: auto-detect visible GPUs"
+fi
 echo "Batch: ${BATCH_SIZE} x ${GRAD_ACCUM_STEPS} x ${GPUS_PER_NODE} = ${EFFECTIVE_BATCH_SIZE}"
 echo "LR: $LEARNING_RATE | Epochs: $NUM_EPOCHS"
 echo "Attention: $ATTN_IMPL"
@@ -412,6 +514,11 @@ fi
 # Run Training
 # ============================================================================
 cd "$SWIFTVLN_ROOT"
+
+if [[ "$TRAIN_DRY_RUN" == "true" ]]; then
+    echo "[INFO] TRAIN_DRY_RUN=true, skip torchrun launch after config validation."
+    exit 0
+fi
 
 torchrun \
     --nnodes=1 \
