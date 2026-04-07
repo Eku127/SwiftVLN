@@ -34,6 +34,7 @@ if _BASELINE_SRC not in sys.path:
 import re
 import json
 import argparse
+import time
 
 import tqdm
 import torch
@@ -503,6 +504,84 @@ def load_dedup_results(result_file: str) -> list:
     return list(by_episode.values())
 
 
+def get_rank_sync_dir(output_path: str) -> str:
+    return os.path.join(output_path, ".dist_sync")
+
+
+def clear_rank_markers(output_path: str) -> None:
+    sync_dir = get_rank_sync_dir(output_path)
+    if not os.path.isdir(sync_dir):
+        os.makedirs(sync_dir, exist_ok=True)
+        return
+
+    for name in os.listdir(sync_dir):
+        if name.startswith("rank_") and name.endswith(".done.json"):
+            try:
+                os.remove(os.path.join(sync_dir, name))
+            except FileNotFoundError:
+                pass
+
+
+def write_rank_marker(
+    output_path: str,
+    rank: int,
+    processed_count: int,
+    resumed_count: int,
+    local_total: int,
+) -> None:
+    sync_dir = get_rank_sync_dir(output_path)
+    os.makedirs(sync_dir, exist_ok=True)
+    final_path = os.path.join(sync_dir, f"rank_{rank}.done.json")
+    tmp_path = f"{final_path}.tmp"
+    payload = {
+        "rank": rank,
+        "processed_count": processed_count,
+        "resumed_count": resumed_count,
+        "local_total": local_total,
+        "completed_at": time.time(),
+    }
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False)
+    os.replace(tmp_path, final_path)
+
+
+def wait_for_rank_markers(
+    output_path: str,
+    world_size: int,
+    timeout_seconds: int = 1800,
+    poll_seconds: int = 5,
+    verbose: bool = False,
+) -> bool:
+    sync_dir = get_rank_sync_dir(output_path)
+    os.makedirs(sync_dir, exist_ok=True)
+    deadline = time.time() + timeout_seconds
+    last_missing = None
+
+    while True:
+        missing = []
+        for rank in range(world_size):
+            marker = os.path.join(sync_dir, f"rank_{rank}.done.json")
+            if not os.path.exists(marker):
+                missing.append(rank)
+
+        if not missing:
+            return True
+
+        if time.time() >= deadline:
+            if verbose:
+                print(
+                    f"[Warning] Timed out waiting for rank completion markers. "
+                    f"Missing ranks: {missing}"
+                )
+            return False
+
+        if verbose and missing != last_missing:
+            print(f"[Sync] Waiting for ranks to finish: {missing}")
+            last_missing = list(missing)
+
+        time.sleep(poll_seconds)
+
+
 def save_summary(results: list, output_path: str, args) -> None:
     """Compute and print metrics summary, then write to evaluation_summary.json."""
     if not results:
@@ -582,13 +661,18 @@ def save_summary(results: list, output_path: str, args) -> None:
 
 
 def aggregate_distributed(result_file: str, output_path: str, args) -> None:
-    """Wait all ranks, then summarize from deduplicated result.jsonl on rank 0."""
+    """Summarize from deduplicated result.jsonl on rank 0 after rank markers arrive."""
     rank = get_rank()
-    distributed_barrier(args)
     if rank == 0:
+        wait_for_rank_markers(
+            output_path,
+            args.world_size,
+            timeout_seconds=1800,
+            poll_seconds=5,
+            verbose=True,
+        )
         all_results = load_dedup_results(result_file)
         save_summary(all_results, output_path, args)
-    distributed_barrier(args)
 
 
 # =====================================================================
@@ -629,6 +713,7 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
             f"this_rank={len(my_episodes)}, scenes={len(scene_episode_dict)}, "
             f"world_size={world_size}"
         )
+        clear_rank_markers(args.output_path)
 
     # Resume support
     result_file = os.path.join(args.output_path, "result.jsonl")
@@ -719,6 +804,13 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
         )
 
     env_wrapper.close()
+    write_rank_marker(
+        args.output_path,
+        rank,
+        processed_count=len(results),
+        resumed_count=local_done_before_resume,
+        local_total=len(my_episodes),
+    )
 
     if world_size > 1:
         aggregate_distributed(result_file, args.output_path, args)
