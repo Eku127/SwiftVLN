@@ -81,6 +81,14 @@ class OverlapVLNEval(BaseVLNEval):
                             help="Enable pixel coordinate embedding enhancement (must match training)")
         parser.add_argument("--use_pose_embed", action="store_true",
                             help="Enable pose embedding enhancement (must match training)")
+        parser.add_argument("--use_uav_adapter", action="store_true",
+                            help="Enable Stage-A UAV adapter enhancement (must match training)")
+        parser.add_argument("--uav_adapter_path", type=str, default="",
+                            help="Optional external Stage-A checkpoint (.pt or s2r output dir)")
+        parser.add_argument("--uav_adapter_type", type=str, default="transformer_v1",
+                            help="UAV adapter implementation type")
+        parser.add_argument("--uav_adapter_apply_scope", type=str, default="all_images",
+                            help="Where to apply the UAV adapter. Current implementation uses all_images.")
         parser.add_argument("--pose_fusion_method", type=str, default="additive",
                             choices=["additive", "film"],
                             help="Pose embedding fusion method")
@@ -100,6 +108,14 @@ class OverlapVLNEval(BaseVLNEval):
             extras['use_pixel_embed'] = self.args.use_pixel_embed
         if hasattr(self.args, 'use_pose_embed'):
             extras['use_pose_embed'] = self.args.use_pose_embed
+        if hasattr(self.args, 'use_uav_adapter'):
+            extras['use_uav_adapter'] = self.args.use_uav_adapter
+        if hasattr(self.args, 'uav_adapter_path') and self.args.uav_adapter_path:
+            extras['uav_adapter_path'] = self.args.uav_adapter_path
+        if hasattr(self.args, 'uav_adapter_type'):
+            extras['uav_adapter_type'] = self.args.uav_adapter_type
+        if hasattr(self.args, 'uav_adapter_apply_scope'):
+            extras['uav_adapter_apply_scope'] = self.args.uav_adapter_apply_scope
         if hasattr(self.args, 'pose_fusion_method'):
             extras['pose_fusion_method'] = self.args.pose_fusion_method
         if hasattr(self.args, 'pose_norm_scale'):
@@ -146,6 +162,10 @@ class OverlapVLNEval(BaseVLNEval):
             attn_impl='flash_attn',
             use_pixel_embed=getattr(self.args, 'use_pixel_embed', False),
             use_pose_embed=getattr(self.args, 'use_pose_embed', False),
+            use_uav_adapter=getattr(self.args, 'use_uav_adapter', False),
+            uav_adapter_path=getattr(self.args, 'uav_adapter_path', ''),
+            uav_adapter_type=getattr(self.args, 'uav_adapter_type', 'transformer_v1'),
+            uav_adapter_apply_scope=getattr(self.args, 'uav_adapter_apply_scope', 'all_images'),
             pose_fusion_method=getattr(self.args, 'pose_fusion_method', 'additive'),
             pose_norm_scale=getattr(self.args, 'pose_norm_scale', 100.0),
         )

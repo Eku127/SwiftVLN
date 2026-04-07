@@ -167,6 +167,10 @@ def get_model_tokenizer_overlapvln_qwen2_5_vl(model_dir, model_info, model_kwarg
         **kwargs: Additional arguments including:
             - use_pixel_embed: bool, whether to enable pixel coordinate embedding enhancement
             - use_pose_embed: bool, whether to enable pose embedding enhancement
+            - use_uav_adapter: bool, whether to enable Stage-A UAV adapter enhancement
+            - uav_adapter_path: str, optional external Stage-A checkpoint
+            - uav_adapter_type: str, UAV adapter implementation type
+            - uav_adapter_apply_scope: str, currently only 'all_images'
             - pose_fusion_method: str, pose fusion method ('additive' or 'film')
             - pose_norm_scale: float, tanh normalization scale for pose positions
             - attn_impl, torch_dtype, etc.
@@ -179,6 +183,10 @@ def get_model_tokenizer_overlapvln_qwen2_5_vl(model_dir, model_info, model_kwarg
     # Extract custom arguments before passing to parent loader
     use_pixel_embed = kwargs.pop('use_pixel_embed', False)
     use_pose_embed = kwargs.pop('use_pose_embed', False)
+    use_uav_adapter = kwargs.pop('use_uav_adapter', False)
+    uav_adapter_path = kwargs.pop('uav_adapter_path', '')
+    uav_adapter_type = kwargs.pop('uav_adapter_type', 'transformer_v1')
+    uav_adapter_apply_scope = kwargs.pop('uav_adapter_apply_scope', 'all_images')
     pose_fusion_method = kwargs.pop('pose_fusion_method', 'additive')
     pose_norm_scale = kwargs.pop('pose_norm_scale', 100.0)
     
@@ -225,8 +233,12 @@ def get_model_tokenizer_overlapvln_qwen2_5_vl(model_dir, model_info, model_kwarg
             embed_dim=embed_dim,
             use_pixel_embed=use_pixel_embed,
             use_pose_embed=use_pose_embed,
+            use_uav_adapter=use_uav_adapter,
             pose_fusion=pose_fusion_method,
             pose_norm_scale=pose_norm_scale,
+            uav_adapter_path=uav_adapter_path,
+            uav_adapter_type=uav_adapter_type,
+            uav_adapter_apply_scope=uav_adapter_apply_scope,
         )
         
         # Move to the same device/dtype as the visual encoder/model
@@ -248,6 +260,14 @@ def get_model_tokenizer_overlapvln_qwen2_5_vl(model_dir, model_info, model_kwarg
         # contains trained enhancement parameters (e.g., pixel_embed weights).
         if not model.embed_enhance.is_empty and os.path.isdir(model_dir):
             _restore_enhancement_weights(model, model_dir)
+
+        # Explicit external UAV adapter should win over local embed_enhance weights.
+        if use_uav_adapter and uav_adapter_path and 'uav' in model.embed_enhance.enhancements:
+            resolved_path = model.embed_enhance.enhancements['uav'].load_external_checkpoint(
+                uav_adapter_path,
+                strict=True,
+            )
+            print(f"[OverlapVLN] Loaded external UAV adapter from: {resolved_path}")
         
         if not model.embed_enhance.is_empty:
             print(f"[OverlapVLN] Embedding enhancement pipeline: {model.embed_enhance}")
@@ -269,6 +289,10 @@ def get_model_tokenizer_overlapvln_qwen2_5_vl(model_dir, model_info, model_kwarg
             _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
         else:
             _set_alias('pose_embed', None)
+        if use_uav_adapter and 'uav' in model.embed_enhance.enhancements:
+            _set_alias('uav_adapter', model.embed_enhance.enhancements['uav'])
+        else:
+            _set_alias('uav_adapter', None)
     
     return model, processor
 

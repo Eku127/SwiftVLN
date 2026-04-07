@@ -102,6 +102,10 @@ SYSTEM_PROMPT_SETTING="${SYSTEM_PROMPT_SETTING:-vanilla}"
 # Embedding enhancement (must match training checkpoint setup)
 USE_PIXEL_EMBED="${USE_PIXEL_EMBED:-false}"
 USE_POSE_EMBED="${USE_POSE_EMBED:-false}"
+USE_UAV_ADAPTER="${USE_UAV_ADAPTER:-false}"
+UAV_ADAPTER_PATH="${UAV_ADAPTER_PATH:-}"
+UAV_ADAPTER_TYPE="${UAV_ADAPTER_TYPE:-transformer_v1}"
+UAV_ADAPTER_APPLY_SCOPE="${UAV_ADAPTER_APPLY_SCOPE:-all_images}"
 POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
 POSE_NORM_SCALE="${POSE_NORM_SCALE:-100.0}"
 
@@ -189,6 +193,7 @@ fi
 echo "System Prompt:   ${SYSTEM_PROMPT_SETTING}"
 echo "Pixel Embed:     ${USE_PIXEL_EMBED}"
 echo "Pose Embed:      ${USE_POSE_EMBED} (fusion=${POSE_FUSION_METHOD}, norm_scale=${POSE_NORM_SCALE})"
+echo "UAV Adapter:     ${USE_UAV_ADAPTER} (path=${UAV_ADAPTER_PATH:-<none>}, type=${UAV_ADAPTER_TYPE}, scope=${UAV_ADAPTER_APPLY_SCOPE})"
 echo "Save Video:      ${SAVE_VIDEO}"
 echo "=============================================="
 
@@ -255,6 +260,12 @@ EMBED_ENHANCE_ARGS=""
 [ "$USE_PIXEL_EMBED" = "true" ] && EMBED_ENHANCE_ARGS="--use_pixel_embed"
 if [ "$USE_POSE_EMBED" = "true" ]; then
     EMBED_ENHANCE_ARGS="${EMBED_ENHANCE_ARGS} --use_pose_embed --pose_fusion_method ${POSE_FUSION_METHOD} --pose_norm_scale ${POSE_NORM_SCALE}"
+fi
+if [ "$USE_UAV_ADAPTER" = "true" ]; then
+    EMBED_ENHANCE_ARGS="${EMBED_ENHANCE_ARGS} --use_uav_adapter --uav_adapter_type ${UAV_ADAPTER_TYPE} --uav_adapter_apply_scope ${UAV_ADAPTER_APPLY_SCOPE}"
+    if [ -n "$UAV_ADAPTER_PATH" ]; then
+        EMBED_ENHANCE_ARGS="${EMBED_ENHANCE_ARGS} --uav_adapter_path ${UAV_ADAPTER_PATH}"
+    fi
 fi
 
 torchrun \

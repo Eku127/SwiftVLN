@@ -244,6 +244,14 @@ USE_PIXEL_EMBED=false
 # - true: enable and train pose embedding module
 USE_POSE_EMBED=false
 
+# Stage-A UAV adapter enhancement
+# - false: disable (default)
+# - true: enable and optionally load from an external s2r checkpoint
+USE_UAV_ADAPTER=false
+UAV_ADAPTER_PATH=""
+UAV_ADAPTER_TYPE="transformer_v1"
+UAV_ADAPTER_APPLY_SCOPE="all_images"
+
 # Pose fusion method: "additive" (default) or "film"
 POSE_FUSION_METHOD="additive"
 
@@ -341,6 +349,9 @@ if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
     else
         _EMBED_PARTS+=("pose")
     fi
+fi
+if [ "$USE_UAV_ADAPTER" = true ] || [ "$USE_UAV_ADAPTER" = "true" ]; then
+    _EMBED_PARTS+=("uav")
 fi
 if [ ${#_EMBED_PARTS[@]} -gt 0 ]; then
     EMBED_SUFFIX="-$(IFS='+'; echo "${_EMBED_PARTS[*]}")"
@@ -447,6 +458,8 @@ echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with 
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
 echo "Pixel Embed: $USE_PIXEL_EMBED"
 echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
+echo "UAV Adapter: $USE_UAV_ADAPTER (type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE)"
+[ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
 echo "------------------------------------------"
 # Mixed training info
 if [ "$USE_QA_MIXED_TRAINING" = true ]; then
@@ -569,6 +582,10 @@ torchrun \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
     --use_pixel_embed $USE_PIXEL_EMBED \
     --use_pose_embed $USE_POSE_EMBED \
+    --use_uav_adapter $USE_UAV_ADAPTER \
+    --uav_adapter_path "$UAV_ADAPTER_PATH" \
+    --uav_adapter_type $UAV_ADAPTER_TYPE \
+    --uav_adapter_apply_scope $UAV_ADAPTER_APPLY_SCOPE \
     --pose_fusion_method $POSE_FUSION_METHOD \
     --pose_norm_scale $POSE_NORM_SCALE \
     --use_tome $USE_TOME \

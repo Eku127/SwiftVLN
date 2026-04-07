@@ -99,10 +99,15 @@ class OverlapVLNSft(BaseVLNSft):
         # Configure embedding enhancement pipeline
         use_pixel_embed = getattr(self.args, 'use_pixel_embed', False)
         use_pose_embed = getattr(self.args, 'use_pose_embed', False)
+        use_uav_adapter = getattr(self.args, 'use_uav_adapter', False)
+        uav_adapter_path = getattr(self.args, 'uav_adapter_path', '')
+        uav_adapter_type = getattr(self.args, 'uav_adapter_type', 'transformer_v1')
+        uav_adapter_apply_scope = getattr(self.args, 'uav_adapter_apply_scope', 'all_images')
         pose_fusion_method = getattr(self.args, 'pose_fusion_method', 'additive')
         pose_norm_scale = getattr(self.args, 'pose_norm_scale', 100.0)
         self.template.use_pixel_embed = use_pixel_embed
         self.template.use_pose_embed = use_pose_embed
+        self.template.use_uav_adapter = use_uav_adapter
 
         model = getattr(self, 'model', None)
         if model is not None:
@@ -111,6 +116,8 @@ class OverlapVLNSft(BaseVLNSft):
                 desired_enhancements.append('pixel')
             if use_pose_embed:
                 desired_enhancements.append('pose')
+            if use_uav_adapter:
+                desired_enhancements.append('uav')
 
             def _needs_rebuild_pipeline() -> bool:
                 if not hasattr(model, 'embed_enhance') or model.embed_enhance is None:
@@ -133,8 +140,12 @@ class OverlapVLNSft(BaseVLNSft):
                     embed_dim=embed_dim,
                     use_pixel_embed=use_pixel_embed,
                     use_pose_embed=use_pose_embed,
+                    use_uav_adapter=use_uav_adapter,
                     pose_fusion=pose_fusion_method,
                     pose_norm_scale=pose_norm_scale,
+                    uav_adapter_path=uav_adapter_path,
+                    uav_adapter_type=uav_adapter_type,
+                    uav_adapter_apply_scope=uav_adapter_apply_scope,
                 )
                 logger.info(f"[OverlapVLN] Rebuilt embed_enhance pipeline in trainer: {model.embed_enhance}")
 
@@ -155,6 +166,12 @@ class OverlapVLNSft(BaseVLNSft):
 
                 logger.info(f"[OverlapVLN] Embedding enhancement pipeline: {model.embed_enhance}")
                 logger.info(f"  - Enhancements: {model.embed_enhance.enhancement_names}")
+                if use_uav_adapter and uav_adapter_path and 'uav' in model.embed_enhance.enhancements:
+                    resolved_path = model.embed_enhance.enhancements['uav'].load_external_checkpoint(
+                        uav_adapter_path,
+                        strict=True,
+                    )
+                    logger.info(f"[OverlapVLN] Loaded external UAV adapter from: {resolved_path}")
 
             # Backward compatibility: aliases without duplicate module registration.
             def _set_alias(alias_name: str, value) -> None:
@@ -170,6 +187,10 @@ class OverlapVLNSft(BaseVLNSft):
                 _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
             elif not hasattr(model, 'pose_embed'):
                 _set_alias('pose_embed', None)
+            if use_uav_adapter and hasattr(model.embed_enhance, 'enhancements') and 'uav' in model.embed_enhance.enhancements:
+                _set_alias('uav_adapter', model.embed_enhance.enhancements['uav'])
+            elif not hasattr(model, 'uav_adapter'):
+                _set_alias('uav_adapter', None)
 
     def _build_dataset_kwargs(self, data_path: str):
         return {
