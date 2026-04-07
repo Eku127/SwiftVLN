@@ -28,6 +28,7 @@
 #   SATNAV_SAMPLE_STRIDE=...      (forward stride in middle when HEAD_KEEP is set; turns always kept)
 #   SATNAV_HEAD_KEEP=...          (enable head+stop+turn-protect mode; default 7)
 #   SATNAV_STOP_REPEAT=...        (repeat stop samples this many times; default 1)
+#   SATNAV_ACTION_FORMAT=...      (sentence|compact; default compact)
 #   ENABLE_GPU_MONITOR=true
 #   GPU_MONITOR_INTERVAL=60
 #   USE_SWANLAB=false
@@ -57,6 +58,7 @@ IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver
 SATNAV_HEAD_KEEP="${SATNAV_HEAD_KEEP-7}"
 SATNAV_SAMPLE_STRIDE="${SATNAV_SAMPLE_STRIDE-7}"
 SATNAV_STOP_REPEAT="${SATNAV_STOP_REPEAT-4}"
+SATNAV_ACTION_FORMAT="${SATNAV_ACTION_FORMAT:-compact}"
 # Smoke / debug limits (unset by default for full training).
 SATNAV_MAX_EPISODES="${SATNAV_MAX_EPISODES-}"
 SATNAV_MAX_SAMPLES="${SATNAV_MAX_SAMPLES-}"
@@ -130,6 +132,23 @@ else
     SAMPLE_TAG="sample-legacy-stride${SATNAV_SAMPLE_STRIDE:-off}-ratio${SATNAV_SAMPLE_RATIO:-1.0}-stopx${SATNAV_STOP_REPEAT:-1}"
 fi
 
+ACTION_TAG=""
+case "${SATNAV_ACTION_FORMAT,,}" in
+    compact|token|word|default|"")
+        SATNAV_ACTION_FORMAT="compact"
+        ACTION_TAG=""
+        ;;
+    sentence|natural|legacy)
+        SATNAV_ACTION_FORMAT="sentence"
+        ACTION_TAG="-actsentence"
+        ;;
+    *)
+        echo "Unsupported SATNAV_ACTION_FORMAT: ${SATNAV_ACTION_FORMAT}" >&2
+        echo "Expected one of: compact, sentence" >&2
+        exit 2
+        ;;
+esac
+
 append_sample_tag() {
     local base_name="$1"
     if [[ "${base_name}" == *"${SAMPLE_TAG}"* ]]; then
@@ -139,10 +158,19 @@ append_sample_tag() {
     fi
 }
 
+append_action_tag() {
+    local base_name="$1"
+    if [[ -z "${ACTION_TAG}" ]] || [[ "${base_name}" == *"${ACTION_TAG}"* ]]; then
+        printf '%s\n' "${base_name}"
+    else
+        printf '%s%s\n' "${base_name}" "${ACTION_TAG}"
+    fi
+}
+
 if [[ -n "${CUSTOM_EXP_NAME}" ]]; then
-    EXP_NAME="$(append_sample_tag "${CUSTOM_EXP_NAME}")"
+    EXP_NAME="$(append_action_tag "$(append_sample_tag "${CUSTOM_EXP_NAME}")")"
 else
-    EXP_NAME="navila-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-8f-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${SAMPLE_TAG}-${TIMESTAMP}"
+    EXP_NAME="navila-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-8f-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${SAMPLE_TAG}${ACTION_TAG}-${TIMESTAMP}"
 fi
 
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/navila-baseline/${EXP_NAME}"
@@ -362,6 +390,7 @@ fi
 
 export SATNAV_HEAD_KEEP SATNAV_SAMPLE_STRIDE SATNAV_STOP_REPEAT
 export SATNAV_MAX_EPISODES SATNAV_MAX_SAMPLES SATNAV_SAMPLE_RATIO
+export SATNAV_ACTION_FORMAT
 
 echo "=========================================="
 echo "NaVILA Baseline Training"
@@ -379,6 +408,7 @@ echo "  LR         : ${LEARNING_RATE}"
 echo "  Total step : ${TOTAL_STEPS}"
 echo "  Save every : ${SAVE_STEPS} steps"
 echo "  Sampling   : head_keep=${SATNAV_HEAD_KEEP:-off}, stride=${SATNAV_SAMPLE_STRIDE:-off}, stop_repeat=${SATNAV_STOP_REPEAT:-1}, max_ep=${SATNAV_MAX_EPISODES:-off}, max_samples=${SATNAV_MAX_SAMPLES:-off}"
+echo "  Action fmt : ${SATNAV_ACTION_FORMAT}"
 echo "  Train log  : ${TRAIN_LOG}"
 echo "  GPU log    : ${GPU_LOG} (enabled=${ENABLE_GPU_MONITOR}, interval=${GPU_MONITOR_INTERVAL}s)"
 echo "  SwanLab    : ${USE_SWANLAB}"

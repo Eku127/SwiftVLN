@@ -46,6 +46,7 @@ from llava.mm_utils import (
     tokenizer_image_token,
 )
 from llava.model.builder import load_pretrained_model
+from action_formats import build_prompt, normalize_action_format, parse_action_text
 
 from satnav.core.env import Env as SatNavEnv
 from satnav.dataset.satnav_dataset import SatNavDataset
@@ -56,13 +57,6 @@ ERROR_NE_PENALTY = 500.0
 QUEUE_DISTANCE_CHOICES_CM = [25, 50, 75]
 QUEUE_DISTANCE_CHOICES_METERS = [10, 20, 30]
 QUEUE_DEGREE_CHOICES = [15, 30, 45]
-
-PROMPT_TEMPLATE = (
-    "Imagine you are a robot programmed for navigation tasks. You have been given a video "
-    'of historical observations {history_tokens}, and current observation <image>\n. Your assigned task is: "{instruction}" '
-    "Analyze this series of images to decide your next action, which could be turning left or right by a specific "
-    "degree, moving forward a certain distance, or stop if the task is completed."
-)
 
 DTYPE_MAP = {
     "float16": torch.float16,
@@ -180,12 +174,7 @@ class NaVILASatNavEvaluator:
         self.debug_generation = bool(getattr(args, "debug_generation", False))
         self.debug_generation_limit = max(int(getattr(args, "debug_generation_limit", 0)), 0)
         self._debug_generation_count = 0
-        self.patterns = {
-            0: re.compile(r"\bstop\b", re.IGNORECASE),
-            1: re.compile(r"\bis move forward\b", re.IGNORECASE),
-            2: re.compile(r"\bis turn left\b", re.IGNORECASE),
-            3: re.compile(r"\bis turn right\b", re.IGNORECASE),
-        }
+        self.action_format = normalize_action_format(getattr(args, "action_format", None))
 
     @staticmethod
     def get_instruction(episode) -> str:
@@ -200,10 +189,10 @@ class NaVILASatNavEvaluator:
         return normalize_instruction(str(instruction))
 
     def build_prompt(self, instruction: str, num_frames: int) -> str:
-        history_tokens = "<image>\n" * max(num_frames - 1, 0)
-        return PROMPT_TEMPLATE.format(
-            history_tokens=history_tokens,
+        return build_prompt(
             instruction=instruction,
+            history_count=max(num_frames - 1, 0),
+            action_format=self.action_format,
         )
 
     def _get_eval_dtype(self):
@@ -320,10 +309,7 @@ class NaVILASatNavEvaluator:
         return outputs.strip()
 
     def map_string_to_action(self, text: str):
-        for action, pattern in self.patterns.items():
-            if pattern.search(text):
-                return action
-        return None
+        return parse_action_text(text)
 
     @staticmethod
     def _snap_value(value: int, base: int, choices: list[int]) -> int:
@@ -463,6 +449,7 @@ def save_summary(results: list, output_path: str, args) -> None:
 
     summary = {
         "eval_split": args.eval_split,
+        "action_format": normalize_action_format(getattr(args, "action_format", None)),
         "SR": float(np.mean(sucs)) if sucs else 0.0,
         "SPL": float(np.mean(spls)) if spls else 0.0,
         "OS": float(np.mean(oss)) if oss else 0.0,
@@ -765,7 +752,13 @@ def main():
         default="auto",
         choices=["auto", "float16", "bfloat16", "float32"],
     )
+    parser.add_argument(
+        "--action_format",
+        type=str,
+        default=os.getenv("SATNAV_ACTION_FORMAT", "compact"),
+    )
     args = parser.parse_args()
+    args.action_format = normalize_action_format(args.action_format)
 
     init_distributed(args)
     device = f"cuda:{args.local_rank}"
@@ -799,6 +792,7 @@ def main():
     model.eval()
     if args.rank == 0:
         print(f"[Eval] Using eval dtype: {args.eval_torch_dtype}")
+        print(f"[Eval] Action format: {args.action_format}")
 
     os.makedirs(args.output_path, exist_ok=True)
     evaluate(model, tokenizer, image_processor, args)

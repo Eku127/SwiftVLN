@@ -25,29 +25,9 @@ from llava.constants import IMAGE_TOKEN_INDEX
 from llava.conversation import SeparatorStyle, conv_templates
 from llava.mm_utils import process_images, tokenizer_image_token, vlnce_frame_sampling
 from llava.model.builder import load_pretrained_model
-
-ACTION_TO_TEXT = {
-    0: "The next action is stop.",
-    1: "The next action is move forward 10 meters.",
-    2: "The next action is turn left 15 degree.",
-    3: "The next action is turn right 15 degree.",
-}
+from action_formats import ACTION_TO_NAME, build_prompt, get_action_to_text, normalize_action_format, parse_action_text
 
 ACTION_NAMES = {0: "stop", 1: "forward", 2: "left", 3: "right"}
-
-PROMPT_TEMPLATE = (
-    "Imagine you are a robot programmed for navigation tasks. You have been given a video "
-    'of historical observations {history_tokens}, and current observation <image>\n. Your assigned task is: "{instruction}" '
-    "Analyze this series of images to decide your next action, which could be turning left or right by a specific "
-    "degree, moving forward a certain distance, or stop if the task is completed."
-)
-
-PATTERNS = {
-    0: re.compile(r"\bstop\b", re.IGNORECASE),
-    1: re.compile(r"\bis move forward\b", re.IGNORECASE),
-    2: re.compile(r"\bis turn left\b", re.IGNORECASE),
-    3: re.compile(r"\bis turn right\b", re.IGNORECASE),
-}
 
 
 def normalize_instruction(text):
@@ -60,10 +40,7 @@ def normalize_instruction(text):
 
 
 def parse_action(text):
-    for action, pattern in PATTERNS.items():
-        if pattern.search(text):
-            return action
-    return None
+    return parse_action_text(text)
 
 
 def sample_and_pad_images(images, num_frames=8):
@@ -87,7 +64,14 @@ def main():
                         default="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data")
     parser.add_argument("--num_samples", type=int, default=20)
     parser.add_argument("--eval_dtype", type=str, default="auto")
+    parser.add_argument(
+        "--action_format",
+        type=str,
+        default=os.getenv("SATNAV_ACTION_FORMAT", "compact"),
+    )
     args = parser.parse_args()
+    args.action_format = normalize_action_format(args.action_format)
+    action_to_text = get_action_to_text(args.action_format)
 
     device = "cuda:0"
     model_name = os.path.basename(os.path.normpath(args.model_path))
@@ -112,6 +96,7 @@ def main():
             mp.to(device=device, dtype=eval_dtype)
     model.eval()
     print(f"Eval dtype: {eval_dtype}")
+    print(f"Action format: {args.action_format}")
 
     with open(args.data_path) as f:
         episodes = json.load(f)
@@ -132,7 +117,7 @@ def main():
         video_dir = ep["video"]
         for step_idx in range(1, len(actions)):
             action = actions[step_idx]
-            if action not in ACTION_TO_TEXT:
+            if action not in ACTION_TO_NAME:
                 continue
             candidates[action].append({
                 "episode_id": ep.get("id"),
@@ -140,7 +125,7 @@ def main():
                 "instruction": instruction,
                 "video_dir": video_dir,
                 "gt_action": action,
-                "gt_text": ACTION_TO_TEXT[action],
+                "gt_text": action_to_text[action],
             })
 
     samples = []
@@ -169,9 +154,10 @@ def main():
         eval_frames = sample_and_pad_images(pil_frames, num_frames=num_video_frames)
 
         for method_name, frames in [("train_pipe", train_frames), ("eval_pipe", eval_frames)]:
-            history_tokens = "<image>\n" * max(num_video_frames - 1, 0)
-            prompt_text = PROMPT_TEMPLATE.format(
-                history_tokens=history_tokens, instruction=sample["instruction"],
+            prompt_text = build_prompt(
+                instruction=sample["instruction"],
+                history_count=max(num_video_frames - 1, 0),
+                action_format=args.action_format,
             )
 
             conv = conv_templates["llama_3"].copy()
