@@ -14,11 +14,28 @@ import argparse
 from pathlib import Path
 from typing import List, Dict, Any
 
-from config import (
-    TRAIN_CITIES, EVAL_CITIES, EPISODE_TYPES, EPISODE_FILES,
-    get_data_dir, get_episodes_dir, classify_eval_cities
-)
-from normalize_trajectory_types import normalize_dataset
+try:
+    from .config import (
+        TRAIN_CITIES,
+        EVAL_CITIES,
+        EPISODE_TYPES,
+        EPISODE_FILES,
+        get_data_dir,
+        get_episodes_dir,
+        classify_eval_cities,
+    )
+    from .normalize_trajectory_types import normalize_dataset
+except ImportError:
+    from config import (
+        TRAIN_CITIES,
+        EVAL_CITIES,
+        EPISODE_TYPES,
+        EPISODE_FILES,
+        get_data_dir,
+        get_episodes_dir,
+        classify_eval_cities,
+    )
+    from normalize_trajectory_types import normalize_dataset
 
 
 def load_episodes(city_path: Path) -> List[Dict[str, Any]]:

@@ -19,6 +19,8 @@
 
 - If task matches SatNav data processing, use:
   - `.codex/skills/satnav-data/SKILL.md`
+- If user asks to merge two SatNav dataset versions, analyze overlap/complementarity, remap conflicting episode IDs, or create a new merged version like 0327 + 0403 -> 0404, use:
+  - `.codex/skills/merge-satnav-data/SKILL.md`
 - If task matches VLN training (OverlapVLN / StreamVLN / CompressVLN), use:
   - `.codex/skills/overlapvln-train/SKILL.md`
 - If task matches VLN evaluation (eval by name, eval queue, eval monitoring), use:
