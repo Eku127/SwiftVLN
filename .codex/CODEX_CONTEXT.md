@@ -141,6 +141,14 @@ NaVILA SatNav eval 约定：
 
 - prompt 与上游 `NaVILA/evaluation/vlnce_baselines/navila_trainer.py` 保持一致
 - 动作解析沿用上游自然语言正则逻辑（`stop / move forward / turn left / turn right`）
+- 动作输出格式现已抽象为共享组件（Updated: 2026-04-07）：
+  - 共享文件：`baseline/navila/src/action_formats.py`
+  - `baseline/navila/src/eval_satnav.py` 与 `baseline/navila/src/diagnose_train_vs_eval.py`
+    支持 `--action_format {sentence,compact}`，默认已切到 `compact`
+  - 环境变量：`SATNAV_ACTION_FORMAT`
+  - `compact` 模式使用单词级目标与解析：`stop / forward / left / right`
+  - `sentence` 现为 legacy/显式回退选项；若需旧句式监督，需显式传 `SATNAV_ACTION_FORMAT=sentence`
+  - 适用场景：当句式监督出现“loss 很低但动作塌缩”时，默认优先走 `compact`
 - 评测环境依赖 `navila-baseline` conda env + `pip install -e /mnt/data1/home/jiangjiajun/workspace/SatNav`
 - 输出解析只解码生成后缀（Updated: 2026-04-01）：
   - `baseline/navila/src/eval_satnav.py` 在 `model.generate(...)` 后仅对 `output_ids[:, input_token_len:]` 做 `batch_decode`
@@ -162,6 +170,10 @@ NaVILA SatNav eval 约定：
   - 评测新增 `--debug_generation` / `--debug_generation_limit`，可打印 `stop_str`、prompt 命中、首步 token/top scores、是否立即终止
   - 评测新增 `--eval_dtype {auto,float16,bfloat16,float32}`
   - `auto` 默认在支持时优先使用 `bfloat16`，用于规避部分 NaVILA checkpoint 在 `float16` 视觉前向下首步 logits 变成 `NaN`、输出 `!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!` 的问题
+- NaVILA eval checkpoint 缓存约定（Updated: 2026-04-07）：
+  - `baseline/navila/scripts/eval_satnav.sh`
+  - `LOCAL_CACHE_DIR=""` 现在会**真正禁用**本地缓存，而不是回退到默认缓存目录
+  - 若 checkpoint 位于 NFS 且容器内缺少 `rsync`，脚本会直接回退到源 checkpoint，不再写出空缓存并伪造 `.cache_complete`
 
 NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
 
@@ -199,6 +211,13 @@ NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
   - `SATNAV_MAX_SAMPLES`
   - `SATNAV_SAMPLE_RATIO`
   以上三个变量默认为空，**正式全量训练不要设置**
+- NaVILA SatNav action supervision 约定（Updated: 2026-04-07）：
+  - `baseline/navila/src/dataset/satnav_dataset.py` 支持 `SATNAV_ACTION_FORMAT={sentence,compact}`
+  - 默认值已切到 `compact`
+  - `sentence` 为历史格式：`The next action is stop / move forward 10 meters / turn left / turn right`
+  - `compact` 为单词级格式：`stop / forward / left / right`
+  - `compact` 训练时会同步切换 prompt 文案为“reply with exactly one word”
+  - `baseline/navila/scripts/train_satnav.sh` 在非默认动作格式下会自动把实验名后缀标成 `-act<format>`；当前仅 legacy `sentence` 会自动追加 `-actsentence`
 
 ### Baseline UniNaVid Train Modes (Updated: 2026-03-26)
 
@@ -541,6 +560,57 @@ Stage-A 测试文件：
 - `tests/test_s2r_split_and_manifest.py`
 - `tests/test_s2r_dataset.py`
 - `tests/test_s2r_model_and_losses.py`
+
+## OverlapVLN UAV Adapter Stage-B (Updated: 2026-04-07)
+
+OverlapVLN 已接入 `uav_adapter` 的 Stage-B 最小链路：
+
+- 在线 enhancement 模块：`src/swiftvln/common/embedding_enhancement/uav_adapter.py`
+- pipeline 工厂：`src/swiftvln/common/embedding_enhancement/__init__.py`
+- OverlapVLN 模型加载与本地/外部权重恢复：
+  `src/swiftvln/models/overlapvln/model.py`
+- OverlapVLN trainer 参数透传与 pipeline 重建：
+  `src/swiftvln/models/overlapvln/trainer.py`
+- OverlapVLN eval 参数透传：
+  `src/swiftvln/models/overlapvln/eval.py`
+- OverlapVLN 分布式评测脚本参数透传：
+  `src/swiftvln/models/overlapvln/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+- 训练脚本参数透传：
+  `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+
+Stage-B 当前参数约定：
+
+- `use_uav_adapter: bool = False`
+- `uav_adapter_path: str = ""`
+- `uav_adapter_type: str = "transformer_v1"`
+- `uav_adapter_apply_scope: str = "all_images"`
+
+Stage-B 当前实现约定：
+
+- `uav_adapter` 作为 `embed_enhance` pipeline 的一个插件，插入位置仍是
+  `visual encoder -> embed_enhance -> history processor`
+- 当前只支持 `uav_adapter_apply_scope=all_images`
+- 若 `uav_adapter_path` 非空，则显式外部 Stage-A checkpoint 会覆盖本地 checkpoint 中的
+  `embed_enhance.uav` 权重
+- 支持直接传 Stage-A `.pt` 文件，或 Stage-A 输出目录；目录解析优先级：
+  `best.pt -> latest.pt -> checkpoints/step_*.pt`
+- 分布式评测脚本现已支持同名环境变量：
+  `USE_UAV_ADAPTER` / `UAV_ADAPTER_PATH` / `UAV_ADAPTER_TYPE` / `UAV_ADAPTER_APPLY_SCOPE`
+
+Stage-B smoke / regression 测试：
+
+- Stage-B 单测：`tests/test_uav_adapter_enhancement.py`
+- Stage-B loader smoke：
+  `src/swiftvln/models/overlapvln/script/test/test_uav_adapter_strategy.py`
+- 现有 pixel/pose loader smoke：
+  `src/swiftvln/models/overlapvln/script/test/test_pixel_embed_strategy.py`
+- 全模型导航 eval smoke 已通过（2026-04-07）：
+  - 环境：`satnav`
+  - 模式：`1 GPU / max_episodes=1 / val_seen`
+  - 启用：`USE_UAV_ADAPTER=true`
+  - 外部 Stage-A checkpoint：
+    `output/s2r/smoke-large-multisrc-20260403-152012/best.pt`
+  - 说明：验证了 `checkpoint 加载 -> 外部 UAV adapter 注入 -> SatNav 环境 rollout -> summary 写出`
 
 Stage-A 当前验证状态（2026-04-03）：
 
