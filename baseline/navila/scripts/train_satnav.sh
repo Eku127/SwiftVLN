@@ -15,7 +15,7 @@
 #   GRAD_ACCUM=1
 #   NUM_EPOCHS=1
 #   LEARNING_RATE=3e-5
-#   MAX_STEPS=120
+#   MAX_STEPS=60000
 #   SAVE_STEPS=20000
 #   SAVE_COUNT_TARGET=4
 #   SAVE_TOTAL_LIMIT=1
@@ -68,7 +68,7 @@ GRAD_ACCUM="${GRAD_ACCUM:-1}"
 NUM_EPOCHS="${NUM_EPOCHS:-1}"
 LEARNING_RATE="${LEARNING_RATE:-3e-5}"
 # Empty MAX_STEPS means "do not pass --max_steps", which enables full-data training.
-MAX_STEPS="${MAX_STEPS-120}"
+MAX_STEPS="${MAX_STEPS-60000}"
 # Default checkpoint cadence is every 20k optimizer steps.
 # Explicit empty SAVE_STEPS= switches back to auto scheduling from SAVE_COUNT_TARGET.
 SAVE_STEPS="${SAVE_STEPS-20000}"
@@ -409,7 +409,7 @@ torchrun \
     --mm_use_im_patch_token False \
     --image_aspect_ratio resize \
     --data_mixture satnav \
-    --longvila_sampler True \
+    --longvila_sampler False \
     --bf16 True \
     --output_dir "${OUTPUT_DIR}" \
     --num_train_epochs "${NUM_EPOCHS}" \

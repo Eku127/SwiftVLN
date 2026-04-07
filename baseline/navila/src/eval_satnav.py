@@ -64,6 +64,12 @@ PROMPT_TEMPLATE = (
     "degree, moving forward a certain distance, or stop if the task is completed."
 )
 
+DTYPE_MAP = {
+    "float16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "float32": torch.float32,
+}
+
 
 def normalize_instruction(text: str) -> str:
     text = text.replace("\r\n", " ").replace("\n", " ").strip()
@@ -92,6 +98,13 @@ def sample_and_pad_images(images, num_frames=8, width=512, height=512):
     )
     sampled_frames = [frames[i] for i in sampled_indices] + [latest_frame]
     return sampled_frames
+
+
+def extract_generated_output_ids(output_ids: torch.Tensor, input_token_len: int) -> torch.Tensor:
+    """Handle both HF-style full sequences and NaVILA-style generated-suffix-only returns."""
+    if output_ids.shape[1] >= input_token_len:
+        return output_ids[:, input_token_len:]
+    return output_ids
 
 
 class SatNavEnvWrapper:
@@ -132,6 +145,30 @@ class SatNavEnvWrapper:
         pass
 
 
+class SafeKeywordsStoppingCriteria(KeywordsStoppingCriteria):
+    """Avoid matching stop keywords against the prompt before any token is generated."""
+
+    def call_for_batch(self, output_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        generated_len = output_ids.shape[1] - self.start_len
+        if generated_len <= 0:
+            return False
+
+        offset = min(generated_len, self.max_keyword_len)
+        self.keyword_ids = [keyword_id.to(output_ids.device) for keyword_id in self.keyword_ids]
+        for keyword_id in self.keyword_ids:
+            if keyword_id.shape[0] <= generated_len and (
+                output_ids[0, -keyword_id.shape[0] :] == keyword_id
+            ).all():
+                return True
+
+        recent_output_ids = output_ids[:, -offset:]
+        outputs = self.tokenizer.batch_decode(recent_output_ids, skip_special_tokens=True)[0]
+        for keyword in self.keywords:
+            if keyword in outputs:
+                return True
+        return False
+
+
 class NaVILASatNavEvaluator:
     """NaVILA online evaluator on SatNav with upstream prompt + parsing."""
 
@@ -140,6 +177,9 @@ class NaVILASatNavEvaluator:
         self.model = model
         self.tokenizer = tokenizer
         self.image_processor = image_processor
+        self.debug_generation = bool(getattr(args, "debug_generation", False))
+        self.debug_generation_limit = max(int(getattr(args, "debug_generation_limit", 0)), 0)
+        self._debug_generation_count = 0
         self.patterns = {
             0: re.compile(r"\bstop\b", re.IGNORECASE),
             1: re.compile(r"\bis move forward\b", re.IGNORECASE),
@@ -166,6 +206,62 @@ class NaVILASatNavEvaluator:
             instruction=instruction,
         )
 
+    def _get_eval_dtype(self):
+        explicit_dtype = getattr(self.args, "eval_torch_dtype", None)
+        if explicit_dtype is not None:
+            return explicit_dtype
+        return next(self.model.parameters()).dtype
+
+    def _should_debug_generation(self) -> bool:
+        if not self.debug_generation:
+            return False
+        return self._debug_generation_count < self.debug_generation_limit
+
+    def _log_generation_debug(
+        self,
+        prompt: str,
+        stop_str: str,
+        input_ids: torch.Tensor,
+        output_ids: torch.Tensor,
+        stopping_criteria: SafeKeywordsStoppingCriteria,
+        scores,
+    ) -> None:
+        if not self._should_debug_generation():
+            return
+
+        generated_ids = extract_generated_output_ids(output_ids, input_ids.shape[1])
+        generated_len = int(generated_ids.shape[1])
+        first_step = None
+        if scores:
+            first_scores = scores[0][0]
+            top_vals, top_ids = torch.topk(first_scores, k=min(10, first_scores.shape[-1]))
+            first_step = {
+                "has_nan": bool(torch.isnan(first_scores).any().item()),
+                "top_token_ids": [int(x) for x in top_ids.tolist()],
+                "top_tokens": [self.tokenizer.decode([int(x)]) for x in top_ids.tolist()],
+                "top_scores": [float(x) for x in top_vals.tolist()],
+            }
+
+        generated_token_ids = generated_ids[0].tolist() if generated_len > 0 else []
+        debug_payload = {
+            "returned_sequence_shape": list(output_ids.shape),
+            "returned_suffix_only": output_ids.shape[1] < input_ids.shape[1],
+            "generated_len": generated_len,
+            "generated_token_ids": generated_token_ids,
+            "generated_raw": self.tokenizer.decode(generated_token_ids, skip_special_tokens=False),
+            "generated_text": self.tokenizer.decode(generated_token_ids, skip_special_tokens=True),
+            "immediate_stop": generated_len == 0,
+            "stop_str": stop_str,
+            "prompt_has_stop_str": stop_str in prompt,
+            "prompt_only_stop_hit": bool(stopping_criteria.call_for_batch(input_ids, None)),
+            "eos_token_id": self.tokenizer.eos_token_id,
+            "generation_config_eos_token_id": getattr(self.model.generation_config, "eos_token_id", None),
+            "prompt_tail": prompt[-220:],
+            "first_step": first_step,
+        }
+        print("[GenerationDebug] " + json.dumps(debug_payload, ensure_ascii=False))
+        self._debug_generation_count += 1
+
     def predict_action_text(self, frames, instruction: str) -> str:
         question = self.build_prompt(instruction, len(frames))
 
@@ -174,9 +270,10 @@ class NaVILASatNavEvaluator:
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
 
+        eval_dtype = self._get_eval_dtype()
         images_tensor = process_images(frames, self.image_processor, self.model.config).to(
             self.model.device,
-            dtype=torch.float16,
+            dtype=eval_dtype,
         )
         input_ids = tokenizer_image_token(
             prompt,
@@ -186,12 +283,12 @@ class NaVILASatNavEvaluator:
         ).unsqueeze(0).to(self.model.device)
 
         stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
-        stopping_criteria = KeywordsStoppingCriteria([stop_str], self.tokenizer, input_ids)
+        stopping_criteria = SafeKeywordsStoppingCriteria([stop_str], self.tokenizer, input_ids)
 
         with torch.inference_mode():
-            output_ids = self.model.generate(
+            generation = self.model.generate(
                 input_ids,
-                images=images_tensor.half().to(self.model.device),
+                images=images_tensor.to(self.model.device),
                 do_sample=False,
                 temperature=1.0,
                 top_p=1.0,
@@ -199,11 +296,24 @@ class NaVILASatNavEvaluator:
                 use_cache=True,
                 stopping_criteria=[stopping_criteria],
                 pad_token_id=self.tokenizer.eos_token_id,
+                return_dict_in_generate=self._should_debug_generation(),
+                output_scores=self._should_debug_generation(),
             )
 
-        input_token_len = input_ids.shape[1]
-        if output_ids.shape[1] >= input_token_len:
-            output_ids = output_ids[:, input_token_len:]
+        if self._should_debug_generation():
+            output_ids = generation.sequences
+            self._log_generation_debug(
+                prompt=prompt,
+                stop_str=stop_str,
+                input_ids=input_ids,
+                output_ids=output_ids,
+                stopping_criteria=stopping_criteria,
+                scores=generation.scores,
+            )
+        else:
+            output_ids = generation
+
+        output_ids = extract_generated_output_ids(output_ids, input_ids.shape[1])
         outputs = self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
         if outputs.endswith(stop_str):
             outputs = outputs[: -len(stop_str)]
@@ -647,6 +757,14 @@ def main():
     parser.add_argument("--max_episodes", type=int, default=None)
     parser.add_argument("--world_size", default=1, type=int)
     parser.add_argument("--rank", default=0, type=int)
+    parser.add_argument("--debug_generation", action="store_true")
+    parser.add_argument("--debug_generation_limit", type=int, default=3)
+    parser.add_argument(
+        "--eval_dtype",
+        type=str,
+        default="auto",
+        choices=["auto", "float16", "bfloat16", "float32"],
+    )
     args = parser.parse_args()
 
     init_distributed(args)
@@ -661,7 +779,26 @@ def main():
         device=device,
     )
     model.to(device)
+    if args.eval_dtype == "auto":
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+            args.eval_torch_dtype = torch.bfloat16
+        else:
+            args.eval_torch_dtype = next(model.parameters()).dtype
+    else:
+        args.eval_torch_dtype = DTYPE_MAP[args.eval_dtype]
+    if next(model.parameters()).dtype != args.eval_torch_dtype:
+        model.to(dtype=args.eval_torch_dtype)
+        if hasattr(model, "get_vision_tower"):
+            vision_tower = model.get_vision_tower()
+            if vision_tower is not None:
+                vision_tower.to(device=device, dtype=args.eval_torch_dtype)
+        if hasattr(model, "get_mm_projector"):
+            mm_projector = model.get_mm_projector()
+            if mm_projector is not None:
+                mm_projector.to(device=device, dtype=args.eval_torch_dtype)
     model.eval()
+    if args.rank == 0:
+        print(f"[Eval] Using eval dtype: {args.eval_torch_dtype}")
 
     os.makedirs(args.output_path, exist_ok=True)
     evaluate(model, tokenizer, image_processor, args)
