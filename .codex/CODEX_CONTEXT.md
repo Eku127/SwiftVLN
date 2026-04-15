@@ -87,6 +87,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 评测单模型：`src/swiftvln/scripts/eval/eval_by_name.sh`
 - 评测队列：`src/swiftvln/scripts/eval/eval_queue.sh`
 - 评测入队：`src/swiftvln/scripts/eval/enqueue_eval.sh`
+- Eval todo 锁修复（Updated: 2026-04-15）：
+  - `src/swiftvln/scripts/eval/eval_queue.sh`
+  - `src/swiftvln/scripts/eval/enqueue_eval.sh`
+  - 旧逻辑里 `eval_queue.sh` 在 `remove_line_from_todo()` 中使用
+    `exec 201>"$TODO_LOCK_FILE"; flock 201`，FD 会保留在长生命周期 shell 中，
+    并被后续 `eval_by_name.sh` / `torchrun` 子进程继承，导致整条 eval queue
+    运行期间持续占用 `eval_todo.txt.lock`
+  - 当前已改为短生命周期 subshell 持锁，更新完 todo 后立即释放
+  - `enqueue_eval.sh` 现在对 `eval_todo.txt.lock` 使用带超时的 `flock -w`
+    ，避免训练队列在“准备自动入评测队列”阶段无限阻塞
 - 评测 worker：`src/swiftvln/scripts/eval/start_eval_worker.sh`
 - 评测 monitor：`src/swiftvln/scripts/eval/start_eval_monitor.sh`
 - 评测 watchdog：`src/swiftvln/scripts/eval/eval_watchdog.sh`
@@ -265,6 +275,126 @@ NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
   - `compact` 为单词级格式：`stop / forward / left / right`
   - `compact` 训练时会同步切换 prompt 文案为“reply with exactly one word”
   - `baseline/navila/scripts/train_satnav.sh` 在非默认动作格式下会自动把实验名后缀标成 `-act<format>`；当前仅 legacy `sentence` 会自动追加 `-actsentence`
+
+### Baseline OpenFly Layout (Updated: 2026-04-15)
+
+`baseline/openfly` 已新增 SatNav-only baseline 分层：
+
+- 入口脚本：`baseline/openfly/scripts/*.sh`
+  - `scripts/setup_env.sh`
+  - `scripts/download_model.sh`
+  - `scripts/train_satnav.sh`
+  - `scripts/eval_satnav.sh`
+- 源码目录：`baseline/openfly/src/*`
+  - `src/train_satnav.py`
+  - `src/eval_satnav.py`
+  - `src/action_formats.py`
+  - `src/dataset/satnav_dataset.py`
+  - `src/openfly_core/*`（本地注册的 OpenFly HF config/model/processor）
+- 配置目录：
+  - `baseline/openfly/configs/satnav_task.yaml`
+  - `baseline/openfly/configs/zero2.json`
+- 模型目录：
+  - `baseline/openfly/model/openfly-agent-7b/`（下载后落点）
+
+OpenFly SatNav baseline 约定：
+
+- 不依赖外部 `OpenFly-Platform` repo 运行时路径；训练与评测使用 `baseline/openfly/src/openfly_core/*`
+  中本地注册的 HF 组件
+- 支持两种动作格式（Updated: 2026-04-15）：
+  - `compact`：四动作文本 supervision / decode
+    `stop / forward / left / right`
+  - `original`：保留 OpenFly action-token 表征；SatNav 仅开放 4 个合法 8 维动作模板
+- `original` 模式的 SatNav 8 维动作模板约定：
+  - `stop -> [1, 0, 0, 0, 0, 0, 0, 0]`
+  - `forward -> [0, 10, 0, 0, 0, 0, 0, 0]`
+  - `left -> [0, 0, 15, 0, 0, 0, 0, 0]`
+  - `right -> [0, 0, 0, 15, 0, 0, 0, 0]`
+  - 其中 SatNav forward 固定 `10m`，左/右转固定 `15deg`
+- 训练/评测脚本通过环境变量切换：
+  - `OPENFLY_ACTION_FORMAT=compact|original`
+  - `OPENFLY_UNNORM_KEY` 默认 `satnav_original`
+- `baseline/openfly/scripts/train_satnav.sh` 默认实验名会显式追加动作模式后缀：
+  - `-actcompact`
+  - `-actoriginal`
+  并追加 SatNav 采样标签：
+  - `-sample-hk<HEAD_KEEP>-fs<SAMPLE_STRIDE>-stopx<STOP_REPEAT>`
+- OpenFly SatNav 训练收尾兼容（Updated: 2026-04-15）：
+  - `baseline/openfly/src/train_satnav.py`
+  - `baseline/openfly/scripts/train_satnav.sh`
+  - 训练入口会在进程内 monkey-patch `AcceleratedOptimizer.train/eval`：
+    若底层 optimizer 没有对应方法，则退化为 no-op，避免
+    `DeepSpeedZeroOptimizer has no attribute train`
+  - 多卡 DeepSpeed 训练结束后不再额外执行
+    `trainer.save_model(output_dir)` 根目录全量导出；默认以 `checkpoint-*`
+    作为可评测产物，规避 Zero2 收尾长时间卡住
+  - 新增 `OUTPUT_DIR_OVERRIDE=<abs_path>`，可把训练输出直接落到本地盘
+    （如 73 的 `/mnt/data3/...`），减少往 NFS 工作区写大 checkpoint 时的卡顿风险
+  - 训练脚本默认禁用 wandb：
+    - `--report_to none`
+    - `WANDB_DISABLED=true`
+    - `WANDB_MODE=disabled`
+  - 训练脚本新增可调开关：
+    - `USE_FLASH_ATTENTION_2`
+    - `WEIGHT_DECAY`
+    - `WARMUP_RATIO`
+    - `LR_SCHEDULER_TYPE`
+    - `MAX_GRAD_NORM`
+    - `DATALOADER_NUM_WORKERS`
+    - `REPORT_TO`
+  - 当前默认训练配置（Updated: 2026-04-15）：
+    - `TRAIN_BSZ=12`
+    - `GRAD_ACCUM=1`
+    - `TORCH_DTYPE=bfloat16`
+    - `USE_FLASH_ATTENTION_2=true`
+    - `LEARNING_RATE=2e-5`
+    - `SAVE_STEPS=5000`
+    - `LR_SCHEDULER_TYPE=linear`
+    - `WEIGHT_DECAY=0.0`
+    - 该默认值来自 73 上 8xH100 短程 benchmark；目标是无 acc-grad 前提下提高吞吐
+  - OpenFly SatNav 默认采样策略（Updated: 2026-04-15）：
+    - `baseline/openfly/src/dataset/satnav_dataset.py`
+    - 现已接入 NaVILA 同款的 `head + stop + turn-protect + forward-run stride`
+      采样逻辑；当前默认使用一组“forward 减半 + 轻量 stop 增强”的配置
+    - 默认值：
+      - `SATNAV_HEAD_KEEP=3`
+      - `SATNAV_SAMPLE_STRIDE=2`
+      - `SATNAV_STOP_REPEAT=5`
+    - 语义：
+      - 保留每条轨迹前 `3` 步
+      - 所有 `left/right` 全保留
+      - 每段连续 `forward` run 内每 2 个保留 1 个
+      - `stop` 样本按 `5x` 重复
+    - 0404 近似统计（Updated: 2026-04-15）：
+      - 原始全量：`5.396M`
+      - 当前默认：约 `4.131M`（较全量 `-23.5%`）
+      - 动作占比约：
+        - `stop 12.7%`
+        - `forward 53.4%`
+        - `left 17.7%`
+        - `right 16.2%`
+      - 目的：把 `forward` 压到约一半，同时让 `stop` 抬到略低于单类
+        `left/right` 的量级
+- prompt 保持 OpenFly 原问句风格：
+  `What action should the robot take to ...?`
+- 训练输出目录：
+  `output/openfly-baseline/<EXP_NAME>/`
+- 评测结果目录：
+  `results/openfly-baseline/<EXP_NAME_or_subpath>/<split>/`
+- `baseline/openfly/src/eval_satnav.py` 的 `result.jsonl` 现在会显式写出：
+  - `action`
+  - `parsed_action`
+  - `generated_text`
+  - `action_trace`
+  便于直接检查 compact/original 两种动作模式的逐步输出；原始 `raw_outputs`
+  仍保留用于调试
+- 多卡 train/eval 启动约定：
+  - `baseline/openfly/scripts/train_satnav.sh`
+  - `baseline/openfly/scripts/eval_satnav.sh`
+  - 默认使用显式 `MASTER_ADDR=127.0.0.1` + `MASTER_PORT`，不使用 `torchrun --standalone`
+- 环境名：
+  `openfly-baseline`
+- 该 baseline 只面向 SatNav 离线数据与 SatNav 平台评测，不包含 AirSim / UE / GTAV / ROS2 / TFDS 工具链依赖
 
 ### Baseline UniNaVid Train Modes (Updated: 2026-03-26)
 
