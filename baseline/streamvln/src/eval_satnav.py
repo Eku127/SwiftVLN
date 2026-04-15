@@ -29,6 +29,11 @@ _BASELINE_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _BASELINE_ROOT not in sys.path:
     sys.path.insert(0, _BASELINE_ROOT)
 
+_REPO_ROOT = os.path.abspath(os.path.join(_BASELINE_ROOT, "..", "..", ".."))
+_SWIFTVLN_SRC = os.path.join(_REPO_ROOT, "src")
+if _SWIFTVLN_SRC not in sys.path:
+    sys.path.insert(0, _SWIFTVLN_SRC)
+
 
 import re
 import copy
@@ -60,6 +65,10 @@ from utils.dist import (
     init_distributed_mode,
     get_rank,
     get_world_size,
+)
+from swiftvln.common.eval.reporting import (
+    compute_weighted_trajectory_type_metrics,
+    load_satnav_reference_distribution,
 )
 
 # SatNav environment
@@ -704,6 +713,21 @@ def save_summary(results, output_path, args):
                 "avg_steps": np.mean(ts["steps"]),
                 "count": len(ts["sucs"]),
             }
+        reference_distribution = load_satnav_reference_distribution(args.satnav_config_path)
+        if reference_distribution:
+            weighted = compute_weighted_trajectory_type_metrics(
+                summary["by_trajectory_type"],
+                reference_distribution,
+                metric_keys={
+                    "SR": "SR",
+                    "SPL": "SPL",
+                    "OS": "OS",
+                    "NE": "NE",
+                    "avg_steps": "avg_steps",
+                },
+            )
+            if weighted:
+                summary["weighted_by_seen_unseen_distribution"] = weighted
 
     print("\n" + "=" * 60)
     print(f"StreamVLN SatNav Evaluation Summary ({args.eval_split})")
@@ -721,6 +745,12 @@ def save_summary(results, output_path, args):
             print(f"  [{ttype}] SR: {ts['SR']:.2%}, SPL: {ts['SPL']:.4f}, "
                   f"OS: {ts['OS']:.2%}, NE: {ts['NE']:.2f}m, "
                   f"Steps: {ts['avg_steps']:.2f}, N: {ts['count']}")
+    if "weighted_by_seen_unseen_distribution" in summary:
+        ws = summary["weighted_by_seen_unseen_distribution"]
+        print(f"\n--- Weighted (val_seen+val_unseen) ---")
+        print(f"  SR: {ws['SR']:.2%}, SPL: {ws['SPL']:.4f}, "
+              f"OS: {ws['OS']:.2%}, NE: {ws['NE']:.2f}m, "
+              f"Steps: {ws['avg_steps']:.2f}")
 
     print(f"=" * 60)
 

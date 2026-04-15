@@ -36,9 +36,11 @@ from typing import Type, Optional, Dict, Any, List
 
 from .reporting import (
     clean_results_for_output,
+    compute_weighted_trajectory_type_metrics,
     compute_trajectory_type_stats,
     get_swanlab_url,
     get_swanlab_url_from_train_metadata,
+    load_satnav_reference_distribution,
     save_timing_stats,
 )
 
@@ -475,6 +477,14 @@ class BaseVLNEval(ABC):
             trajectory_type_stats = compute_trajectory_type_stats(all_results_merged)
             if trajectory_type_stats:
                 summary["by_trajectory_type"] = trajectory_type_stats
+                reference_distribution = load_satnav_reference_distribution(self.resolve_config_path())
+                if reference_distribution:
+                    weighted_metrics = compute_weighted_trajectory_type_metrics(
+                        trajectory_type_stats,
+                        reference_distribution,
+                    )
+                    if weighted_metrics:
+                        summary["weighted_by_seen_unseen_distribution"] = weighted_metrics
         
         print(f"\n" + "="*60)
         print(f"{self.model_description} Evaluation Summary ({self.args.eval_split})")
@@ -492,6 +502,12 @@ class BaseVLNEval(ABC):
                 print(f"  [{ttype}] SR: {tstats['success_rate']:.2%}, SPL: {tstats['mean_spl']:.4f}, "
                       f"OS: {tstats['oracle_success']:.2%}, NE: {tstats['navigation_error']:.2f}m, "
                       f"Steps: {tstats['avg_steps']:.2f}, N: {tstats['total_episodes']}")
+            weighted_stats = summary.get("weighted_by_seen_unseen_distribution")
+            if weighted_stats:
+                print(f"\n--- Weighted (val_seen+val_unseen) ---")
+                print(f"  SR: {weighted_stats['success_rate']:.2%}, SPL: {weighted_stats['mean_spl']:.4f}, "
+                      f"OS: {weighted_stats['oracle_success']:.2%}, NE: {weighted_stats['navigation_error']:.2f}m, "
+                      f"Steps: {weighted_stats['avg_steps']:.2f}")
         
         if self.uses_compression and hasattr(self.args, 'compress_stride'):
             print(f"\nCompression: stride={self.args.compress_stride} ({self.args.compress_stride**2}x)")

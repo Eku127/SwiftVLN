@@ -9,6 +9,8 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
+from omegaconf import OmegaConf
+
 
 def compute_trajectory_type_stats(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """Compute statistics grouped by trajectory_type for SatNav results."""
@@ -44,6 +46,105 @@ def compute_trajectory_type_stats(results: List[Dict[str, Any]]) -> Dict[str, Di
         }
 
     return stats
+
+
+def load_satnav_reference_distribution(
+    config_path: str,
+    splits: Optional[List[str]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Load trajectory-type reference weights from SatNav episode jsons.
+
+    The reference distribution is computed from the union of ``splits`` and is
+    intended for reweighted reporting without modifying the evaluated episodes.
+    """
+    if splits is None:
+        splits = ["val_seen", "val_unseen"]
+
+    config = OmegaConf.load(config_path)
+    raw_path = config.DATASET.DATA_PATH
+    if "{split}" not in raw_path:
+        return None
+
+    counts: Dict[str, int] = {}
+    source_paths: Dict[str, str] = {}
+    total = 0
+
+    for split in splits:
+        split_path = raw_path.replace("{split}", split)
+        if not os.path.exists(split_path):
+            return None
+
+        source_paths[split] = split_path
+        with open(split_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+
+        if isinstance(payload, dict):
+            episodes = payload.get("episodes", [])
+        elif isinstance(payload, list):
+            episodes = payload
+        else:
+            episodes = []
+
+        for episode in episodes:
+            trajectory_type = episode.get("trajectory_type", "unknown")
+            counts[trajectory_type] = counts.get(trajectory_type, 0) + 1
+            total += 1
+
+    if total == 0:
+        return None
+
+    ordered_counts = {k: counts[k] for k in sorted(counts)}
+    weights = {k: ordered_counts[k] / total for k in ordered_counts}
+    return {
+        "reference_splits": list(splits),
+        "reference_counts": ordered_counts,
+        "reference_weights": weights,
+        "reference_total_episodes": total,
+        "source_paths": source_paths,
+    }
+
+
+def compute_weighted_trajectory_type_metrics(
+    trajectory_type_stats: Dict[str, Dict[str, Any]],
+    reference_distribution: Dict[str, Any],
+    metric_keys: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Compute weighted aggregate metrics from per-trajectory-type statistics."""
+    if not trajectory_type_stats or not reference_distribution:
+        return None
+
+    if metric_keys is None:
+        metric_keys = {
+            "success_rate": "success_rate",
+            "mean_spl": "mean_spl",
+            "oracle_success": "oracle_success",
+            "navigation_error": "navigation_error",
+            "avg_steps": "avg_steps",
+        }
+
+    weights = reference_distribution.get("reference_weights", {}) or {}
+    expected_types = set(weights)
+    available_types = set(trajectory_type_stats)
+    missing_types = sorted(expected_types - available_types)
+    if missing_types:
+        return None
+
+    weighted = {
+        "distribution_name": "+".join(reference_distribution.get("reference_splits", [])),
+        "reference_splits": reference_distribution.get("reference_splits", []),
+        "reference_counts": reference_distribution.get("reference_counts", {}),
+        "reference_weights": weights,
+        "source_metric_keys": metric_keys,
+    }
+    for output_key in metric_keys:
+        weighted[output_key] = 0.0
+
+    for trajectory_type, weight in weights.items():
+        stats = trajectory_type_stats[trajectory_type]
+        for output_key, source_key in metric_keys.items():
+            weighted[output_key] += stats[source_key] * weight
+
+    return weighted
 
 
 def clean_results_for_output(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
