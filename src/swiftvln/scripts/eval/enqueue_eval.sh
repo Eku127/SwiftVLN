@@ -102,7 +102,10 @@ mkdir -p "$(dirname "$TODO_FILE")"
 touch "$TODO_FILE"
 
 exec 200>"$LOCK_FILE"
-flock 200
+flock -w "${EVAL_TODO_LOCK_TIMEOUT:-30}" 200 || {
+    print_err "Timed out waiting for queue lock: $LOCK_FILE"
+    exit 5
+}
 
 if grep -Fxq "$MODEL_NAME" "$TODO_FILE"; then
     print_info "Already queued: $MODEL_NAME"
