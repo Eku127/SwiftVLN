@@ -63,9 +63,13 @@ EVAL_ENQUEUE_RETRIES="${EVAL_ENQUEUE_RETRIES:-3}"
 EVAL_ENQUEUE_RETRY_SLEEP="${EVAL_ENQUEUE_RETRY_SLEEP:-3}"
 USE_SWANLAB=true
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
+SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
 TRAIN_CUDA_DEVICES="${TRAIN_CUDA_DEVICES:-}"
 TRAIN_NUM_GPUS="${TRAIN_NUM_GPUS:-}"
 TRAIN_DRY_RUN="${TRAIN_DRY_RUN:-false}"
+RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
+RESUME_ONLY_MODEL="${RESUME_ONLY_MODEL:-false}"
+OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR_OVERRIDE:-}"
 
 # QA 混合训练配置
 USE_QA_MIXED_TRAINING=false
@@ -135,6 +139,94 @@ enqueue_model_for_eval() {
     return 1
 }
 
+resolve_master_port_from_script() {
+    local temp_script="$1"
+    local port=""
+
+    port="$(sed -n 's/^MASTER_PORT="\${MASTER_PORT:-\([0-9]\+\)}".*/\1/p' "$temp_script" | head -n 1)"
+    if [[ -z "$port" ]]; then
+        port="$(sed -n 's/^MASTER_PORT=\([0-9]\+\).*/\1/p' "$temp_script" | head -n 1)"
+    fi
+
+    echo "$port"
+}
+
+is_local_tcp_port_free() {
+    local port="$1"
+    python - "$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(("0.0.0.0", port))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+}
+
+find_available_master_port() {
+    local preferred_port="${1:-29500}"
+    python - "$preferred_port" <<'PY'
+import socket
+import sys
+
+preferred = int(sys.argv[1])
+candidates = [preferred]
+candidates.extend(range(29500, 30000))
+candidates.extend(range(29000, 29500))
+candidates.extend(range(30000, 31000))
+
+seen = set()
+for port in candidates:
+    if port in seen:
+        continue
+    seen.add(port)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind(("0.0.0.0", port))
+    except OSError:
+        continue
+    else:
+        print(port)
+        sys.exit(0)
+    finally:
+        s.close()
+
+sys.exit(1)
+PY
+}
+
+ensure_available_master_port() {
+    local temp_script="$1"
+    local current_port=""
+    local new_port=""
+
+    current_port="$(resolve_master_port_from_script "$temp_script")"
+    [[ -z "$current_port" ]] && return 0
+
+    if is_local_tcp_port_free "$current_port"; then
+        return 0
+    fi
+
+    new_port="$(find_available_master_port "$current_port")" || {
+        print_warning "启动前检测到 MASTER_PORT=${current_port} 已占用，但未找到可用替代端口"
+        return 1
+    }
+
+    if [[ "$new_port" != "$current_port" ]]; then
+        sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
+        print_warning "启动前检测到 MASTER_PORT=${current_port} 已占用，切换为 MASTER_PORT=${new_port}"
+    fi
+
+    return 0
+}
+
 apply_auto_fix_for_train_failure() {
     local log_file="$1"
     local temp_script="$2"
@@ -157,11 +249,18 @@ apply_auto_fix_for_train_failure() {
     fi
 
     if grep -qiE "address already in use|Address already in use" "$log_file"; then
-        local new_port=$((29000 + RANDOM % 1000))
-        sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
-        fixed=true
-        actions+=("set MASTER_PORT=${new_port}")
-        print_warning "自动修复: 更换 MASTER_PORT=${new_port}"
+        local current_port=""
+        local new_port=""
+        current_port="$(resolve_master_port_from_script "$temp_script")"
+        new_port="$(find_available_master_port "${current_port:-29500}")" || new_port=""
+        if [[ -n "$new_port" ]]; then
+            sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
+            fixed=true
+            actions+=("set MASTER_PORT=${new_port}")
+            print_warning "自动修复: 更换 MASTER_PORT=${new_port}"
+        else
+            print_warning "自动修复失败: 未找到可用 MASTER_PORT"
+        fi
     fi
 
     if grep -qiE "out of memory|CUDA out of memory" "$log_file"; then
@@ -1217,6 +1316,7 @@ run_experiment() {
     # 修改 SwanLab 配置
     if [[ "$USE_SWANLAB" == true ]]; then
         sed -i "s/^SWANLAB_PROJECT=.*/SWANLAB_PROJECT=\"$SWANLAB_PROJECT\"/" "$temp_script"
+        sed -i "s/^SWANLAB_DIRECT_NETWORK=.*/SWANLAB_DIRECT_NETWORK=\"$SWANLAB_DIRECT_NETWORK\"/" "$temp_script"
         sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=true/" "$temp_script"
     else
         sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=false/" "$temp_script"
@@ -1230,6 +1330,22 @@ run_experiment() {
     else
         sed -i "s/^USE_QA_MIXED_TRAINING=.*/USE_QA_MIXED_TRAINING=false/" "$temp_script"
         print_info "QA 混合训练: 禁用"
+    fi
+
+    if [[ -n "$QA_DATASET" ]]; then
+        sed -i "s|^QA_DATASET=.*|QA_DATASET=\"$QA_DATASET\"|" "$temp_script"
+        print_info "QA 数据集: $QA_DATASET"
+    fi
+
+    if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
+        sed -i "s|^RESUME_FROM_CHECKPOINT=.*|RESUME_FROM_CHECKPOINT=\"$RESUME_FROM_CHECKPOINT\"|" "$temp_script"
+        sed -i "s|^RESUME_ONLY_MODEL=.*|RESUME_ONLY_MODEL=\"$RESUME_ONLY_MODEL\"|" "$temp_script"
+        print_info "恢复训练: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
+    fi
+
+    if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
+        sed -i "s|^OUTPUT_DIR_OVERRIDE=.*|OUTPUT_DIR_OVERRIDE=\"$OUTPUT_DIR_OVERRIDE\"|" "$temp_script"
+        print_info "输出目录覆盖: $OUTPUT_DIR_OVERRIDE"
     fi
     
     # 修改数据路径 - 根据环境类型替换对应的数组
@@ -1289,9 +1405,16 @@ run_experiment() {
             print_warning "开始第 ${attempt} 次尝试..."
         fi
 
-        if bash "$temp_script" 2>&1 | tee "$run_log_file"; then
+        ensure_available_master_port "$temp_script" || true
+
+        bash "$temp_script" 2>&1 | tee "$run_log_file"
+        local train_exit_code=${PIPESTATUS[0]}
+
+        if [[ $train_exit_code -eq 0 ]]; then
             break
         fi
+
+        print_warning "训练脚本退出码: ${train_exit_code}"
 
         if [[ $attempt -lt $max_attempts ]] && apply_auto_fix_for_train_failure "$run_log_file" "$temp_script"; then
             attempted_fixes="${attempted_fixes}\n- attempt ${attempt}: ${LAST_AUTO_FIX_ACTIONS}"

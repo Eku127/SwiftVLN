@@ -23,6 +23,9 @@ TRAIN_NUM_GPUS="${TRAIN_NUM_GPUS:-}"           # Number of GPUs to take from cur
 TRAIN_DRY_RUN="${TRAIN_DRY_RUN:-false}"        # true = print config and exit before torchrun
 CUDA_DEVICES="${CUDA_DEVICES:-auto}"           # "auto" = all currently visible GPUs
 MASTER_PORT="${MASTER_PORT:-29500}"            # Master port for distributed training
+RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"  # Optional full training resume checkpoint
+RESUME_ONLY_MODEL="${RESUME_ONLY_MODEL:-false}"       # true = load weights only from resume checkpoint
+OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR_OVERRIDE:-}"        # Optional output root override before versioning
 
 normalize_cuda_device_list() {
     local raw="$1"
@@ -371,6 +374,9 @@ fi
 
 EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${HISTORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 OUTPUT_DIR="output/overlapvln/${EXP_NAME}"
+if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
+    OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
+fi
 
 # Checkpoint Management
 SAVE_STEPS=1000
@@ -460,6 +466,9 @@ echo "Pixel Embed: $USE_PIXEL_EMBED"
 echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
 echo "UAV Adapter: $USE_UAV_ADAPTER (type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE)"
 [ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
+if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
+    echo "Resume: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
+fi
 echo "------------------------------------------"
 # Mixed training info
 if [ "$USE_QA_MIXED_TRAINING" = true ]; then
@@ -485,6 +494,24 @@ echo "=========================================="
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
+SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
+
+unset_proxy_for_swanlab() {
+    local -a proxy_vars=(http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY)
+    local proxy_var=""
+    local had_proxy="false"
+
+    for proxy_var in "${proxy_vars[@]}"; do
+        if [[ -n "${!proxy_var:-}" ]]; then
+            unset "$proxy_var"
+            had_proxy="true"
+        fi
+    done
+
+    if [[ "$had_proxy" == "true" ]]; then
+        echo "[INFO] SwanLab enabled: unset proxy env vars for direct SwanLab access."
+    fi
+}
 
 # DeepSpeed argument
 DEEPSPEED_ARG=""
@@ -523,6 +550,14 @@ elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" = "seg
     HISTORY_ARGS="$HISTORY_ARGS --gtc_output_tokens $GTC_OUTPUT_TOKENS --gtc_temperature $GTC_TEMPERATURE --gtc_num_iterations $GTC_NUM_ITERATIONS"
 fi
 
+RESUME_ARGS=""
+if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
+    RESUME_ARGS="--resume_from_checkpoint $RESUME_FROM_CHECKPOINT"
+    if [[ "$RESUME_ONLY_MODEL" == "true" ]]; then
+        RESUME_ARGS="$RESUME_ARGS --resume_only_model true"
+    fi
+fi
+
 # ============================================================================
 # Run Training
 # ============================================================================
@@ -531,6 +566,10 @@ cd "$SWIFTVLN_ROOT"
 if [[ "$TRAIN_DRY_RUN" == "true" ]]; then
     echo "[INFO] TRAIN_DRY_RUN=true, skip torchrun launch after config validation."
     exit 0
+fi
+
+if [[ "$USE_SWANLAB" == "true" && "$SWANLAB_DIRECT_NETWORK" == "true" ]]; then
+    unset_proxy_for_swanlab
 fi
 
 torchrun \
@@ -598,6 +637,7 @@ torchrun \
     $SWANLAB_ARGS \
     $QA_ARGS \
     $HISTORY_ARGS \
+    $RESUME_ARGS \
     $MAX_STEPS_ARG
 
 echo "=========================================="

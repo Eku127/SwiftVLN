@@ -38,6 +38,14 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 实验计划目录：`runtime/plans/` （自然语言实验计划文件，供 orchestrate-plan skill 读取）
 - 实验计划 skill：`.codex/skills/orchestrate-plan/SKILL.md`
 - 训练队列：`src/swiftvln/scripts/train/train_queue.sh`
+- 训练队列端口/重试修复（Updated: 2026-04-15）：
+  - `src/swiftvln/scripts/train/train_queue.sh`
+  - 串行训练在每次 attempt 启动前会先检查临时训练脚本中的 `MASTER_PORT` 是否可用；
+    若端口已被占用，会在启动前直接改写为本机空闲端口，避免 `torchrun`
+    在 rendezvous 阶段直接因 `EADDRINUSE` 失败
+  - 训练执行现在按 `bash "$temp_script" | tee "$run_log_file"` 的真实
+    `PIPESTATUS[0]` 判断成功/失败，不再被 `tee` 的返回码掩盖
+  - 因此 `address already in use` 这类错误现在可以稳定进入 auto-fix 重试链路
 - 训练 watchdog：`src/swiftvln/scripts/train/train_watchdog.sh`
 - GPU 健康监控（Updated: 2026-04-07）：
   - 单机监控脚本：`src/swiftvln/scripts/monitor/gpu_health_monitor.sh`
@@ -60,6 +68,22 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `TRAIN_CUDA_DEVICES=<csv>`：显式指定 GPU 列表，例如 `0,1,3,5`
     - `TRAIN_DRY_RUN=true`：仅做配置与 GPU 解析检查，不实际启动 `torchrun`
   - `src/swiftvln/scripts/train/train_queue.sh` 会把以上三个变量透传给单次训练脚本
+- SwanLab 直连默认（Updated: 2026-04-08）：
+  - `src/swiftvln/scripts/train/train_queue.sh`
+  - `src/swiftvln/models/{overlapvln,streamvln,compressvln,monovln,uninavid}/script/train/*.sh`
+  - 当 `USE_SWANLAB=true` 时，训练脚本默认会清理 `http_proxy/https_proxy/HTTP_PROXY/HTTPS_PROXY/all_proxy/ALL_PROXY`
+  - 目的：避免误继承本地 `127.0.0.1:7890` 一类代理，导致 SwanLab 登录失败
+  - 如需保留代理，可显式设置 `SWANLAB_DIRECT_NETWORK=false`
+  - `train_queue.sh` 现在也会把全局 `QA_DATASET` 显式写入临时训练脚本，避免 `qa*` 实验回退到模型脚本内的旧默认 QA 路径
+- OverlapVLN 训练恢复支持（Updated: 2026-04-08）：
+  - `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - `src/swiftvln/scripts/train/train_queue.sh`
+  - 单次训练脚本新增：
+    - `RESUME_FROM_CHECKPOINT=<abs_path>`：传给 ms-swift 的 `--resume_from_checkpoint`
+    - `RESUME_ONLY_MODEL=true|false`：可选，仅恢复模型权重
+    - `OUTPUT_DIR_OVERRIDE=<path>`：覆盖实验根输出目录，再由 ms-swift 在其下生成新的 `v*/` 子目录
+  - `train_queue.sh` 现在会把以上三个变量透传到临时训练脚本，适用于“从旧 checkpoint 真恢复后继续跑队列”的场景
+  - 若要延续原实验命名并避免新建不同根目录，resume 时应同时设置 `RESUME_FROM_CHECKPOINT` 与 `OUTPUT_DIR_OVERRIDE`
 - 评测单模型：`src/swiftvln/scripts/eval/eval_by_name.sh`
 - 评测队列：`src/swiftvln/scripts/eval/eval_queue.sh`
 - 评测入队：`src/swiftvln/scripts/eval/enqueue_eval.sh`
@@ -70,6 +94,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 数据集 merge：`src/swiftvln/scripts/data_process/merge_satnav_data.py`
 - 数据同步：`src/swiftvln/scripts/data_sync/*.sh`
 - SatNav merge skill：`.codex/skills/merge-satnav-data/SKILL.md`
+- 主线评测 summary 重加权指标（Updated: 2026-04-14）：
+  - 公共汇总逻辑：`src/swiftvln/common/eval/runner.py`
+  - 权重/统计 helper：`src/swiftvln/common/eval/reporting.py`
+  - 当 `env_type=satnav` 且存在 `by_trajectory_type` 时，`evaluation_summary.json`
+    现在额外写出 `weighted_by_seen_unseen_distribution`
+  - 该字段使用 `satnav_task.yaml` 中 `DATA_PATH` 对应的 `val_seen + val_unseen`
+    episode 合并分布，输出统一加权后的：
+    `success_rate / mean_spl / oracle_success / navigation_error / avg_steps`
+  - 目的：在不修改实际评测 episode 的前提下，降低 `seen/unseen`
+    任务类型配比差异对总指标解释的干扰
 
 ### Baseline StreamVLN Layout (Updated: 2026-03-09)
 
@@ -108,10 +142,15 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
       `results/eval/<arch>/<model_name>/<split>/<timestamp>/`
       例：`results/eval/overlapvln/<model>/val_seen/20260319_143025/`
     - SatNav 默认同时跑 `val_seen` + `val_unseen`（不设置 `EVAL_SPLIT`），Habitat 默认 `EVAL_SPLIT=val_unseen`
-  - StreamVLN SatNav eval 约定（Updated: 2026-04-01）：
-    - 多卡汇总改为 rank0 从 `result.jsonl` 离线去重汇总，不再用末尾 `all_gather(...)` 汇总本地 `results`
-    - resume / 去重唯一键使用 `scene_id + episode_id`，避免仅按 `episode_id` 导致跨 scene 冲突
-    - `--max_episodes` 语义为“先截断总 episode，再做分布式切分”
+- StreamVLN SatNav eval 约定（Updated: 2026-04-01）：
+  - 多卡汇总改为 rank0 从 `result.jsonl` 离线去重汇总，不再用末尾 `all_gather(...)` 汇总本地 `results`
+  - resume / 去重唯一键使用 `scene_id + episode_id`，避免仅按 `episode_id` 导致跨 scene 冲突
+  - `--max_episodes` 语义为“先截断总 episode，再做分布式切分”
+  - `evaluation_summary.json`（Updated: 2026-04-14）在存在 `by_trajectory_type` 时会额外写出
+    `weighted_by_seen_unseen_distribution`
+  - 该字段使用 `src/swiftvln/configs/satnav_task.yaml` 对应的
+    `val_seen + val_unseen` 合并任务类型分布做统一加权，输出
+    `SR / SPL / OS / NE / avg_steps`
 
 ### Baseline NaVILA Layout (Updated: 2026-03-12)
 
@@ -163,7 +202,15 @@ NaVILA SatNav eval 约定：
   - 不再依赖末尾 `dist.all_gather(...)` 做跨 rank 汇总
   - rank0 直接读取 `result.jsonl`（联合键去重）并写 `evaluation_summary.json`
   - 用于规避长尾 rank 导致的 NCCL/TCPStore 超时退出
-  - 汇总前增加 `dist.barrier()`，避免 rank0 在其他 rank 尚未写完 `result.jsonl` 时提前出 summary
+  - 评测收尾同步（Updated: 2026-04-13）改为基于结果目录下 `_rank_sync/<run_id>/rank_<n>.json`
+    的文件标记等待，不再依赖末尾 `dist.barrier()`
+  - `baseline/navila/scripts/eval_satnav.sh` 现会为每个 split 传唯一 `--run_id`
+  - 目的：保留 8 卡断点续跑能力，同时规避收尾阶段 `Socket Timeout` / NCCL barrier 崩溃
+  - `evaluation_summary.json`（Updated: 2026-04-14）在存在 `by_trajectory_type` 时会额外写出
+    `weighted_by_seen_unseen_distribution`
+  - 该字段使用 `src/swiftvln/configs/satnav_task.yaml` 对应的
+    `val_seen + val_unseen` 合并任务类型分布做统一加权，输出
+    `SR / SPL / OS / NE / avg_steps`
 - 生成停止条件与 dtype 稳定性修复（Updated: 2026-04-07）：
   - `baseline/navila/src/eval_satnav.py` 不再直接使用上游 `KeywordsStoppingCriteria`
   - 当前改为本地 `SafeKeywordsStoppingCriteria`，只匹配**生成后缀**，避免 Llama 3 prompt 内自带 `<|eot_id|>` 时在 `0 token` 阶段被误判为 stop
