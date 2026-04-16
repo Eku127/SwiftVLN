@@ -301,6 +301,24 @@ OpenFly SatNav baseline 约定：
 
 - 不依赖外部 `OpenFly-Platform` repo 运行时路径；训练与评测使用 `baseline/openfly/src/openfly_core/*`
   中本地注册的 HF 组件
+- 支持两种 backend（Updated: 2026-04-16）：
+  - `hf`：直接加载 HF OpenFly checkpoint 目录
+  - `native`：从 Prismatic/OpenVLA `.pt` checkpoint 初始化权重，但继续复用当前
+    HF `Trainer` / `checkpoint-*` 训练链路
+- backend 通过环境变量切换：
+  - `OPENFLY_BACKEND=hf|native`
+  - 当前默认仍是 `hf`
+- native backend 约定（Updated: 2026-04-16）：
+  - 默认模型路径：
+    `baseline/openfly/model/openvlaopenvla-7b-prismatic`
+  - 默认 processor/tokenizer 来源：
+    `baseline/openfly/model/openfly-agent-7b`
+  - 当前实现并不会在运行时 import 外部 `OpenFly-Platform` repo
+  - 而是通过
+    `baseline/openfly/src/native_core/checkpoint_conversion.py`
+    把 native checkpoint 映射到当前 `openfly_core` HF 模型结构后再训练
+  - 因此 native 训练产物仍然是标准 HF `checkpoint-*` 目录，可直接复用现有
+    `baseline/openfly/src/eval_satnav.py`
 - 支持两种动作格式（Updated: 2026-04-15）：
   - `compact`：四动作文本 supervision / decode
     `stop / forward / left / right`
@@ -312,9 +330,14 @@ OpenFly SatNav baseline 约定：
   - `right -> [0, 0, 0, 15, 0, 0, 0, 0]`
   - 其中 SatNav forward 固定 `10m`，左/右转固定 `15deg`
 - 训练/评测脚本通过环境变量切换：
+  - `OPENFLY_BACKEND=hf|native`
   - `OPENFLY_ACTION_FORMAT=compact|original`
   - `OPENFLY_UNNORM_KEY` 默认 `satnav_original`
+- native backend 当前仅支持：
+  - `OPENFLY_ACTION_FORMAT=original`
 - `baseline/openfly/scripts/train_satnav.sh` 默认实验名会显式追加动作模式后缀：
+  - `-bkhf`
+  - `-bknative`
   - `-actcompact`
   - `-actoriginal`
   并追加 SatNav 采样标签：
@@ -328,6 +351,9 @@ OpenFly SatNav baseline 约定：
   - 多卡 DeepSpeed 训练结束后不再额外执行
     `trainer.save_model(output_dir)` 根目录全量导出；默认以 `checkpoint-*`
     作为可评测产物，规避 Zero2 收尾长时间卡住
+  - root 输出目录与每个 `checkpoint-*` 目录现在都会额外写
+    `backend_meta.json`，记录 `backend / model_name_or_path / processor_source`
+    等来源信息
   - 新增 `OUTPUT_DIR_OVERRIDE=<abs_path>`，可把训练输出直接落到本地盘
     （如 73 的 `/mnt/data3/...`），减少往 NFS 工作区写大 checkpoint 时的卡顿风险
   - 训练脚本默认禁用 wandb：

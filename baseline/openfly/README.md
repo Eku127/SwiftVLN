@@ -18,6 +18,18 @@ SatNav-only baseline integration for OpenFly.
 - Supported action formats:
   - `compact`: 4 text actions `stop / forward / left / right`
   - `original`: OpenFly-style action tokens over an 8D action vector
+- Supported backends:
+  - `hf`: load an existing HF OpenFly checkpoint directory
+  - `native`: initialize from a Prismatic/OpenVLA `.pt` checkpoint, then continue training in the current HF/Trainer pipeline
+- Select the backend with `OPENFLY_BACKEND=hf|native`
+- `native` currently only supports `OPENFLY_ACTION_FORMAT=original`
+- Native backend defaults:
+  - `MODEL_PATH=baseline/openfly/model/openvlaopenvla-7b-prismatic`
+  - `PROCESSOR_PATH=baseline/openfly/model/openfly-agent-7b`
+  - The processor/tokenizer/image preprocessor come from `PROCESSOR_PATH`
+  - The model weights come from the native Prismatic checkpoint under `MODEL_PATH`
+- Native backend output is still a normal HF checkpoint layout under `output/openfly-baseline/.../checkpoint-*`
+  so `scripts/eval_satnav.sh` keeps reusing the existing HF eval path
 - `original` SatNav templates only enable 4 legal actions:
   - `stop -> [1, 0, 0, 0, 0, 0, 0, 0]`
   - `forward -> [0, 10, 0, 0, 0, 0, 0, 0]`
@@ -27,6 +39,9 @@ SatNav-only baseline integration for OpenFly.
 - Default experiment names always include the action mode suffix:
   - `-actcompact`
   - `-actoriginal`
+- Experiment names also include the backend suffix:
+  - `-bkhf`
+  - `-bknative`
 - Default train names also include the SatNav sampling tag:
   - `-sample-hk3-fs2-stopx5`
 - Training defaults do not use Weights & Biases:
@@ -65,3 +80,4 @@ SatNav-only baseline integration for OpenFly.
   - `generated_text`: final decoded output
   - `action_trace`: per-step action ids / names / raw outputs
 - This baseline does not depend on the external `OpenFly-Platform` repo at runtime.
+- Native backend writes `backend_meta.json` alongside training outputs and checkpoints so the checkpoint source stays traceable.
