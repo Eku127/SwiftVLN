@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 from action_formats import ORIGINAL, get_original_action_templates, get_original_norm_stats
-from backends.base import TrainBackendArtifacts, maybe_enable_gradient_checkpointing
+from backends.base import TrainBackendArtifacts, maybe_enable_gradient_checkpointing, resolve_dtype
 from dataset.satnav_dataset import OpenFlyDataCollator
 from native_core import build_native_hf_model, resolve_native_checkpoint_path, resolve_native_processor_source
 
@@ -22,6 +22,7 @@ def build_native_train_backend(model_args, data_args, training_args) -> TrainBac
         grid_size=model_args.grid_size,
         unnorm_key=data_args.unnorm_key,
         use_flash_attention_2=model_args.use_flash_attention_2,
+        torch_dtype=resolve_dtype(model_args.torch_dtype),
     )
     tokenizer = processor.tokenizer
     if tokenizer.pad_token is None:

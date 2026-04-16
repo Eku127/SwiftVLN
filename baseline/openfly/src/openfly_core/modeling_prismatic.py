@@ -409,6 +409,13 @@ class PrismaticForConditionalGeneration(PrismaticPreTrainedModel):
         elif pixel_values is not None:
             assert past_key_values is None, "Unexpected key `past_key_values` provided during language-only forward!"
 
+            # Align vision input dtype with the fused vision backbone weights. This is required when
+            # checkpoints are materialized directly in bf16/fp16 (e.g. native OpenFly initialization)
+            # but image processors still emit float32 tensors.
+            vision_dtype = next(self.vision_backbone.parameters()).dtype
+            if pixel_values.dtype != vision_dtype:
+                pixel_values = pixel_values.to(dtype=vision_dtype)
+
             # Visual Feature Extraction
             patch_features = self.vision_backbone(pixel_values, grid_size=self.grid_size)
             

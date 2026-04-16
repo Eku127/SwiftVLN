@@ -3,11 +3,13 @@ from __future__ import annotations
 import copy
 import os
 import re
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import torch
 from transformers import AutoConfig, AutoProcessor
+from transformers.modeling_utils import no_init_weights
 
 from action_formats import ORIGINAL, ORIGINAL_UNNORM_KEY, get_original_norm_stats
 from openfly_core import OpenVLAForActionPrediction, register_openfly_auto_classes
@@ -136,6 +138,19 @@ def _filter_expected_missing_keys(missing_keys: list[str]) -> list[str]:
     return filtered
 
 
+@contextmanager
+def _temporary_default_dtype(dtype: torch.dtype | None):
+    if dtype is None:
+        yield
+        return
+    previous_dtype = torch.get_default_dtype()
+    torch.set_default_dtype(dtype)
+    try:
+        yield
+    finally:
+        torch.set_default_dtype(previous_dtype)
+
+
 def build_native_hf_model(
     *,
     model_name_or_path: str,
@@ -144,6 +159,7 @@ def build_native_hf_model(
     grid_size: int,
     unnorm_key: str = ORIGINAL_UNNORM_KEY,
     use_flash_attention_2: bool = False,
+    torch_dtype: torch.dtype | None = None,
 ) -> tuple[OpenVLAForActionPrediction, Any, dict[str, Any]]:
     register_openfly_auto_classes()
     checkpoint_path, run_dir = resolve_native_checkpoint_path(model_name_or_path)
@@ -157,7 +173,9 @@ def build_native_hf_model(
     if use_flash_attention_2:
         setattr(config, "_attn_implementation", "flash_attention_2")
 
-    model = OpenVLAForActionPrediction(config)
+    with _temporary_default_dtype(torch_dtype):
+        with no_init_weights():
+            model = OpenVLAForActionPrediction(config)
     native_checkpoint = torch.load(checkpoint_path, map_location="cpu")
     native_model_state = native_checkpoint.get("model")
     if not isinstance(native_model_state, dict):
@@ -183,5 +201,6 @@ def build_native_hf_model(
         "action_format": ORIGINAL,
         "satnav_unnorm_key": unnorm_key,
         "grid_size": int(grid_size),
+        "torch_dtype": str(torch_dtype).replace("torch.", "") if torch_dtype is not None else "default",
     }
     return model, processor, backend_meta

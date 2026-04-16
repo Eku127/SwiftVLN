@@ -3,6 +3,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+import torch
+import torch.nn.functional as F
 from transformers import HfArgumentParser, Trainer, TrainerCallback, TrainingArguments
 
 from action_formats import (
@@ -35,6 +37,59 @@ class ArtifactSaveCallback(TrainerCallback):
 
     def on_train_begin(self, args, state, control, **kwargs):
         self._write_artifacts(args.output_dir)
+
+
+class OpenFlyTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        labels = inputs.pop("labels")
+        loss_weights = inputs.pop("loss_weights", None)
+        outputs = model(**inputs)
+        logits = outputs.logits
+
+        if logits.size(1) != labels.size(1):
+            patch_token_count = logits.size(1) - labels.size(1)
+            if patch_token_count < 0:
+                raise ValueError(
+                    f"Unexpected logits/labels length mismatch: logits={logits.size(1)} labels={labels.size(1)}"
+                )
+            patch_labels = torch.full(
+                (labels.size(0), patch_token_count),
+                fill_value=-100,
+                dtype=labels.dtype,
+                device=labels.device,
+            )
+            labels = torch.cat([labels[:, :1], patch_labels, labels[:, 1:]], dim=1)
+            if loss_weights is not None:
+                patch_weights = torch.zeros(
+                    (loss_weights.size(0), patch_token_count),
+                    dtype=loss_weights.dtype,
+                    device=loss_weights.device,
+                )
+                loss_weights = torch.cat([loss_weights[:, :1], patch_weights, loss_weights[:, 1:]], dim=1)
+
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+
+        token_loss = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            ignore_index=-100,
+            reduction="none",
+        ).view_as(shift_labels)
+
+        valid_mask = shift_labels.ne(-100)
+        if loss_weights is not None:
+            shift_weights = loss_weights[..., 1:].contiguous().to(token_loss.device)
+            effective_weights = shift_weights * valid_mask.to(shift_weights.dtype)
+        else:
+            effective_weights = valid_mask.to(token_loss.dtype)
+
+        denom = effective_weights.sum().clamp_min(1.0)
+        loss = (token_loss * effective_weights).sum() / denom
+        outputs.loss = loss
+        if return_outputs:
+            return loss, outputs
+        return loss
 
 
 @dataclass
@@ -91,7 +146,7 @@ def main() -> None:
     metadata["action_counts"] = train_dataset.action_counts
     metadata["num_samples"] = len(train_dataset)
 
-    trainer = Trainer(
+    trainer = OpenFlyTrainer(
         model=backend_artifacts.model,
         args=training_args,
         train_dataset=train_dataset,

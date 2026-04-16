@@ -22,6 +22,7 @@ from prompting import build_openfly_prompt, build_openfly_prompt_with_answer
 
 
 IGNORE_INDEX = -100
+DEFAULT_ORIGINAL_DIM_LOSS_WEIGHTS = (0.4, 1.2, 1.2, 1.2)
 
 
 def _frame_path(image_folder: str, video_dir: str, frame_idx: int) -> str:
@@ -38,6 +39,28 @@ def _sample_history_indices(current_idx: int) -> list[int]:
     if current_idx == 2:
         return [1, 1]
     return [current_idx - 1, current_idx - 2]
+
+
+def _build_stop_history_variants(current_idx: int, variant_count: int) -> list[list[int]]:
+    variant_count = max(int(variant_count), 1)
+    variants: list[list[int]] = []
+    seen: set[tuple[int, int]] = set()
+
+    base = _sample_history_indices(current_idx)
+
+    def _add_variant(first_idx: int, second_idx: int) -> None:
+        pair = (max(1, first_idx), max(1, second_idx))
+        if pair not in seen:
+            seen.add(pair)
+            variants.append([pair[0], pair[1]])
+
+    _add_variant(base[0], base[1])
+    for shift in range(1, variant_count):
+        _add_variant(current_idx - shift - 1, current_idx - shift - 2)
+        if len(variants) >= variant_count:
+            break
+
+    return variants
 
 
 def _select_steps_head_stop_stride(actions: list[int], head_keep: int, fwd_stride: int) -> list[int]:
@@ -98,6 +121,8 @@ class SatNavOpenFlyDataset(Dataset):
         head_keep = int(head_keep_env) if head_keep_env else None
         sample_stride = int(sample_stride_env) if sample_stride_env else None
         stop_repeat = int(stop_repeat_env) if stop_repeat_env else 1
+        stop_history_aug_env = os.getenv("SATNAV_STOP_HISTORY_AUG", "").strip()
+        stop_history_aug = int(stop_history_aug_env) if stop_history_aug_env else 1
 
         self.image_folder = image_folder
         self.action_format = resolve_action_format(action_format)
@@ -123,33 +148,43 @@ class SatNavOpenFlyDataset(Dataset):
                     continue
 
                 current_frame_idx = step_idx
-                history_indices = _sample_history_indices(current_frame_idx)
-                frame_paths = [
-                    _frame_path(image_folder, video_dir, current_frame_idx),
-                    _frame_path(image_folder, video_dir, history_indices[0]),
-                    _frame_path(image_folder, video_dir, history_indices[1]),
-                ]
+                answer = action_to_text(action)
+                raw_action_vector = get_original_action_vector(action)
+                normalized_action_vector = get_normalized_original_action_vector(action)
 
-                self.samples.append(
-                    {
-                        "episode_id": episode_id,
-                        "trajectory_id": trajectory_id,
-                        "step_idx": step_idx,
-                        "instruction": instruction,
-                        "frame_paths": frame_paths,
-                        "action": action,
-                        "answer": action_to_text(action),
-                        "raw_action_vector": get_original_action_vector(action),
-                        "normalized_action_vector": get_normalized_original_action_vector(action),
-                    }
-                )
-                self.action_counts[action] += 1
-                if action == 0 and stop_repeat > 1:
-                    for _ in range(stop_repeat - 1):
-                        self.samples.append(self.samples[-1].copy())
-                        self.action_counts[action] += 1
-                        if max_samples is not None and len(self.samples) >= max_samples:
-                            break
+                if action == 0:
+                    history_variants = _build_stop_history_variants(current_frame_idx, stop_history_aug)
+                    repeat_count = max(stop_repeat, 1)
+                else:
+                    history_variants = [_sample_history_indices(current_frame_idx)]
+                    repeat_count = 1
+
+                for repeat_idx in range(repeat_count):
+                    history_indices = history_variants[repeat_idx % len(history_variants)]
+                    frame_paths = [
+                        _frame_path(image_folder, video_dir, current_frame_idx),
+                        _frame_path(image_folder, video_dir, history_indices[0]),
+                        _frame_path(image_folder, video_dir, history_indices[1]),
+                    ]
+
+                    self.samples.append(
+                        {
+                            "episode_id": episode_id,
+                            "trajectory_id": trajectory_id,
+                            "step_idx": step_idx,
+                            "instruction": instruction,
+                            "frame_paths": frame_paths,
+                            "action": action,
+                            "answer": answer,
+                            "raw_action_vector": raw_action_vector,
+                            "normalized_action_vector": normalized_action_vector,
+                            "history_variant_idx": repeat_idx % len(history_variants),
+                        }
+                    )
+                    self.action_counts[action] += 1
+                    if max_samples is not None and len(self.samples) >= max_samples:
+                        break
+
                 if max_samples is not None and len(self.samples) >= max_samples:
                     break
 
@@ -165,6 +200,7 @@ class SatNavOpenFlyDataset(Dataset):
             f"head_keep={head_keep}, "
             f"sample_stride={sample_stride}, "
             f"stop_repeat={stop_repeat}, "
+            f"stop_history_aug={stop_history_aug}, "
             f"action_counts={self.action_counts}",
             flush=True,
         )
@@ -197,11 +233,24 @@ class OpenFlyDataCollator:
     def __post_init__(self) -> None:
         self.action_format = resolve_action_format(self.action_format)
         self.action_tokenizer = ActionTokenizer(self.processor.tokenizer) if self.action_format == ORIGINAL else None
+        self.original_supervised_dims = 4
+        loss_weight_env = os.getenv("OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS", "").strip()
+        if loss_weight_env:
+            parsed = [float(item.strip()) for item in loss_weight_env.split(",") if item.strip()]
+            if len(parsed) != self.original_supervised_dims:
+                raise ValueError(
+                    "OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS must provide exactly "
+                    f"{self.original_supervised_dims} comma-separated values"
+                )
+            self.original_dim_loss_weights = tuple(parsed)
+        else:
+            self.original_dim_loss_weights = DEFAULT_ORIGINAL_DIM_LOSS_WEIGHTS
 
     def __call__(self, instances: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
         input_ids = []
         labels = []
         pixel_values = []
+        loss_weights = []
 
         tokenizer = self.processor.tokenizer
         image_processor = self.processor.image_processor
@@ -227,12 +276,29 @@ class OpenFlyDataCollator:
             ).input_ids
 
             sample_labels = full_ids.copy()
+            sample_loss_weights = [0.0] * len(full_ids)
             masked_prefix = min(len(prompt_ids), len(sample_labels))
             for idx in range(masked_prefix):
                 sample_labels[idx] = IGNORE_INDEX
 
+            if self.action_format == ORIGINAL:
+                for idx in range(masked_prefix, len(sample_labels)):
+                    sample_labels[idx] = IGNORE_INDEX
+
+                answer_ids = tokenizer(answer, add_special_tokens=False).input_ids
+                action_dim_count = len(instance["normalized_action_vector"])
+                extra_prefix_tokens = max(len(answer_ids) - action_dim_count, 0)
+                supervised_dim_count = min(self.original_supervised_dims, action_dim_count)
+                supervise_start = masked_prefix + extra_prefix_tokens
+                supervise_end = min(supervise_start + supervised_dim_count, len(sample_labels))
+                for idx in range(supervise_start, supervise_end):
+                    sample_labels[idx] = full_ids[idx]
+                    sample_loss_weights[idx] = float(self.original_dim_loss_weights[idx - supervise_start])
+
             input_ids.append(torch.tensor(full_ids, dtype=torch.long))
             labels.append(torch.tensor(sample_labels, dtype=torch.long))
+            if self.action_format == ORIGINAL:
+                loss_weights.append(torch.tensor(sample_loss_weights, dtype=torch.float32))
 
             sample_pixels = image_processor(images=instance["images"], return_tensors="pt")["pixel_values"]
             pixel_values.append(sample_pixels)
@@ -242,9 +308,15 @@ class OpenFlyDataCollator:
         attention_mask = input_ids.ne(self.pad_token_id)
         pixel_values = torch.stack(pixel_values, dim=0)
 
-        return {
+        batch = {
             "input_ids": input_ids[:, : self.model_max_length],
             "labels": labels[:, : self.model_max_length],
             "attention_mask": attention_mask[:, : self.model_max_length],
             "pixel_values": pixel_values,
         }
+        if self.action_format == ORIGINAL:
+            batch["loss_weights"] = pad_sequence(loss_weights, batch_first=True, padding_value=0.0)[
+                :, : self.model_max_length
+            ]
+
+        return batch
