@@ -317,6 +317,9 @@ OpenFly SatNav baseline 约定：
   - 而是通过
     `baseline/openfly/src/native_core/checkpoint_conversion.py`
     把 native checkpoint 映射到当前 `openfly_core` HF 模型结构后再训练
+  - `build_native_hf_model(...)` 当前会按请求的 `torch_dtype`
+    临时设置默认 dtype 后构模，避免 native 路径在启用 `flash_attention_2`
+    时仍以 `float32` 构建 7B 模型并触发不兼容 warning
   - 因此 native 训练产物仍然是标准 HF `checkpoint-*` 目录，可直接复用现有
     `baseline/openfly/src/eval_satnav.py`
 - 支持两种动作格式（Updated: 2026-04-15）：
@@ -335,13 +338,31 @@ OpenFly SatNav baseline 约定：
   - `OPENFLY_UNNORM_KEY` 默认 `satnav_original`
 - native backend 当前仅支持：
   - `OPENFLY_ACTION_FORMAT=original`
+- native backend 训练修复（Updated: 2026-04-16）：
+  - `baseline/openfly/src/native_core/checkpoint_conversion.py`
+  - `baseline/openfly/src/backends/native_backend.py`
+  - `baseline/openfly/src/openfly_core/modeling_prismatic.py`
+  - `baseline/openfly/configs/zero1.json`
+  - `baseline/openfly/configs/zero2.json`
+  - native `prismatic -> HF runtime` 构模现在会：
+    - 按请求的 `torch_dtype` 建图，避免 `flash_attention_2 + fp32` 组合
+    - 在 `no_init_weights()` 下实例化 7B HF 模型，规避随机初始化导致的超长卡顿
+  - vision 前向现在会把 `pixel_values` cast 到视觉 backbone 的参数 dtype，
+    修复 `Input type (float) and bias type (c10::BFloat16)` 错误
+  - OpenFly DeepSpeed 配置已显式设置 `torch_adam=true`，避免在 H100 上 JIT 构建
+    `FusedAdam` 时触发 `nvcc fatal: Unsupported gpu architecture 'compute_90'`
+  - 98 服务器 smoke 结果：
+    - 单卡 `native + original + no-DeepSpeed` 已能正常进入训练并产出 loss / checkpoint
+    - 8 卡 `native + original + zero2` 已能正常完成 `max_steps=2` smoke
+    - 8 卡 smoke 的 `checkpoint-2` 落盘后仍会有一段较长尾部收尾；日志需看到
+      最终 `train_runtime / train_loss` 统计，不能只看 checkpoint 文件是否已出现
 - `baseline/openfly/scripts/train_satnav.sh` 默认实验名会显式追加动作模式后缀：
   - `-bkhf`
   - `-bknative`
   - `-actcompact`
   - `-actoriginal`
   并追加 SatNav 采样标签：
-  - `-sample-hk<HEAD_KEEP>-fs<SAMPLE_STRIDE>-stopx<STOP_REPEAT>`
+  - `-sample-hk<HEAD_KEEP>-fs<SAMPLE_STRIDE>-stopx<STOP_REPEAT>-stoph<STOP_HISTORY_AUG>`
 - OpenFly SatNav 训练收尾兼容（Updated: 2026-04-15）：
   - `baseline/openfly/src/train_satnav.py`
   - `baseline/openfly/scripts/train_satnav.sh`
@@ -368,39 +389,54 @@ OpenFly SatNav baseline 约定：
     - `MAX_GRAD_NORM`
     - `DATALOADER_NUM_WORKERS`
     - `REPORT_TO`
-  - 当前默认训练配置（Updated: 2026-04-15）：
+  - 当前默认训练配置（Updated: 2026-04-16）：
     - `TRAIN_BSZ=12`
     - `GRAD_ACCUM=1`
     - `TORCH_DTYPE=bfloat16`
     - `USE_FLASH_ATTENTION_2=true`
     - `LEARNING_RATE=2e-5`
-    - `SAVE_STEPS=5000`
+    - `SAVE_STEPS=10000`
     - `LR_SCHEDULER_TYPE=linear`
     - `WEIGHT_DECAY=0.0`
     - 该默认值来自 73 上 8xH100 短程 benchmark；目标是无 acc-grad 前提下提高吞吐
-  - OpenFly SatNav 默认采样策略（Updated: 2026-04-15）：
+  - OpenFly SatNav 默认采样策略（Updated: 2026-04-16）：
     - `baseline/openfly/src/dataset/satnav_dataset.py`
-    - 现已接入 NaVILA 同款的 `head + stop + turn-protect + forward-run stride`
-      采样逻辑；当前默认使用一组“forward 减半 + 轻量 stop 增强”的配置
+    - 现已接入更接近 NaVILA 的 `head + stop + turn-protect + forward-run stride`
+      采样逻辑；默认 stop augmentation 已从偏强配置回调到更保守版本
     - 默认值：
-      - `SATNAV_HEAD_KEEP=3`
-      - `SATNAV_SAMPLE_STRIDE=2`
-      - `SATNAV_STOP_REPEAT=5`
+      - `SATNAV_HEAD_KEEP=7`
+      - `SATNAV_SAMPLE_STRIDE=7`
+      - `SATNAV_STOP_REPEAT=4`
+      - `SATNAV_STOP_HISTORY_AUG=1`
     - 语义：
-      - 保留每条轨迹前 `3` 步
+      - 保留每条轨迹前 `7` 步
       - 所有 `left/right` 全保留
-      - 每段连续 `forward` run 内每 2 个保留 1 个
-      - `stop` 样本按 `5x` 重复
-    - 0404 近似统计（Updated: 2026-04-15）：
+      - 每段连续 `forward` run 内每 7 个保留 1 个
+      - `stop` 样本按 `4x` 重复
+      - 默认不再对 terminal stop 做多 history 变体扩增，避免把“结束轨迹”学得强于“正确停点”
+    - 0404 近似统计（Updated: 2026-04-16）：
       - 原始全量：`5.396M`
-      - 当前默认：约 `4.131M`（较全量 `-23.5%`）
+      - 当前默认：约 `3.209M`（较全量 `-40.5%`）
       - 动作占比约：
-        - `stop 12.7%`
-        - `forward 53.4%`
-        - `left 17.7%`
-        - `right 16.2%`
-      - 目的：把 `forward` 压到约一半，同时让 `stop` 抬到略低于单类
-        `left/right` 的量级
+        - `stop 13.1%`
+        - `forward 43.2%`
+        - `left 22.8%`
+        - `right 20.9%`
+      - 8xH100、global batch `96` 下，1 epoch 预计约 `10.0h`
+      - 目的：继续压 `forward`，但把 stop 从过强增强拉回到略低于 `left/right`
+        的量级，避免模型把 `stop` 学成“结束轨迹”的默认动作
+  - OpenFly `original` 训练监督（Updated: 2026-04-16）：
+    - `baseline/openfly/src/dataset/satnav_dataset.py`
+    - `baseline/openfly/src/train_satnav.py`
+    - 训练时仅监督 `original` 8 维动作 token 中前 `4` 个有效动作维度 token
+    - 后 `4` 个恒定 inactive 维度 token 与结尾 `eos` 不再参与 CE loss
+    - 训练默认通过自定义 `OpenFlyTrainer` 对这 4 个 token 施加位置加权：
+      - `OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS=0.4,1.2,1.2,1.2`
+    - 含义：
+      - 下调第 1 个动作 token 的权重
+      - 上调第 2/3/4 个动作 token 的权重
+    - 目的：削弱 `stop` 在第 1 个 supervised token 位置上的结构性优势，减少
+      “会走会转，但收尾时过早 stop” 的偏置
 - prompt 保持 OpenFly 原问句风格：
   `What action should the robot take to ...?`
 - 训练输出目录：

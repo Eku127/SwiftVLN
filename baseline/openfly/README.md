@@ -43,7 +43,7 @@ SatNav-only baseline integration for OpenFly.
   - `-bkhf`
   - `-bknative`
 - Default train names also include the SatNav sampling tag:
-  - `-sample-hk3-fs2-stopx5`
+  - `-sample-hk7-fs7-stopx4-stoph1`
 - Training defaults do not use Weights & Biases:
   - `--report_to none`
   - `WANDB_DISABLED=true`
@@ -54,15 +54,28 @@ SatNav-only baseline integration for OpenFly.
   - `TORCH_DTYPE=bfloat16`
   - `USE_FLASH_ATTENTION_2=true`
   - `LEARNING_RATE=2e-5`
-  - `SAVE_STEPS=5000`
+  - `SAVE_STEPS=10000`
   - `LR_SCHEDULER_TYPE=linear`
   - `WEIGHT_DECAY=0.0`
-- Current default sample policy is a forward-reduced, light stop-boost variant:
-  - `SATNAV_HEAD_KEEP=3`
-  - `SATNAV_SAMPLE_STRIDE=2`
-  - `SATNAV_STOP_REPEAT=5`
-  - Keep all turns, keep every 2nd forward inside each consecutive forward run, and repeat stop samples 5x
-  - On 0404 this keeps the first 3 steps, cuts forward to roughly half, and keeps stop slightly below single-class left/right volume
+- Current default sample policy is a NaVILA-style forward-reduced, stop-augmented variant:
+  - `SATNAV_HEAD_KEEP=7`
+  - `SATNAV_SAMPLE_STRIDE=7`
+  - `SATNAV_STOP_REPEAT=4`
+  - `SATNAV_STOP_HISTORY_AUG=1`
+  - Keep all turns, keep every 7th forward inside each consecutive forward run, repeat terminal stop samples 4x,
+    and no longer widen stop supervision across multiple terminal-history variants by default
+  - On 0404 this yields about `3.209M` samples:
+    - `stop=419,816` (`13.08%`)
+    - `forward=1,387,530` (`43.24%`)
+    - `left=730,805` (`22.77%`)
+    - `right=671,062` (`20.91%`)
+  - Relative to full raw `5.396M` samples, this is about `-40.5%`, with 8xH100 1 epoch roughly `10.0h`
+- `original` action-token supervision is now trimmed to the first 4 active action-dimension tokens, and those
+  4 positions use a weighted CE profile by default:
+  - `OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS=0.4,1.2,1.2,1.2`
+  - This down-weights the first action token and up-weights the later three, reducing the structural bias where
+    `stop` is decided by the first supervised token position
+  - The trailing invariant inactive-dimension tokens and final `eos` no longer contribute to CE loss
 - `train_satnav.sh` also exposes system / optimizer knobs for H100 tuning:
   - `USE_FLASH_ATTENTION_2=true|false`
   - `WEIGHT_DECAY`
@@ -74,6 +87,8 @@ SatNav-only baseline integration for OpenFly.
   - `SATNAV_HEAD_KEEP`
   - `SATNAV_SAMPLE_STRIDE`
   - `SATNAV_STOP_REPEAT`
+  - `SATNAV_STOP_HISTORY_AUG`
+  - `OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS`
 - Eval outputs now record explicit action fields in `result.jsonl`:
   - `action`: final action id
   - `parsed_action`: final action name
