@@ -4,7 +4,17 @@ set -euo pipefail
 SWIFTVLN_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 BASELINE_DIR="${SWIFTVLN_ROOT}/baseline/openfly"
 
-MODEL_PATH="${MODEL_PATH:-${BASELINE_DIR}/model/openfly-agent-7b}"
+OPENFLY_BACKEND="${OPENFLY_BACKEND:-hf}"
+if [ "${OPENFLY_BACKEND}" = "native" ]; then
+    DEFAULT_MODEL_PATH="${BASELINE_DIR}/model/openvlaopenvla-7b-prismatic"
+    DEFAULT_PROCESSOR_PATH="${BASELINE_DIR}/model/openfly-agent-7b"
+else
+    DEFAULT_MODEL_PATH="${BASELINE_DIR}/model/openfly-agent-7b"
+    DEFAULT_PROCESSOR_PATH=""
+fi
+
+MODEL_PATH="${MODEL_PATH:-${DEFAULT_MODEL_PATH}}"
+PROCESSOR_PATH="${PROCESSOR_PATH:-${DEFAULT_PROCESSOR_PATH}}"
 DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data/annotations.json}"
 IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data}"
 NUM_GPUS="${NUM_GPUS:-1}"
@@ -21,7 +31,7 @@ GRID_SIZE="${GRID_SIZE:-16}"
 TORCH_DTYPE="${TORCH_DTYPE:-bfloat16}"
 DEEPSPEED_MODE="${DEEPSPEED_MODE:-zero2}"
 DEEPSPEED_CONFIG="${DEEPSPEED_CONFIG:-}"
-OPENFLY_ACTION_FORMAT="${OPENFLY_ACTION_FORMAT:-compact}"
+OPENFLY_ACTION_FORMAT="${OPENFLY_ACTION_FORMAT:-}"
 OPENFLY_UNNORM_KEY="${OPENFLY_UNNORM_KEY:-satnav_original}"
 MAX_EPISODES="${SATNAV_MAX_EPISODES:-}"
 MAX_SAMPLES="${SATNAV_MAX_SAMPLES:-}"
@@ -36,13 +46,22 @@ SATNAV_HEAD_KEEP="${SATNAV_HEAD_KEEP-3}"
 SATNAV_SAMPLE_STRIDE="${SATNAV_SAMPLE_STRIDE-2}"
 SATNAV_STOP_REPEAT="${SATNAV_STOP_REPEAT-5}"
 
+if [ -z "${OPENFLY_ACTION_FORMAT}" ]; then
+    if [ "${OPENFLY_BACKEND}" = "native" ]; then
+        OPENFLY_ACTION_FORMAT="original"
+    else
+        OPENFLY_ACTION_FORMAT="compact"
+    fi
+fi
+
 VERSION_NUM="$(echo "${DATA_PATH}" | grep -oP 'ver_\K\d+' | head -1 || true)"
 [ -z "${VERSION_NUM}" ] && VERSION_NUM="unknown"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 EFFECTIVE_BSZ=$((TRAIN_BSZ * GRAD_ACCUM * NUM_GPUS))
+BACKEND_SUFFIX="-bk${OPENFLY_BACKEND}"
 FORMAT_SUFFIX="-act${OPENFLY_ACTION_FORMAT}"
 SAMPLE_TAG="-sample-hk${SATNAV_HEAD_KEEP:-off}-fs${SATNAV_SAMPLE_STRIDE:-off}-stopx${SATNAV_STOP_REPEAT:-1}"
-EXP_NAME="${EXP_NAME:-openfly-baseline-1ep-data${VERSION_NUM}${FORMAT_SUFFIX}${SAMPLE_TAG}-bs${EFFECTIVE_BSZ}-lr${LEARNING_RATE}-${TIMESTAMP}}"
+EXP_NAME="${EXP_NAME:-openfly-baseline-1ep-data${VERSION_NUM}${BACKEND_SUFFIX}${FORMAT_SUFFIX}${SAMPLE_TAG}-bs${EFFECTIVE_BSZ}-lr${LEARNING_RATE}-${TIMESTAMP}}"
 OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR_OVERRIDE:-}"
 if [ -n "${OUTPUT_DIR_OVERRIDE}" ]; then
     OUTPUT_DIR="${OUTPUT_DIR_OVERRIDE}"
@@ -80,6 +99,7 @@ fi
 
 ARGS=(
     --model_name_or_path "${MODEL_PATH}"
+    --backend "${OPENFLY_BACKEND}"
     --data_path "${DATA_PATH}"
     --image_folder "${IMAGE_FOLDER}"
     --action_format "${OPENFLY_ACTION_FORMAT}"
@@ -103,6 +123,10 @@ ARGS=(
     --dataloader_num_workers "${DATALOADER_NUM_WORKERS}"
     --report_to "${REPORT_TO}"
 )
+
+if [ -n "${PROCESSOR_PATH}" ]; then
+    ARGS+=(--processor_name_or_path "${PROCESSOR_PATH}")
+fi
 
 if [ -n "${DEEPSPEED_CONFIG}" ]; then
     ARGS+=(--deepspeed "${DEEPSPEED_CONFIG}")
