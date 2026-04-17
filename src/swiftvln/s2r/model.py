@@ -185,7 +185,7 @@ class TeacherVisionTower:
 
         # Import for side effects; this keeps future custom configs loadable.
         try:
-            import swiftvln.models.overlapvln.model  # noqa: F401
+            import swiftvln.model.model  # noqa: F401
         except Exception:
             pass
 

@@ -230,7 +230,7 @@ class MemoryEvaluator:
         
         # Register OverlapVLN model
         try:
-            import swiftvln.models.overlapvln
+            import swiftvln.model
         except ImportError:
             pass
         

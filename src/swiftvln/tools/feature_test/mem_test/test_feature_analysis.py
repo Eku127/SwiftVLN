@@ -33,7 +33,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# Add paths - ensure we can import swiftvln.models.overlapvln
+# Add paths - ensure we can import swiftvln.model
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 _mem_test_dir = _current_dir
 _feature_test_dir = os.path.dirname(_mem_test_dir)
@@ -87,7 +87,7 @@ class FeatureAnalyzer:
         
         # Register custom models
         try:
-            import swiftvln.models.overlapvln
+            import swiftvln.model
         except ImportError:
             pass
         
