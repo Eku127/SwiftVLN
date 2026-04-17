@@ -235,9 +235,8 @@ class SatNavOpenFlyDataset(Dataset):
                 raw_action_vector = get_original_action_vector(action)
                 normalized_action_vector = get_normalized_original_action_vector(action)
 
-                prior_actions_raw = actions[1:step_idx] if step_idx > 1 else []
                 prior_action_history: list[int] = []
-                for prior in prior_actions_raw:
+                for prior in actions[:step_idx]:
                     prior_int = int(prior)
                     if prior_int in ACTION_TO_NAME:
                         prior_action_history.append(prior_int)

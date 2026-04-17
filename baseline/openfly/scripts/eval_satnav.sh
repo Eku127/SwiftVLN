@@ -20,6 +20,7 @@ MASTER_PORT="${MASTER_PORT:-29500}"
 MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
 OPENFLY_ACTION_FORMAT="${OPENFLY_ACTION_FORMAT:-auto}"
 OPENFLY_UNNORM_KEY="${OPENFLY_UNNORM_KEY:-}"
+OPENFLY_ACTION_HISTORY_LIMIT="${OPENFLY_ACTION_HISTORY_LIMIT:-16}"
 RESULTS_BASE_OVERRIDE="${RESULTS_BASE_OVERRIDE:-}"
 
 if [ -z "${INPUT}" ]; then
@@ -79,6 +80,7 @@ fi
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate openfly-baseline
 export PYTHONPATH="${BASELINE_DIR}/src:${PYTHONPATH:-}"
+export OPENFLY_ACTION_HISTORY_LIMIT
 
 run_single_split() {
     local split="$1"

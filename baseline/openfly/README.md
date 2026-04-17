@@ -93,9 +93,9 @@ The key recipe change that broke the SR=0 deadlock:
     and should be budgeted as roughly `9.0-9.5h` including save overhead
 - Action history prompt (new in v2):
   - `OPENFLY_ACTION_HISTORY_LIMIT=16` controls how many past actions appear in the prompt
-  - Past actions are appended as: `Past actions: forward, forward, left, ...`
-  - If no actions have been taken yet, the clause is omitted
-  - Both train and eval use the same limit; set `OPENFLY_ACTION_HISTORY_LIMIT=0` to disable
+  - Past actions are appended as: `Past actions (N so far): forward, forward, left, ...`
+  - At step 0 (no prior actions taken), the clause reads: `Past actions: none.`
+  - Both train and eval use the same limit; the variable is exported by both `train_satnav.sh` and `eval_satnav.sh`
 - `original` action-token supervision is trimmed to the first 4 active action-dimension tokens, and those
   4 positions use a weighted CE profile by default:
   - `OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS=0.4,1.2,1.2,1.2`
