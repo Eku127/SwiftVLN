@@ -52,11 +52,7 @@ OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS="${OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS:-0.4,1.2,
 OPENFLY_ACTION_HISTORY_LIMIT="${OPENFLY_ACTION_HISTORY_LIMIT:-16}"
 
 if [ -z "${OPENFLY_ACTION_FORMAT}" ]; then
-    if [ "${OPENFLY_BACKEND}" = "native" ]; then
-        OPENFLY_ACTION_FORMAT="original"
-    else
-        OPENFLY_ACTION_FORMAT="compact"
-    fi
+    OPENFLY_ACTION_FORMAT="compact"
 fi
 
 VERSION_NUM="$(echo "${DATA_PATH}" | grep -oP 'ver_\K\d+' | head -1 || true)"

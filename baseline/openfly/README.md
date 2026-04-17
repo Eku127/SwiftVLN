@@ -35,7 +35,7 @@ The key recipe change that broke the SR=0 deadlock:
   - `hf`: load an existing HF OpenFly checkpoint directory
   - `native`: initialize from a Prismatic/OpenVLA `.pt` checkpoint, then continue training in the current HF/Trainer pipeline
 - Select the backend with `OPENFLY_BACKEND=hf|native`
-- `native` currently only supports `OPENFLY_ACTION_FORMAT=original`
+- Both backends support both `compact` and `original` action formats
 - Native backend defaults:
   - `MODEL_PATH=baseline/openfly/model/openvlaopenvla-7b-prismatic`
   - `PROCESSOR_PATH=baseline/openfly/model/openfly-agent-7b`
