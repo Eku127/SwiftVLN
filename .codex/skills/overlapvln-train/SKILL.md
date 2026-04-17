@@ -11,6 +11,15 @@ Related skills:
 - **`overlapvln-eval`**: run eval after training completes (triggered manually or by user).
 - **`server-train-eval-monitor`**: cluster-wide status overview.
 
+## Current Baseline Defaults
+
+- 主训练脚本当前 baseline 默认值：
+  - `MAX_SAMPLES=0`（显式全量）
+  - `NUM_OVERLAP=0`
+  - `SAVE_STEPS=1000`
+  - `SAVE_TOTAL_LIMIT=1`
+- 历史 baseline 默认曾使用 `NUM_OVERLAP=16`；如果用户没有特别说明，当前应按 `overlap=0` 理解 baseline。
+
 ## No-Memory Convention (OverlapVLN)
 
 - OverlapVLN 没有单独的 `USE_MEMORY=false` 开关。

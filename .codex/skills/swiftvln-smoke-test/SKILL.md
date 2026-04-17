@@ -51,7 +51,7 @@ If any item fails, stop and report the exact missing path / dependency.
 
 ## Smoke Values
 
-`train_overlapvln_qwen2_5_vl.sh` should run with these smoke-safe values:
+`train_overlapvln_qwen2_5_vl.sh` 的仓库默认值是正式训练口径；smoke 必须显式覆盖为下面这些值：
 
 | Variable | Smoke Value |
 |---|---|
@@ -62,8 +62,6 @@ If any item fails, stop and report the exact missing path / dependency.
 | `USE_SWANLAB` | `false` |
 | `USE_WXWORK_NOTIFICATION` | `false` |
 
-如果脚本当前默认值已经等于这些 smoke 值，不要再改动。
-
 ## Train Smoke
 
 推荐 2 卡：
@@ -73,6 +71,8 @@ source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate swift-vln-train
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
+MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
+USE_SWANLAB=false USE_WXWORK_NOTIFICATION=false \
 TRAIN_NUM_GPUS=2 \
   bash src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh \
   2>&1 | tee /tmp/smoke_overlapvln_train.log

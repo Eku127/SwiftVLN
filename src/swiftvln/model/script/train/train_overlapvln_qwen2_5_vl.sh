@@ -179,7 +179,9 @@ NUM_FRAMES=32
 NUM_HISTORY=8
 NUM_FUTURE_STEPS=4
 USE_RANDOM=false
-MAX_SAMPLES="16"  # Smoke test: minimal data to verify train/eval flow.
+# Default to baseline full-data training.
+# 0 means "use all available samples".
+MAX_SAMPLES="${MAX_SAMPLES:-0}"
 
 # ============================================================================
 # Mixed Training: QA Dataset Configuration (Optional)
@@ -224,10 +226,12 @@ GTC_TEMPERATURE=0.1
 GTC_NUM_ITERATIONS=1
 
 # ---------- Sliding window overlap configuration ----------
+# Baseline default (2026-04-17): overlap=0.
+# Historical baseline used overlap=16 (50% overlap with num_frames=32, stride=16).
 # num_overlap: Number of overlapping actions between consecutive windows
 # When num_overlap > 0, stride = num_frames - num_overlap
 # First (num_overlap / num_future_steps) turns in non-first samples have loss masked
-NUM_OVERLAP=16  # 16 = 50% overlap with num_frames=32, stride=16
+NUM_OVERLAP=0
 
 # ---------- System prompt setting ----------
 # System prompt strategy: "vanilla" (default, no initial view) or "initial"
@@ -440,8 +444,10 @@ if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
 fi
 
 # Checkpoint Management
-SAVE_STEPS=1
-SAVE_TOTAL_LIMIT=1
+# Default to production-style checkpoint cadence. Smoke tests must override this
+# explicitly if they need per-step checkpointing.
+SAVE_STEPS="${SAVE_STEPS:-1000}"
+SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-1}"
 LOGGING_STEPS=10
 
 # Note: MAX_SAMPLES is a soft cap - if actual samples < MAX_SAMPLES, all available samples are used.
