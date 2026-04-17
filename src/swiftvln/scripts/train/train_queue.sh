@@ -63,9 +63,18 @@ EVAL_ENQUEUE_RETRIES="${EVAL_ENQUEUE_RETRIES:-3}"
 EVAL_ENQUEUE_RETRY_SLEEP="${EVAL_ENQUEUE_RETRY_SLEEP:-3}"
 USE_SWANLAB=true
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
+SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
 TRAIN_CUDA_DEVICES="${TRAIN_CUDA_DEVICES:-}"
 TRAIN_NUM_GPUS="${TRAIN_NUM_GPUS:-}"
 TRAIN_DRY_RUN="${TRAIN_DRY_RUN:-false}"
+RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
+RESUME_ONLY_MODEL="${RESUME_ONLY_MODEL:-false}"
+OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR_OVERRIDE:-}"
+MEMORY_METHOD="${MEMORY_METHOD:-history}"
+MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
+MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
+MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
+MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
 # QA 混合训练配置
 USE_QA_MIXED_TRAINING=false
@@ -135,6 +144,94 @@ enqueue_model_for_eval() {
     return 1
 }
 
+resolve_master_port_from_script() {
+    local temp_script="$1"
+    local port=""
+
+    port="$(sed -n 's/^MASTER_PORT="\${MASTER_PORT:-\([0-9]\+\)}".*/\1/p' "$temp_script" | head -n 1)"
+    if [[ -z "$port" ]]; then
+        port="$(sed -n 's/^MASTER_PORT=\([0-9]\+\).*/\1/p' "$temp_script" | head -n 1)"
+    fi
+
+    echo "$port"
+}
+
+is_local_tcp_port_free() {
+    local port="$1"
+    python - "$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(("0.0.0.0", port))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+}
+
+find_available_master_port() {
+    local preferred_port="${1:-29500}"
+    python - "$preferred_port" <<'PY'
+import socket
+import sys
+
+preferred = int(sys.argv[1])
+candidates = [preferred]
+candidates.extend(range(29500, 30000))
+candidates.extend(range(29000, 29500))
+candidates.extend(range(30000, 31000))
+
+seen = set()
+for port in candidates:
+    if port in seen:
+        continue
+    seen.add(port)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind(("0.0.0.0", port))
+    except OSError:
+        continue
+    else:
+        print(port)
+        sys.exit(0)
+    finally:
+        s.close()
+
+sys.exit(1)
+PY
+}
+
+ensure_available_master_port() {
+    local temp_script="$1"
+    local current_port=""
+    local new_port=""
+
+    current_port="$(resolve_master_port_from_script "$temp_script")"
+    [[ -z "$current_port" ]] && return 0
+
+    if is_local_tcp_port_free "$current_port"; then
+        return 0
+    fi
+
+    new_port="$(find_available_master_port "$current_port")" || {
+        print_warning "启动前检测到 MASTER_PORT=${current_port} 已占用，但未找到可用替代端口"
+        return 1
+    }
+
+    if [[ "$new_port" != "$current_port" ]]; then
+        sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
+        print_warning "启动前检测到 MASTER_PORT=${current_port} 已占用，切换为 MASTER_PORT=${new_port}"
+    fi
+
+    return 0
+}
+
 apply_auto_fix_for_train_failure() {
     local log_file="$1"
     local temp_script="$2"
@@ -157,11 +254,18 @@ apply_auto_fix_for_train_failure() {
     fi
 
     if grep -qiE "address already in use|Address already in use" "$log_file"; then
-        local new_port=$((29000 + RANDOM % 1000))
-        sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
-        fixed=true
-        actions+=("set MASTER_PORT=${new_port}")
-        print_warning "自动修复: 更换 MASTER_PORT=${new_port}"
+        local current_port=""
+        local new_port=""
+        current_port="$(resolve_master_port_from_script "$temp_script")"
+        new_port="$(find_available_master_port "${current_port:-29500}")" || new_port=""
+        if [[ -n "$new_port" ]]; then
+            sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
+            fixed=true
+            actions+=("set MASTER_PORT=${new_port}")
+            print_warning "自动修复: 更换 MASTER_PORT=${new_port}"
+        else
+            print_warning "自动修复失败: 未找到可用 MASTER_PORT"
+        fi
     fi
 
     if grep -qiE "out of memory|CUDA out of memory" "$log_file"; then
@@ -291,11 +395,13 @@ k) FREEZE_ALIGNER=false    # 冻结Aligner
 l) USE_TOME=false          # 使用GridToMe压缩 (per_frame模式: true=ToMe, false=AvgPool)
 m) HISTORY_PROCESSOR_TYPE=per_frame  # 历史处理方式: per_frame(默认), gtc 或 sgtc(segment_gtc)
 n) GTC_OUTPUT_TOKENS=512   # GTC/SegmentGTC输出tokens数 (gtc/segment_gtc模式有效)
-o) LOG_BASE=1.0            # 历史采样分布 (per_frame: 1.0=均匀, >1.0=对数/更多近帧)
+o) LOG_BASE=1.0            # 历史采样分布 (per_frame: 1.0=均匀, >1.0=对数/更多近帧; NUM_HISTORY=0时忽略)
 p) SYSTEM_PROMPT_SETTING=vanilla  # System prompt策略: vanilla(默认) 或 initial
 q) USE_PIXEL_EMBED=false      # 像素坐标增强: true(开启) 或 false(关闭)
 r) USE_POSE_EMBED=false       # Pose增强: true(开启) 或 false(关闭)
 s) POSE_FUSION_METHOD=additive  # Pose融合方式: additive(默认) 或 film
+# 说明: OverlapVLN 没有单独的 USE_MEMORY 开关；如需 no-memory，请用
+#       HISTORY_PROCESSOR_TYPE=per_frame + NUM_HISTORY=0
 EOF
             ;;
     esac
@@ -377,6 +483,7 @@ parse_stage1_config() {
     
     # 新格式: f{frames}s{steps} (不含 h)
     # 示例: f32s4-overlap16-pf-h8-b1.0-pool-s2
+    # no-memory 示例: f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2
     local frames=$(echo "$model_name" | grep -oP 'f\d+s' | sed 's/f//' | sed 's/s//')
     local steps=$(echo "$model_name" | grep -oP 'f\d+s\d+' | grep -oP 's\d+' | sed 's/s//')
     
@@ -391,6 +498,7 @@ parse_stage1_config() {
     
     # 解析 history_processor_type 和相关参数
     # 新格式: pf-h8-b1.0-pool-s2 或 pf-h8-b2.0-tome-s2
+    # no-memory: pf-h0-nomem-b1.0-pool-s2
     # GTC格式: gtc-k512, sgtc-k512
     local history_processor_type="per_frame"
     local history="8"
@@ -487,6 +595,9 @@ format_config_display() {
         config_str+="-gtc-k${gtc_output_tokens:-512}"
     else
         config_str+="-pf-h${history:-8}"
+        if [[ "${history:-8}" == "0" ]]; then
+            config_str+="-nomem"
+        fi
         config_str+="-b${log_base}"
         if [[ "$use_tome" == "true" ]]; then
             config_str+="-tome"
@@ -1193,6 +1304,13 @@ run_experiment() {
                 # 替换脚本中的变量赋值
                 # 匹配: VAR_NAME=value 或 VAR_NAME="value" 或 VAR_NAME='value'
                 sed -i "s/^${var_name}=.*/${var_name}=${var_value_escaped}/" "$temp_script"
+                case "$var_name" in
+                    MEMORY_METHOD) MEMORY_METHOD="$var_value" ;;
+                    MAP_GLOBAL_SIDE_M) MAP_GLOBAL_SIDE_M="$var_value" ;;
+                    MAP_LOCAL_SIDE_M) MAP_LOCAL_SIDE_M="$var_value" ;;
+                    MAP_RENDER_PX) MAP_RENDER_PX="$var_value" ;;
+                    MAP_MASK_METHOD) MAP_MASK_METHOD="$var_value" ;;
+                esac
                 print_info "配置覆盖: ${var_name}=${var_value}"
             fi
         done
@@ -1217,6 +1335,7 @@ run_experiment() {
     # 修改 SwanLab 配置
     if [[ "$USE_SWANLAB" == true ]]; then
         sed -i "s/^SWANLAB_PROJECT=.*/SWANLAB_PROJECT=\"$SWANLAB_PROJECT\"/" "$temp_script"
+        sed -i "s/^SWANLAB_DIRECT_NETWORK=.*/SWANLAB_DIRECT_NETWORK=\"$SWANLAB_DIRECT_NETWORK\"/" "$temp_script"
         sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=true/" "$temp_script"
     else
         sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=false/" "$temp_script"
@@ -1231,6 +1350,29 @@ run_experiment() {
         sed -i "s/^USE_QA_MIXED_TRAINING=.*/USE_QA_MIXED_TRAINING=false/" "$temp_script"
         print_info "QA 混合训练: 禁用"
     fi
+
+    if [[ -n "$QA_DATASET" ]]; then
+        sed -i "s|^QA_DATASET=.*|QA_DATASET=\"$QA_DATASET\"|" "$temp_script"
+        print_info "QA 数据集: $QA_DATASET"
+    fi
+
+    if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
+        sed -i "s|^RESUME_FROM_CHECKPOINT=.*|RESUME_FROM_CHECKPOINT=\"$RESUME_FROM_CHECKPOINT\"|" "$temp_script"
+        sed -i "s|^RESUME_ONLY_MODEL=.*|RESUME_ONLY_MODEL=\"$RESUME_ONLY_MODEL\"|" "$temp_script"
+        print_info "恢复训练: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
+    fi
+
+    if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
+        sed -i "s|^OUTPUT_DIR_OVERRIDE=.*|OUTPUT_DIR_OVERRIDE=\"$OUTPUT_DIR_OVERRIDE\"|" "$temp_script"
+        print_info "输出目录覆盖: $OUTPUT_DIR_OVERRIDE"
+    fi
+
+    sed -i "s|^MEMORY_METHOD=.*|MEMORY_METHOD=\"$MEMORY_METHOD\"|" "$temp_script"
+    sed -i "s|^MAP_GLOBAL_SIDE_M=.*|MAP_GLOBAL_SIDE_M=\"$MAP_GLOBAL_SIDE_M\"|" "$temp_script"
+    sed -i "s|^MAP_LOCAL_SIDE_M=.*|MAP_LOCAL_SIDE_M=\"$MAP_LOCAL_SIDE_M\"|" "$temp_script"
+    sed -i "s|^MAP_RENDER_PX=.*|MAP_RENDER_PX=\"$MAP_RENDER_PX\"|" "$temp_script"
+    sed -i "s|^MAP_MASK_METHOD=.*|MAP_MASK_METHOD=\"$MAP_MASK_METHOD\"|" "$temp_script"
+    print_info "Memory 配置: method=$MEMORY_METHOD, global=$MAP_GLOBAL_SIDE_M, local=$MAP_LOCAL_SIDE_M, render=$MAP_RENDER_PX, mask=$MAP_MASK_METHOD"
     
     # 修改数据路径 - 根据环境类型替换对应的数组
     local data_array_name="HABITAT_DATA_PATHS"
@@ -1289,9 +1431,16 @@ run_experiment() {
             print_warning "开始第 ${attempt} 次尝试..."
         fi
 
-        if bash "$temp_script" 2>&1 | tee "$run_log_file"; then
+        ensure_available_master_port "$temp_script" || true
+
+        bash "$temp_script" 2>&1 | tee "$run_log_file"
+        local train_exit_code=${PIPESTATUS[0]}
+
+        if [[ $train_exit_code -eq 0 ]]; then
             break
         fi
+
+        print_warning "训练脚本退出码: ${train_exit_code}"
 
         if [[ $attempt -lt $max_attempts ]] && apply_auto_fix_for_train_failure "$run_log_file" "$temp_script"; then
             attempted_fixes="${attempted_fixes}\n- attempt ${attempt}: ${LAST_AUTO_FIX_ACTIONS}"
@@ -1639,3 +1788,4 @@ main() {
 # 执行
 # ============================================================================
 main "$@"
+exit $?

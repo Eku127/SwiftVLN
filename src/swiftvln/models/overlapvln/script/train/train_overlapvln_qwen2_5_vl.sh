@@ -23,6 +23,9 @@ TRAIN_NUM_GPUS="${TRAIN_NUM_GPUS:-}"           # Number of GPUs to take from cur
 TRAIN_DRY_RUN="${TRAIN_DRY_RUN:-false}"        # true = print config and exit before torchrun
 CUDA_DEVICES="${CUDA_DEVICES:-auto}"           # "auto" = all currently visible GPUs
 MASTER_PORT="${MASTER_PORT:-29500}"            # Master port for distributed training
+RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"  # Optional full training resume checkpoint
+RESUME_ONLY_MODEL="${RESUME_ONLY_MODEL:-false}"       # true = load weights only from resume checkpoint
+OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR_OVERRIDE:-}"        # Optional output root override before versioning
 
 normalize_cuda_device_list() {
     local raw="$1"
@@ -159,7 +162,7 @@ HABITAT_DATA_PATHS=(
     # "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/EnvDrop"
 )
 SATNAV_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260228/trajectory_data"
+    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data"
 )
 
 # Select data paths based on VLN_ENV_TYPE (using nameref)
@@ -183,7 +186,7 @@ MAX_SAMPLES="600000"  # Max samples cap (0 = use all). If actual < this, uses al
 # ============================================================================
 # Set USE_QA_MIXED_TRAINING=true to enable mixed training with VLN + QA data
 USE_QA_MIXED_TRAINING=false
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260228/data/qa_swift.jsonl"
+QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/data/qa_swift.jsonl"
 QA_RATIO=0.15             # Ratio of QA samples (0.15 = 15% QA, 85% VLN)
 QA_MAX_SAMPLES=0          # Max QA samples (0 = use all available)
 
@@ -232,6 +235,24 @@ NUM_OVERLAP=16  # 16 = 50% overlap with num_frames=32, stride=16
 # - initial: Add the first frame of the episode (uncompressed) to the system prompt
 #   as the initial observation at the starting point of the journey
 SYSTEM_PROMPT_SETTING="vanilla"
+
+# ---------- Memory method ----------
+# history: original historical RGB frames
+# map: SatNav explored-map memory (global + local), replaces history frames
+MEMORY_METHOD="${MEMORY_METHOD:-history}"
+MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
+MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
+MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
+MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
+
+# ---------- Map-memory render cache ----------
+# Caches rendered (global, local) PNG pairs on disk to eliminate rasterio
+# re-rendering cost across epochs. Default ("auto"): the Python layer uses
+#   {dataset_root}/map_cache
+# (i.e. co-located with ver_260404). Override with any absolute path, or set
+# to one of {off,false,none,0,disable,disabled,no} to disable caching.
+# Only has effect when MEMORY_METHOD=map.
+MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
 # ---------- Embedding enhancement ----------
 # Pixel coordinate embedding enhancement (Fourier + MLP)
@@ -307,20 +328,63 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM_STEPS * GPUS_PER_NODE))
 WINDOW_STRIDE=$((NUM_FRAMES - NUM_OVERLAP))
 
-# Build experiment name based on history processor type
-# Format: pf-h{history}-b{log_base}-{method}-s{stride}
-HISTORY_SUFFIX=""
-if [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
-    # Per-frame: include history count, log_base, method, stride
+if [ "$MEMORY_METHOD" = "map" ]; then
+    if [ "$VLN_ENV_TYPE" != "satnav" ]; then
+        echo "[ERROR] MEMORY_METHOD=map currently supports only VLN_ENV_TYPE=satnav."
+        exit 1
+    fi
+    if [ "$HISTORY_PROCESSOR_TYPE" != "per_frame" ]; then
+        echo "[ERROR] MEMORY_METHOD=map currently requires HISTORY_PROCESSOR_TYPE=per_frame."
+        exit 1
+    fi
+    if [ "$USE_TOME" = true ] || [ "$USE_TOME" = "true" ]; then
+        echo "[ERROR] MEMORY_METHOD=map currently requires USE_TOME=false."
+        exit 1
+    fi
+    # Map images are synthesized top-down views, so RGB-frame embed
+    # enhancements (pixel / pose / uav_adapter) are not meaningful and must
+    # stay disabled to avoid silent semantic mismatches.
+    if [ "$USE_PIXEL_EMBED" = true ] || [ "$USE_PIXEL_EMBED" = "true" ]; then
+        echo "[ERROR] MEMORY_METHOD=map requires USE_PIXEL_EMBED=false."
+        exit 1
+    fi
+    if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
+        echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
+        exit 1
+    fi
+    if [ "$USE_UAV_ADAPTER" = true ] || [ "$USE_UAV_ADAPTER" = "true" ]; then
+        echo "[ERROR] MEMORY_METHOD=map requires USE_UAV_ADAPTER=false."
+        exit 1
+    fi
+fi
+
+# Build experiment name based on memory method
+MEMORY_SUFFIX=""
+if [ "$MEMORY_METHOD" = "map" ]; then
+    MAP_GLOBAL_TAG=$(printf '%g' "$MAP_GLOBAL_SIDE_M")
+    MAP_LOCAL_TAG=$(printf '%g' "$MAP_LOCAL_SIDE_M")
+    MAP_MASK_TAG="$MAP_MASK_METHOD"
+    if [[ "$MAP_MASK_METHOD" =~ ^dilate([0-9]+([.][0-9]+)?)$ ]]; then
+        MAP_MASK_TAG="d$(printf '%g' "${BASH_REMATCH[1]}")"
+    fi
+    MEMORY_SUFFIX="map-g${MAP_GLOBAL_TAG}-l${MAP_LOCAL_TAG}-r${MAP_RENDER_PX}-${MAP_MASK_TAG}-s${COMPRESS_STRIDE}"
+elif [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
+    # Per-frame: include history count, log_base, method, stride.
+    # NUM_HISTORY=0 is the supported no-memory configuration:
+    # the dataset will sample zero history frames and omit <history_memory>.
     COMPRESS_METHOD="pool"
     [ "$USE_TOME" = true ] && COMPRESS_METHOD="tome"
-    HISTORY_SUFFIX="pf-h${NUM_HISTORY}-b${LOG_BASE}-${COMPRESS_METHOD}-s${COMPRESS_STRIDE}"
+    NO_MEMORY_SUFFIX=""
+    if [ "$NUM_HISTORY" = "0" ]; then
+        NO_MEMORY_SUFFIX="-nomem"
+    fi
+    MEMORY_SUFFIX="pf-h${NUM_HISTORY}${NO_MEMORY_SUFFIX}-b${LOG_BASE}-${COMPRESS_METHOD}-s${COMPRESS_STRIDE}"
 elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
     # GTC: include output tokens
-    HISTORY_SUFFIX="gtc-k${GTC_OUTPUT_TOKENS}"
+    MEMORY_SUFFIX="gtc-k${GTC_OUTPUT_TOKENS}"
 elif [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
     # Segment GTC: include output tokens (8 segments, chronological order by default)
-    HISTORY_SUFFIX="sgtc-k${GTC_OUTPUT_TOKENS}"
+    MEMORY_SUFFIX="sgtc-k${GTC_OUTPUT_TOKENS}"
 fi
 
 # Add QA suffix if mixed training is enabled
@@ -369,8 +433,11 @@ if [ "$VLN_ENV_TYPE" = "satnav" ]; then
     fi
 fi
 
-EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${HISTORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 OUTPUT_DIR="output/overlapvln/${EXP_NAME}"
+if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
+    OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
+fi
 
 # Checkpoint Management
 SAVE_STEPS=1000
@@ -412,6 +479,15 @@ export NCCL_MAX_NCHANNELS=4
 export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
 export CUDA_VISIBLE_DEVICES=$CUDA_DEVICES
 
+# Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
+# OVERLAPVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (dataset_root
+# /map_cache); explicit paths or "off"-family sentinels are passed through.
+if [ "$MEMORY_METHOD" = "map" ]; then
+    if [ -n "$MAP_CACHE_DIR" ] && [ "$MAP_CACHE_DIR" != "auto" ]; then
+        export OVERLAPVLN_MAP_CACHE_DIR="$MAP_CACHE_DIR"
+    fi
+fi
+
 # ============================================================================
 # Print Configuration
 # ============================================================================
@@ -438,18 +514,34 @@ echo "Batch: ${BATCH_SIZE} x ${GRAD_ACCUM_STEPS} x ${GPUS_PER_NODE} = ${EFFECTIV
 echo "LR: $LEARNING_RATE | Epochs: $NUM_EPOCHS"
 echo "Attention: $ATTN_IMPL"
 echo "------------------------------------------"
-echo "History Processor: $HISTORY_PROCESSOR_TYPE"
-if [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
+echo "Memory Method: $MEMORY_METHOD"
+if [ "$MEMORY_METHOD" = "map" ]; then
+    echo "  Map: global=${MAP_GLOBAL_SIDE_M}m, local=${MAP_LOCAL_SIDE_M}m, render=${MAP_RENDER_PX}px, mask=${MAP_MASK_METHOD}"
+    echo "  Compression: per_frame stride=$COMPRESS_STRIDE ($((COMPRESS_STRIDE * COMPRESS_STRIDE))x), method=pool"
+    echo "  Render cache: MAP_CACHE_DIR=${MAP_CACHE_DIR} (env OVERLAPVLN_MAP_CACHE_DIR=${OVERLAPVLN_MAP_CACHE_DIR:-<unset, will use dataset_root/map_cache>})"
+else
+    echo "History Processor: $HISTORY_PROCESSOR_TYPE"
+fi
+if [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
     COMPRESS_METHOD="pool"
     [ "$USE_TOME" = true ] && COMPRESS_METHOD="tome"
-    SAMPLING_TYPE="uniform"
-    [ "$LOG_BASE" != "1.0" ] && [ "$LOG_BASE" != "1" ] && SAMPLING_TYPE="logarithmic (b=$LOG_BASE)"
-    echo "  Sampling: $SAMPLING_TYPE, ${NUM_HISTORY} frames"
-    echo "  Compression: stride=$COMPRESS_STRIDE ($((COMPRESS_STRIDE * COMPRESS_STRIDE))x), method=$COMPRESS_METHOD"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
+    if [ "$NUM_HISTORY" = "0" ]; then
+        echo "  Sampling: disabled (no-memory, NUM_HISTORY=0; log_base/use_random ignored)"
+        echo "  Compression: stride=$COMPRESS_STRIDE ($((COMPRESS_STRIDE * COMPRESS_STRIDE))x), method=$COMPRESS_METHOD [unused while no-memory is active]"
+    else
+        if [ "$USE_RANDOM" = true ]; then
+            SAMPLING_TYPE="random"
+        else
+            SAMPLING_TYPE="uniform"
+            [ "$LOG_BASE" != "1.0" ] && [ "$LOG_BASE" != "1" ] && SAMPLING_TYPE="logarithmic (b=$LOG_BASE)"
+        fi
+        echo "  Sampling: $SAMPLING_TYPE, ${NUM_HISTORY} frames"
+        echo "  Compression: stride=$COMPRESS_STRIDE ($((COMPRESS_STRIDE * COMPRESS_STRIDE))x), method=$COMPRESS_METHOD"
+    fi
+elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
     echo "  Sampling: every ${NUM_FUTURE_STEPS} frames from history"
     echo "  GTC: output_tokens=$GTC_OUTPUT_TOKENS, temperature=$GTC_TEMPERATURE, iterations=$GTC_NUM_ITERATIONS"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
+elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
     echo "  Sampling: every ${NUM_FUTURE_STEPS} frames from history"
     echo "  SegmentGTC: output_tokens=$GTC_OUTPUT_TOKENS, segments=8, temperature=$GTC_TEMPERATURE, iterations=$GTC_NUM_ITERATIONS"
 fi
@@ -460,6 +552,9 @@ echo "Pixel Embed: $USE_PIXEL_EMBED"
 echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
 echo "UAV Adapter: $USE_UAV_ADAPTER (type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE)"
 [ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
+if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
+    echo "Resume: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
+fi
 echo "------------------------------------------"
 # Mixed training info
 if [ "$USE_QA_MIXED_TRAINING" = true ]; then
@@ -485,6 +580,24 @@ echo "=========================================="
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
+SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
+
+unset_proxy_for_swanlab() {
+    local -a proxy_vars=(http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY)
+    local proxy_var=""
+    local had_proxy="false"
+
+    for proxy_var in "${proxy_vars[@]}"; do
+        if [[ -n "${!proxy_var:-}" ]]; then
+            unset "$proxy_var"
+            had_proxy="true"
+        fi
+    done
+
+    if [[ "$had_proxy" == "true" ]]; then
+        echo "[INFO] SwanLab enabled: unset proxy env vars for direct SwanLab access."
+    fi
+}
 
 # DeepSpeed argument
 DEEPSPEED_ARG=""
@@ -517,10 +630,21 @@ fi
 # History processor arguments
 HISTORY_ARGS="--history_processor_type $HISTORY_PROCESSOR_TYPE"
 if [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
-    # Per-frame: pass log_base for sampling distribution
+    # Per-frame: pass log_base for sampling distribution.
+    # When NUM_HISTORY=0 this becomes an effective no-memory run, so log_base is inert.
     HISTORY_ARGS="$HISTORY_ARGS --log_base $LOG_BASE"
 elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
     HISTORY_ARGS="$HISTORY_ARGS --gtc_output_tokens $GTC_OUTPUT_TOKENS --gtc_temperature $GTC_TEMPERATURE --gtc_num_iterations $GTC_NUM_ITERATIONS"
+fi
+
+MEMORY_ARGS="--memory_method $MEMORY_METHOD --map_global_side_m $MAP_GLOBAL_SIDE_M --map_local_side_m $MAP_LOCAL_SIDE_M --map_render_px $MAP_RENDER_PX --map_mask_method $MAP_MASK_METHOD"
+
+RESUME_ARGS=""
+if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
+    RESUME_ARGS="--resume_from_checkpoint $RESUME_FROM_CHECKPOINT"
+    if [[ "$RESUME_ONLY_MODEL" == "true" ]]; then
+        RESUME_ARGS="$RESUME_ARGS --resume_only_model true"
+    fi
 fi
 
 # ============================================================================
@@ -531,6 +655,10 @@ cd "$SWIFTVLN_ROOT"
 if [[ "$TRAIN_DRY_RUN" == "true" ]]; then
     echo "[INFO] TRAIN_DRY_RUN=true, skip torchrun launch after config validation."
     exit 0
+fi
+
+if [[ "$USE_SWANLAB" == "true" && "$SWANLAB_DIRECT_NETWORK" == "true" ]]; then
+    unset_proxy_for_swanlab
 fi
 
 torchrun \
@@ -580,6 +708,7 @@ torchrun \
     --compress_stride $COMPRESS_STRIDE \
     --num_overlap $NUM_OVERLAP \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
+    $MEMORY_ARGS \
     --use_pixel_embed $USE_PIXEL_EMBED \
     --use_pose_embed $USE_POSE_EMBED \
     --use_uav_adapter $USE_UAV_ADAPTER \
@@ -598,6 +727,7 @@ torchrun \
     $SWANLAB_ARGS \
     $QA_ARGS \
     $HISTORY_ARGS \
+    $RESUME_ARGS \
     $MAX_STEPS_ARG
 
 echo "=========================================="

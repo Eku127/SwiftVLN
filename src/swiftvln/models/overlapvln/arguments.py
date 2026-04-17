@@ -130,6 +130,44 @@ class OverlapVLNTrainArguments(BaseVLNTrainArguments):
                     "system prompt as the initial observation at the starting point."
         }
     )
+
+    memory_method: str = field(
+        default='history',
+        metadata={
+            "help": "History memory source. "
+                    "'history' (default): sample historical RGB frames. "
+                    "'map': replace history frames with SatNav explored-map memory."
+        }
+    )
+
+    map_global_side_m: float = field(
+        default=1000.0,
+        metadata={
+            "help": "[map] Global explored-map side length in true meters."
+        }
+    )
+
+    map_local_side_m: float = field(
+        default=400.0,
+        metadata={
+            "help": "[map] Local explored-map side length in true meters."
+        }
+    )
+
+    map_render_px: int = field(
+        default=384,
+        metadata={
+            "help": "[map] Render resolution for each map image."
+        }
+    )
+
+    map_mask_method: str = field(
+        default='dilate20',
+        metadata={
+            "help": "[map] Explored-area mask rule. "
+                    "Supported: 'strict', 'dilate20', or 'dilate<N>'."
+        }
+    )
     
     # ==========================================================================
     # Embedding Enhancement

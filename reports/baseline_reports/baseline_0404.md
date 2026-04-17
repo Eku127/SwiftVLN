@@ -9,7 +9,7 @@
 | Seq2Seq | ➖ | ➖ | ➖ | ➖ |
 | CMA | ➖ | ➖ | ➖ | ➖ |
 | StreamVLN | ✅ | ✅ | ✅ | ✅ |
-| NaVILA | ✅ | ⏳ | ➖ | ➖ |
+| NaVILA | ✅ | ✅ | ✅ | ✅ |
 | UniNaVid | ✅ | ✅ | ✅ | ✅ |
 
 # 传统模型
@@ -70,8 +70,8 @@
    `数据版本`：`0404`
    `执行信息`：`98` 服务器，`8` 卡 eval
    `状态`：已完成
-   `val_seen`：`SR 64.50%`，`SPL 63.49%`，`OS 72.31%`，`NE 107.72`
-   `val_unseen`：`SR 57.77%`，`SPL 56.89%`，`OS 70.09%`，`NE 118.01`
+   `val_seen`：`原始 SR 64.50%`，`SPL 63.49%`，`OS 72.31%`，`NE 107.72`，`重加权 SR 65.14%`
+   `val_unseen`：`原始 SR 57.77%`，`SPL 56.89%`，`OS 70.09%`，`NE 118.01`，`重加权 SR 57.42%`
    `overall`：`SR 60.56%`
 
 2. `b. continue eval`
@@ -80,9 +80,11 @@
    `数据版本`：`0404`
    `执行信息`：`98` 服务器，`8` 卡 eval
    `状态`：已完成
-   `val_seen`：`SR 68.67%`，`SPL 67.72%`，`OS 77.17%`，`NE 93.22`
-   `val_unseen`：`SR 62.90%`，`SPL 61.96%`，`OS 75.00%`，`NE 101.04`
+   `val_seen`：`原始 SR 68.67%`，`SPL 67.72%`，`OS 77.17%`，`NE 93.22`，`重加权 SR 69.42%`
+   `val_unseen`：`原始 SR 62.90%`，`SPL 61.96%`，`OS 75.00%`，`NE 101.04`，`重加权 SR 62.57%`
    `overall`：`SR 65.30%`
+
+`备注`：重加权 SR 使用 `seen + unseen` 合并后的任务类型分布作为统一权重：`Boundary 29.18%`、`LandmarkSet 37.01%`、`Road 33.81%`。该口径用于削弱 `seen/unseen` 任务类型配比差异对总 SR 的影响。
 
 ## NaVILA
 
@@ -90,27 +92,53 @@
 
 当前主线 NaVILA `0404` 训练产物如下：
 
-1. `a. navila-scratch-data0404-8gpu-r1-sample-hk7-fs7-stopx4`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-scratch-data0404-8gpu-r1-sample-hk7-fs7-stopx4`
+1. `a. navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
+   `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4/train.log`
    `训练数据`：`0404`
    `执行信息`：`17` 服务器，`8` 卡全量训练（scratch）
-   `状态`：已完成（`2026-04-06 14:44 CST`）
-   `训练结果`：`60000 / 60000`（`100%`），`epoch 0.6`，`train_loss=0.1369`
-   `产出`：最终 checkpoint 及 `llm/vision_tower/mm_projector` 已从 `tmp-checkpoint-60000` 移到实验根目录
-   `备注`：训练结束后 watchdog tmux 已退出，实验目录下 `train.log` 记录完整过程
+   `状态`：已完成（`2026-04-09 11:28 CST` 落盘完成）
+   `训练配置`：`LR 3e-5`，`batch 4 x 1 x 8 = 32`，`Action fmt = compact`
+   `训练结果`：`60000 / 60000`（`100%`），`epoch 0.5983`，`train_loss=0.1904`
+   `训练速度`：`train_runtime=142290.04s`（约 `39.53h`），`13.494 samples/s`，`0.422 steps/s`
+   `产出`：实验根目录下已落盘 `checkpoint-60000`、`llm/`、`vision_tower/`、`mm_projector/`
 
-2. `b. navila-continue-data0404-8gpu-r1-sample-hk7-fs7-stopx4`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue-data0404-8gpu-r1-sample-hk7-fs7-stopx4`
+2. `b. navila-continue0404-r1-20260409-134207-sample-hk7-fs7-stopx4`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue0404-r1-20260409-134207-sample-hk7-fs7-stopx4`
+   `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue0404-r1-20260409-134207-sample-hk7-fs7-stopx4/train.log`
    `训练数据`：`0404`
-   `执行信息`：`17` 服务器，`8` 卡训练（continue）
-   `状态`：未完成 / 已中断
-   `当前记录`：至少已跑到 `21655 / 60000`（约 `36.09%`），`epoch 0.22`
-   `当前产出`：已有 `checkpoint-20000`
-   `异常信息`：日志显示在 `2026-04-07` 凌晨附近收到 `SIGINT`，随后伴随多处 `DataLoader worker exited unexpectedly` 与 `KeyboardInterrupt`
+   `执行信息`：`17` 服务器，`8` 卡全量训练（continue）
+   `状态`：已完成（`2026-04-11 04:48 CST` 落盘完成）
+   `训练配置`：`LR 3e-5`，`batch 4 x 1 x 8 = 32`，`Action fmt = compact`
+   `训练结果`：`60000 / 60000`（`100%`），`epoch 0.5983`，`train_loss=0.1002`
+   `训练速度`：`train_runtime=140454.32s`（约 `39.02h`），`13.670 samples/s`，`0.427 steps/s`
+   `产出`：实验根目录下已落盘 `checkpoint-60000`、`llm/`、`vision_tower/`、`mm_projector/`
+
+`备注`：17 上这轮 NaVILA `0404` 已完成 `scratch -> continue` 串行训练；对应 `scratch` 与 `continue` 的 `8` 卡评测也已完成，评测动作格式为 `compact`。
 
 ### Eval
 
-`0404`：`无`
+当前主线 NaVILA `0404` 评测产物如下：
+
+1. `a. scratch eval`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
+   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
+   `数据版本`：`0404`
+   `执行信息`：`17` 服务器，`8` 卡 eval
+   `状态`：已完成
+   `val_seen`：`原始 SR 13.21%`，`SPL 13.18%`，`OS 20.53%`，`NE 120.76`，`重加权 SR 14.21%`
+   `val_unseen`：`原始 SR 13.74%`，`SPL 13.70%`，`OS 24.39%`，`NE 127.47`，`重加权 SR 13.06%`
+
+2. `b. continue eval`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue0404-r1-20260409-134207-sample-hk7-fs7-stopx4`
+   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/navila-continue0404-r1-20260409-134207-sample-hk7-fs7-stopx4`
+   `数据版本`：`0404`
+   `执行信息`：`17` 服务器，`8` 卡 eval
+   `状态`：已完成
+   `val_seen`：`原始 SR 17.73%`，`SPL 17.66%`，`OS 26.70%`，`NE 119.39`，`重加权 SR 19.14%`
+   `val_unseen`：`原始 SR 19.10%`，`SPL 18.92%`，`OS 32.42%`，`NE 123.49`，`重加权 SR 18.09%`
+
+`备注`：重加权 SR 使用 `seen + unseen` 合并后的任务类型分布作为统一权重：`Boundary 29.18%`、`LandmarkSet 37.01%`、`Road 33.81%`。该口径用于削弱 `seen/unseen` 任务类型配比差异对总 SR 的影响。
 
 ## UniNaVid
 
@@ -149,8 +177,8 @@
    `评测数据`：`0404`
    `执行信息`：`73` 服务器，当前 `7` 张可见 GPU，因此以 `7` 卡评测（scratch）
    `状态`：已完成
-   `val_seen`：`SR 29.71%`，`SPL 29.34%`，`OS 57.79%`，`NE 218.15`，`avg_steps 72.92`
-   `val_unseen`：`SR 23.37%`，`SPL 22.99%`，`OS 53.86%`，`NE 231.33`，`avg_steps 75.45`
+   `val_seen`：`原始 SR 29.71%`，`SPL 29.34%`，`OS 57.79%`，`NE 218.15`，`avg_steps 72.92`，`重加权 SR 29.72%`
+   `val_unseen`：`原始 SR 23.37%`，`SPL 22.99%`，`OS 53.86%`，`NE 231.33`，`avg_steps 75.45`，`重加权 SR 23.34%`
 
 2. `b. uninavid-baseline-continue-1ep-data260404-bs168-lr1e-5-h73-20260405-081606`
    `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/uninavid-baseline-continue-1ep-data260404-bs168-lr1e-5-h73-20260405-081606`
@@ -159,7 +187,7 @@
    `评测数据`：`0404`
    `执行信息`：`73` 服务器，当前 `7` 张可见 GPU，因此以 `7` 卡评测（continue）
    `状态`：已完成
-   `val_seen`：`SR 50.30%`，`SPL 49.62%`，`OS 65.59%`，`NE 119.14`，`avg_steps 62.63`
-   `val_unseen`：`SR 40.45%`，`SPL 39.89%`，`OS 60.40%`，`NE 125.33`，`avg_steps 63.40`
+   `val_seen`：`原始 SR 50.30%`，`SPL 49.62%`，`OS 65.59%`，`NE 119.14`，`avg_steps 62.63`，`重加权 SR 49.75%`
+   `val_unseen`：`原始 SR 40.45%`，`SPL 39.89%`，`OS 60.40%`，`NE 125.33`，`avg_steps 63.40`，`重加权 SR 41.15%`
 
-`备注`：73 上以 `scratch -> continue` 串行链方式完成评测；`SATNAV_VERSION=ver_260404` 已固定，使用的是 `0404` 数据。由于第一次启动未稳定进入 tmux，本轮评测做过一次干净重启，旧 partial 结果已归档到 `runtime/trash/`。
+`备注`：73 上以 `scratch -> continue` 串行链方式完成评测；`SATNAV_VERSION=ver_260404` 已固定，使用的是 `0404` 数据。由于第一次启动未稳定进入 tmux，本轮评测做过一次干净重启，旧 partial 结果已归档到 `runtime/trash/`。重加权 SR 使用 `seen + unseen` 合并后的任务类型分布作为统一权重：`Boundary 29.18%`、`LandmarkSet 37.01%`、`Road 33.81%`。

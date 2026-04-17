@@ -196,6 +196,7 @@ run_single_split() {
     local satnav_episodes="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/episodes/eval/${split}/all_episodes.json"
     local satnav_config="${BASELINE_DIR}/configs/.satnav_task_eval_${split}_$$.yaml"
     local output_dir="${OUTPUT_BASE_DIR}/${split}"
+    local run_id="${NAVILA_EVAL_RUN_ID:-navila_eval_${split}_$(date +%Y%m%d_%H%M%S)}"
 
     if [ ! -f "${satnav_episodes}" ]; then
         print_error "Episodes file not found: ${satnav_episodes}"
@@ -220,6 +221,7 @@ run_single_split() {
     echo "  Split      : ${split}"
     echo "  Output     : ${output_dir}"
     echo "  GPUs       : ${NUM_GPUS}"
+    echo "  Run ID     : ${run_id}"
     echo "  Action fmt : ${SATNAV_ACTION_FORMAT}"
     [ -n "${MAX_EPISODES}" ] && echo "  Max Episodes: ${MAX_EPISODES}"
     [ -n "${MODEL_BASE}" ] && echo "  Model Base  : ${MODEL_BASE}"
@@ -230,6 +232,7 @@ run_single_split() {
         --satnav_config_path "${satnav_config}"
         --eval_split "${split}"
         --output_path "${output_dir}"
+        --run_id "${run_id}"
     )
 
     if [ -n "${MAX_EPISODES}" ]; then

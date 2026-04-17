@@ -60,6 +60,17 @@ class OverlapVLNEval(BaseVLNEval):
                             choices=["vanilla", "initial"],
                             help="System prompt strategy: 'vanilla' (default) or 'initial' "
                                  "(add first frame as uncompressed initial observation)")
+        parser.add_argument("--memory_method", type=str, default="history",
+                            choices=["history", "map"],
+                            help="History memory source: raw history frames or SatNav explored maps")
+        parser.add_argument("--map_global_side_m", type=float, default=1000.0,
+                            help="[map] Global explored-map side length in meters")
+        parser.add_argument("--map_local_side_m", type=float, default=400.0,
+                            help="[map] Local explored-map side length in meters")
+        parser.add_argument("--map_render_px", type=int, default=384,
+                            help="[map] Render resolution for each map image")
+        parser.add_argument("--map_mask_method", type=str, default="dilate20",
+                            help="[map] Explored-area mask rule, e.g. strict or dilate20")
         
         # History processor type
         parser.add_argument("--history_processor_type", type=str, default="per_frame",
@@ -104,6 +115,13 @@ class OverlapVLNEval(BaseVLNEval):
             extras['history_processor_type'] = self.args.history_processor_type
         if hasattr(self.args, 'system_prompt_setting'):
             extras['system_prompt_setting'] = self.args.system_prompt_setting
+        if hasattr(self.args, 'memory_method'):
+            extras['memory_method'] = self.args.memory_method
+        if getattr(self.args, 'memory_method', 'history') == 'map':
+            extras['map_global_side_m'] = getattr(self.args, 'map_global_side_m', 1000.0)
+            extras['map_local_side_m'] = getattr(self.args, 'map_local_side_m', 400.0)
+            extras['map_render_px'] = getattr(self.args, 'map_render_px', 384)
+            extras['map_mask_method'] = getattr(self.args, 'map_mask_method', 'dilate20')
         if hasattr(self.args, 'use_pixel_embed'):
             extras['use_pixel_embed'] = self.args.use_pixel_embed
         if hasattr(self.args, 'use_pose_embed'):

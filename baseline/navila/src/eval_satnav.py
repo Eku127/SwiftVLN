@@ -23,6 +23,11 @@ _BASELINE_SRC = os.path.dirname(os.path.abspath(__file__))
 if _BASELINE_SRC not in sys.path:
     sys.path.insert(0, _BASELINE_SRC)
 
+_REPO_ROOT = os.path.abspath(os.path.join(_BASELINE_SRC, "..", "..", ".."))
+_SWIFTVLN_SRC = os.path.join(_REPO_ROOT, "src")
+if _SWIFTVLN_SRC not in sys.path:
+    sys.path.insert(0, _SWIFTVLN_SRC)
+
 import copy
 import json
 import time
@@ -30,6 +35,7 @@ import argparse
 import traceback
 import re
 from collections import deque
+from pathlib import Path
 
 import tqdm
 import torch
@@ -47,6 +53,10 @@ from llava.mm_utils import (
 )
 from llava.model.builder import load_pretrained_model
 from action_formats import build_prompt, normalize_action_format, parse_action_text
+from swiftvln.common.eval.reporting import (
+    compute_weighted_trajectory_type_metrics,
+    load_satnav_reference_distribution,
+)
 
 from satnav.core.env import Env as SatNavEnv
 from satnav.dataset.satnav_dataset import SatNavDataset
@@ -484,6 +494,21 @@ def save_summary(results: list, output_path: str, args) -> None:
                 "avg_steps": float(np.mean(stats["steps"])),
                 "count": len(stats["sucs"]),
             }
+        reference_distribution = load_satnav_reference_distribution(args.satnav_config_path)
+        if reference_distribution:
+            weighted = compute_weighted_trajectory_type_metrics(
+                summary["by_trajectory_type"],
+                reference_distribution,
+                metric_keys={
+                    "SR": "SR",
+                    "SPL": "SPL",
+                    "OS": "OS",
+                    "NE": "NE",
+                    "avg_steps": "avg_steps",
+                },
+            )
+            if weighted:
+                summary["weighted_by_seen_unseen_distribution"] = weighted
 
     print("\n" + "=" * 60)
     print(f"NaVILA SatNav Evaluation Summary ({args.eval_split})")
@@ -502,6 +527,14 @@ def save_summary(results: list, output_path: str, args) -> None:
                 f"OS: {stats['OS']:.2%}, NE: {stats['NE']:.2f}m, "
                 f"Steps: {stats['avg_steps']:.2f}, N: {stats['count']}"
             )
+    if "weighted_by_seen_unseen_distribution" in summary:
+        ws = summary["weighted_by_seen_unseen_distribution"]
+        print("\n--- Weighted (val_seen+val_unseen) ---")
+        print(
+            f"  SR: {ws['SR']:.2%}, SPL: {ws['SPL']:.4f}, "
+            f"OS: {ws['OS']:.2%}, NE: {ws['NE']:.2f}m, "
+            f"Steps: {ws['avg_steps']:.2f}"
+        )
     print("=" * 60)
 
     with open(os.path.join(output_path, "evaluation_summary.json"), "w", encoding="utf-8") as f:
@@ -528,6 +561,59 @@ def load_dedup_results(result_file: str) -> list:
                 continue
             results_by_ep[ep_key] = result
     return list(results_by_ep.values())
+
+
+def get_rank_sync_dir(output_path: str, run_id: str) -> Path:
+    safe_run_id = re.sub(r"[^A-Za-z0-9._-]", "_", run_id or "default")
+    return Path(output_path) / "_rank_sync" / safe_run_id
+
+
+def mark_rank_complete(
+    output_path: str,
+    run_id: str,
+    rank: int,
+    assigned_episodes: int,
+    resumed_episodes: int,
+    finished_episodes: int,
+) -> None:
+    sync_dir = get_rank_sync_dir(output_path, run_id)
+    sync_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "rank": rank,
+        "assigned_episodes": assigned_episodes,
+        "resumed_episodes": resumed_episodes,
+        "finished_episodes": finished_episodes,
+        "timestamp": time.time(),
+    }
+    tmp_path = sync_dir / f"rank_{rank}.json.tmp"
+    done_path = sync_dir / f"rank_{rank}.json"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, done_path)
+
+
+def wait_for_all_rank_markers(output_path: str, run_id: str, world_size: int, timeout_sec: int) -> None:
+    sync_dir = get_rank_sync_dir(output_path, run_id)
+    deadline = time.time() + max(timeout_sec, 1)
+    last_report = -1
+
+    while time.time() < deadline:
+        done_files = sorted(sync_dir.glob("rank_*.json"))
+        done_count = len(done_files)
+        if done_count != last_report:
+            print(
+                f"[Sync] rank markers: {done_count}/{world_size} ready "
+                f"(run_id={run_id}, dir={sync_dir})"
+            )
+            last_report = done_count
+        if done_count >= world_size:
+            return
+        time.sleep(5)
+
+    raise RuntimeError(
+        f"Timed out waiting for rank completion markers under {sync_dir} "
+        f"after {timeout_sec}s"
+    )
 
 
 def build_episode_key(episode_id, scene_id) -> str:
@@ -719,8 +805,22 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
 
     env_wrapper.close()
 
-    if world_size > 1 and dist.is_available() and dist.is_initialized():
-        dist.barrier()
+    if world_size > 1:
+        mark_rank_complete(
+            output_path=args.output_path,
+            run_id=args.run_id,
+            rank=rank,
+            assigned_episodes=len(my_episodes),
+            resumed_episodes=local_done_before_resume,
+            finished_episodes=len(local_results),
+        )
+        if is_main:
+            wait_for_all_rank_markers(
+                output_path=args.output_path,
+                run_id=args.run_id,
+                world_size=world_size,
+                timeout_sec=args.sync_timeout_sec,
+            )
 
     if is_main:
         merged_results = load_dedup_results(result_file)
@@ -744,6 +844,16 @@ def main():
     parser.add_argument("--max_episodes", type=int, default=None)
     parser.add_argument("--world_size", default=1, type=int)
     parser.add_argument("--rank", default=0, type=int)
+    parser.add_argument(
+        "--run_id",
+        type=str,
+        default=os.getenv("NAVILA_EVAL_RUN_ID", "default"),
+    )
+    parser.add_argument(
+        "--sync_timeout_sec",
+        type=int,
+        default=int(os.getenv("NAVILA_EVAL_SYNC_TIMEOUT_SEC", "7200")),
+    )
     parser.add_argument("--debug_generation", action="store_true")
     parser.add_argument("--debug_generation_limit", type=int, default=3)
     parser.add_argument(

@@ -146,7 +146,7 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # StreamVLN:   streamvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # CompressVLN: compressvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}-stride{compress_stride}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # 注: qa参数(混合训练比例)不影响eval，解析时会被忽略
-# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (gtc):         overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (segment_gtc): overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 #   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
@@ -285,7 +285,9 @@ parse_uninavid_params() {
 
 parse_overlapvln_params() {
     local name="$1"
+    # 新格式 (map):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-map-g1000-l400-r384-d20-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # 新格式 (per_frame):   overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # no-memory 示例:       overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # 新格式 (gtc):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # 新格式 (segment_gtc): overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
@@ -308,6 +310,11 @@ parse_overlapvln_params() {
     if [[ "$name" == *"-initial-"* ]]; then
         system_prompt_setting="initial"
     fi
+    local memory_method="history"
+    local map_global_side_m=""
+    local map_local_side_m=""
+    local map_render_px=""
+    local map_mask_method=""
     
     # 解析历史处理器类型和相关参数
     local history_processor_type="per_frame"
@@ -320,7 +327,26 @@ parse_overlapvln_params() {
     local use_pose_embed="false"
     local pose_fusion_method="additive"
     
-    if [[ "$name" == *"-sgtc-k"* ]]; then
+    if [[ "$name" == *"-map-g"* ]]; then
+        local map_block
+        map_block=$(echo "$name" | grep -oP 'map-g[^-]+-l[^-]+-r\d+-[^-]+-s\d+' | head -1)
+        memory_method="map"
+        history_processor_type="per_frame"
+        use_tome="false"
+        if [ -n "$map_block" ]; then
+            map_global_side_m=$(echo "$map_block" | sed -n 's/.*map-g\([^-]*\)-l.*/\1/p')
+            map_local_side_m=$(echo "$map_block" | sed -n 's/.*-l\([^-]*\)-r.*/\1/p')
+            map_render_px=$(echo "$map_block" | sed -n 's/.*-r\([0-9]*\)-.*/\1/p')
+            compress_stride=$(echo "$map_block" | sed -n 's/.*-s\([0-9]*\)$/\1/p')
+            local map_mask_tag
+            map_mask_tag=$(echo "$map_block" | sed -n 's/.*-r[0-9]*-\([^-]*\)-s[0-9]*$/\1/p')
+            if [[ "$map_mask_tag" == d* ]]; then
+                map_mask_method="dilate${map_mask_tag#d}"
+            else
+                map_mask_method="$map_mask_tag"
+            fi
+        fi
+    elif [[ "$name" == *"-sgtc-k"* ]]; then
         history_processor_type="segment_gtc"
         gtc_output_tokens=$(echo "$name" | grep -oP 'sgtc-k\d+' | sed 's/sgtc-k//')
     elif [[ "$name" == *"-gtc-k"* ]]; then
@@ -368,11 +394,16 @@ parse_overlapvln_params() {
     echo "NUM_HISTORY=$num_history"
     echo "NUM_FUTURE_STEPS=$num_future_steps"
     echo "NUM_OVERLAP=$num_overlap"
+    echo "MEMORY_METHOD=$memory_method"
     echo "HISTORY_PROCESSOR_TYPE=$history_processor_type"
     echo "LOG_BASE=$log_base"
     echo "COMPRESS_STRIDE=$compress_stride"
     echo "USE_TOME=$use_tome"
     echo "GTC_OUTPUT_TOKENS=$gtc_output_tokens"
+    echo "MAP_GLOBAL_SIDE_M=$map_global_side_m"
+    echo "MAP_LOCAL_SIDE_M=$map_local_side_m"
+    echo "MAP_RENDER_PX=$map_render_px"
+    echo "MAP_MASK_METHOD=$map_mask_method"
     echo "SYSTEM_PROMPT_SETTING=$system_prompt_setting"
     echo "USE_PIXEL_EMBED=$use_pixel_embed"
     echo "USE_POSE_EMBED=$use_pose_embed"
@@ -442,13 +473,22 @@ fi
 # OverlapVLN 特有参数
 if [ "$MODEL_ARCH" == "overlapvln" ]; then
     echo "NUM_OVERLAP:    ${NUM_OVERLAP:-N/A}"
-    echo "HISTORY_PROCESSOR_TYPE: ${HISTORY_PROCESSOR_TYPE:-per_frame}"
-    if [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
+    echo "MEMORY_METHOD:  ${MEMORY_METHOD:-history}"
+    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
+        echo "MAP_GLOBAL_SIDE_M: ${MAP_GLOBAL_SIDE_M:-1000}"
+        echo "MAP_LOCAL_SIDE_M: ${MAP_LOCAL_SIDE_M:-400}"
+        echo "MAP_RENDER_PX: ${MAP_RENDER_PX:-384}"
+        echo "MAP_MASK_METHOD: ${MAP_MASK_METHOD:-dilate20}"
+        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
+    else
+        echo "HISTORY_PROCESSOR_TYPE: ${HISTORY_PROCESSOR_TYPE:-per_frame}"
+    fi
+    if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
         echo "GTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
-    elif [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+    elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
         echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
         echo "SGTC_NUM_SEGMENTS: 8 (fixed)"
-    else
+    elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
         echo "NUM_HISTORY:    ${NUM_HISTORY:-8}"
         echo "LOG_BASE:       ${LOG_BASE:-1.0}"
         echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
@@ -524,10 +564,21 @@ if [ "$CHECK_ONLY" == "true" ]; then
     if [ -n "$NUM_OVERLAP" ]; then
         echo "NUM_OVERLAP=${NUM_OVERLAP}"
     fi
+    if [ -n "$MEMORY_METHOD" ]; then
+        echo "MEMORY_METHOD=${MEMORY_METHOD}"
+    fi
     if [ -n "$HISTORY_PROCESSOR_TYPE" ]; then
         echo "HISTORY_PROCESSOR_TYPE=${HISTORY_PROCESSOR_TYPE}"
     fi
-    if [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+    if [ "$MEMORY_METHOD" == "map" ]; then
+        [ -n "$MAP_GLOBAL_SIDE_M" ] && echo "MAP_GLOBAL_SIDE_M=${MAP_GLOBAL_SIDE_M}"
+        [ -n "$MAP_LOCAL_SIDE_M" ] && echo "MAP_LOCAL_SIDE_M=${MAP_LOCAL_SIDE_M}"
+        [ -n "$MAP_RENDER_PX" ] && echo "MAP_RENDER_PX=${MAP_RENDER_PX}"
+        [ -n "$MAP_MASK_METHOD" ] && echo "MAP_MASK_METHOD=${MAP_MASK_METHOD}"
+        if [ -n "$COMPRESS_STRIDE" ]; then
+            echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
+        fi
+    elif [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
         if [ -n "$GTC_OUTPUT_TOKENS" ]; then
             echo "GTC_OUTPUT_TOKENS=${GTC_OUTPUT_TOKENS}"
         fi
@@ -773,10 +824,18 @@ fi
 if [ -n "$NUM_OVERLAP" ]; then
     export NUM_OVERLAP
 fi
+if [ -n "$MEMORY_METHOD" ]; then
+    export MEMORY_METHOD
+fi
 if [ -n "$HISTORY_PROCESSOR_TYPE" ]; then
     export HISTORY_PROCESSOR_TYPE
 fi
-if [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+if [ "$MEMORY_METHOD" == "map" ]; then
+    [ -n "$MAP_GLOBAL_SIDE_M" ] && export MAP_GLOBAL_SIDE_M
+    [ -n "$MAP_LOCAL_SIDE_M" ] && export MAP_LOCAL_SIDE_M
+    [ -n "$MAP_RENDER_PX" ] && export MAP_RENDER_PX
+    [ -n "$MAP_MASK_METHOD" ] && export MAP_MASK_METHOD
+elif [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
     if [ -n "$GTC_OUTPUT_TOKENS" ]; then
         export GTC_OUTPUT_TOKENS
     fi
@@ -838,13 +897,22 @@ fi
 if [ "$MODEL_ARCH" == "overlapvln" ]; then
     echo "--- OverlapVLN Parameters ---"
     echo "NUM_OVERLAP:        ${NUM_OVERLAP:-N/A}"
-    echo "HISTORY_PROCESSOR:  ${HISTORY_PROCESSOR_TYPE:-per_frame}"
-    if [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
+    echo "MEMORY_METHOD:      ${MEMORY_METHOD:-history}"
+    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
+        echo "MAP_GLOBAL_SIDE_M:  ${MAP_GLOBAL_SIDE_M:-1000}"
+        echo "MAP_LOCAL_SIDE_M:   ${MAP_LOCAL_SIDE_M:-400}"
+        echo "MAP_RENDER_PX:      ${MAP_RENDER_PX:-384}"
+        echo "MAP_MASK_METHOD:    ${MAP_MASK_METHOD:-dilate20}"
+        echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"
+    else
+        echo "HISTORY_PROCESSOR:  ${HISTORY_PROCESSOR_TYPE:-per_frame}"
+    fi
+    if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
         echo "GTC_OUTPUT_TOKENS:  ${GTC_OUTPUT_TOKENS:-512}"
-    elif [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+    elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
         echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
         echo "SGTC_NUM_SEGMENTS:  8 (fixed)"
-    else
+    elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
         echo "NUM_HISTORY:        ${NUM_HISTORY:-8}"
         echo "LOG_BASE:           ${LOG_BASE:-1.0}"
         echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"

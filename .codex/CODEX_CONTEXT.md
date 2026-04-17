@@ -38,6 +38,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 实验计划目录：`runtime/plans/` （自然语言实验计划文件，供 orchestrate-plan skill 读取）
 - 实验计划 skill：`.codex/skills/orchestrate-plan/SKILL.md`
 - 训练队列：`src/swiftvln/scripts/train/train_queue.sh`
+- 训练队列端口/重试修复（Updated: 2026-04-15）：
+  - `src/swiftvln/scripts/train/train_queue.sh`
+  - 串行训练在每次 attempt 启动前会先检查临时训练脚本中的 `MASTER_PORT` 是否可用；
+    若端口已被占用，会在启动前直接改写为本机空闲端口，避免 `torchrun`
+    在 rendezvous 阶段直接因 `EADDRINUSE` 失败
+  - 训练执行现在按 `bash "$temp_script" | tee "$run_log_file"` 的真实
+    `PIPESTATUS[0]` 判断成功/失败，不再被 `tee` 的返回码掩盖
+  - 因此 `address already in use` 这类错误现在可以稳定进入 auto-fix 重试链路
+  - 2026-04-17 起脚本末尾显式 `exit $?`，避免长跑队列执行期间若脚本文件被原地改写，
+    在收尾阶段继续解释被修改后的尾部内容，导致异常“重入”重跑
 - 训练 watchdog：`src/swiftvln/scripts/train/train_watchdog.sh`
 - GPU 健康监控（Updated: 2026-04-07）：
   - 单机监控脚本：`src/swiftvln/scripts/monitor/gpu_health_monitor.sh`
@@ -60,9 +70,118 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `TRAIN_CUDA_DEVICES=<csv>`：显式指定 GPU 列表，例如 `0,1,3,5`
     - `TRAIN_DRY_RUN=true`：仅做配置与 GPU 解析检查，不实际启动 `torchrun`
   - `src/swiftvln/scripts/train/train_queue.sh` 会把以上三个变量透传给单次训练脚本
+- OverlapVLN no-memory 配置约定（Updated: 2026-04-17）：
+  - 训练脚本：`src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - 数据集：`src/swiftvln/models/overlapvln/dataset.py`
+  - 队列展示/解析：`src/swiftvln/scripts/train/train_queue.sh`
+  - 评测按名解析说明：`src/swiftvln/scripts/eval/eval_by_name.sh`
+  - 当前没有独立的 `USE_MEMORY=false` 开关；如需 no-memory，使用：
+    - `HISTORY_PROCESSOR_TYPE=per_frame`
+    - `NUM_HISTORY=0`
+  - 该配置会让 dataset 采样 `0` 张历史帧，并且 system prompt 不插入 `<history_memory>`
+  - 统一实验名约定：`pf-h0-nomem-b{log_base}-{method}-s{stride}`
+  - `log_base` / `use_random` 在 `NUM_HISTORY=0` 时保留为配置元数据，但不会实际影响采样
+  - `gtc` / `segment_gtc` 不适用该 no-memory 约定，因为其历史采样逻辑不看 `NUM_HISTORY`
+- OverlapVLN `map` memory 配置约定（Updated: 2026-04-17）：
+  - 共享实现：
+    - `src/swiftvln/models/overlapvln/map_memory.py`
+  - 训练链路：
+    - 参数定义：`src/swiftvln/models/overlapvln/arguments.py`
+    - dataset 接线：`src/swiftvln/models/overlapvln/dataset.py`
+    - trainer 透传/校验：`src/swiftvln/models/overlapvln/trainer.py`
+    - template pose 兼容：`src/swiftvln/models/overlapvln/template.py`
+  - 评测链路：
+    - CLI 参数：`src/swiftvln/models/overlapvln/eval.py`
+    - evaluator window 刷新：`src/swiftvln/models/overlapvln/evaluator.py`
+    - 单次 eval 脚本：`src/swiftvln/models/overlapvln/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+    - 按名评测解析：`src/swiftvln/scripts/eval/eval_by_name.sh`
+  - 队列透传：
+    - `src/swiftvln/scripts/train/train_queue.sh`
+  - 当前 `map` 的产品定义：
+    - `memory_method=map` 表示**替换原 history frame memory**，不是并存
+    - 当前仅支持 `vln_env_type=satnav`
+    - 当前仅支持 `history_processor_type=per_frame`
+    - 当前要求 `use_tome=false`
+    - **当前禁用所有 embed 增强**：`use_pixel_embed` / `use_pose_embed` / `use_uav_adapter` 必须同时为 `false`
+      - 原因：map 是合成的俯视图，不是真实 RGB 相机帧，RGB-frame 对齐的 embed 语义不适用
+      - 训练/评测在 `trainer._validate_memory_method` 与 `evaluator.__init__` 中硬校验，shell 脚本入口也会提前 `exit 1`
+    - system prompt 仍复用统一的 `<history_memory>` 占位；只是视觉来源从历史帧切换为 `global map + local map`
+    - explored map 未探索区域直接置 `0`
+    - 当前默认中心策略：
+      - `global` 为 `north-up`，默认使用 `adaptive_start`：
+        初始以起点为中心；当历史轨迹/已探索区域接近边界时，按 `25m` 量化步长做最小必要平移，尽量让更多历史留在图内
+      - `local` 为 `north-up`，始终以当前位置为中心
+    - 默认参数：
+      - `map_global_side_m=1000`
+      - `map_local_side_m=400`
+      - `map_render_px=384`
+      - `map_mask_method=dilate20`
+    - 训练与评测都按 **window cadence** 更新 map：
+      - 训练样本里，map 固定锚定在 `start_idx` 之前的历史
+      - 评测时，仅在 Overlap window 滑动时刷新 map cache；窗口内不更新
+    - **首窗口行为**（与 `history` 模式不对称，需注意）：
+      - `history` 模式在首窗口（`time_ids[0]==0` / eval `step_id==0`）**不插入** `<history_memory>`
+      - `map` 模式在首窗口**仍会生成** global + local 两张图，但 `observed_poses` 为空 →
+        mask 全黑、仅显示起点蓝点；system prompt 也始终带 `<history_memory>` 占位
+      - 即 map 模式的 history slot 语义是"起点 + 已探索区域"，在首窗口退化为"仅起点"
+  - 统一实验名约定：
+    - `map-g{global}-l{local}-r{render}-{mask}-s{compress_stride}`
+    - 例：`map-g1000-l400-r384-d20-s2`
+  - 依赖说明：
+    - `map_memory.py` 运行时依赖可选 geo 包：`rasterio` 与 `pyproj`
+    - 当前仓库实现已做惰性导入；若环境缺依赖，只会在 `memory_method=map` 真正执行到地图渲染时报错
+  - **On-disk render cache**（Updated: 2026-04-17）：
+    - 位置：默认 `{dataset_root}/map_cache`（例：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/map_cache`）
+      - 训练入口（`dataset.py`）从 `SatNavTrajectoryMetadataResolver.dataset_root` 推导
+      - 评测入口（`evaluator.py`）从 habitat `DATA_PATH` 回溯找第一个 `ver_*` 目录
+    - 开关（优先级从高到低）：
+      1. 环境变量 `OVERLAPVLN_MAP_CACHE_DIR=<path>` 强制指定路径
+      2. 环境变量 `OVERLAPVLN_MAP_CACHE_DIR=off|false|none|0|disable|disabled|no` 关闭缓存
+      3. 训练/评测脚本 `MAP_CACHE_DIR`（default `"auto"` → 使用代码推导值）
+      4. 都未设 → 使用推导的 `{dataset_root}/map_cache`
+    - Cache key 由 render config digest + `scene_id` + `window_start` + 全部 poses 的
+      `(x, y, altitude, heading_deg)` 保留 6 位小数的 bytes 组合而成（content-addressable）
+    - 文件布局：`<cache_dir>/<key[:2]>/<key[2:4]>/<key>_{global,local}.png`
+      - 两级 sharding 防止单目录 inode 爆炸
+      - 原子写入（`tempfile` + `os.replace`），多进程 / 多 epoch 并发安全
+    - 失效 / 清理：
+      - `map_memory._MAP_CACHE_FORMAT_VERSION` 或任一 render 配置（`global_side_m` /
+        `local_side_m` / `render_px` / `mask_method` / `hfov` / `sensor_width` /
+        `sensor_height` / `global_center_mode` / `global_shift_*`）变化
+        → key digest 自动改变 → 新旧缓存自然共存，不会读到过期结果
+      - 如需回收磁盘，直接 `rm -rf {cache_dir}` 安全（会懒加载重建）
+    - Debug：`OVERLAPVLN_DEBUG=1` 会在首 N 次 render 打印 `[MAP DEBUG][builder] cache_hit/render ... cache=miss(M/wW)` 统计
+    - 性能目标：rasterio 渲染 ~2.4s/次 → cache hit ~10ms（PNG decode），命中率稳定后
+      DataLoader 近乎零 CPU 渲染成本（首 epoch 负责 warm-up）
+- SwanLab 直连默认（Updated: 2026-04-08）：
+  - `src/swiftvln/scripts/train/train_queue.sh`
+  - `src/swiftvln/models/{overlapvln,streamvln,compressvln,monovln,uninavid}/script/train/*.sh`
+  - 当 `USE_SWANLAB=true` 时，训练脚本默认会清理 `http_proxy/https_proxy/HTTP_PROXY/HTTPS_PROXY/all_proxy/ALL_PROXY`
+  - 目的：避免误继承本地 `127.0.0.1:7890` 一类代理，导致 SwanLab 登录失败
+  - 如需保留代理，可显式设置 `SWANLAB_DIRECT_NETWORK=false`
+  - `train_queue.sh` 现在也会把全局 `QA_DATASET` 显式写入临时训练脚本，避免 `qa*` 实验回退到模型脚本内的旧默认 QA 路径
+- OverlapVLN 训练恢复支持（Updated: 2026-04-08）：
+  - `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - `src/swiftvln/scripts/train/train_queue.sh`
+  - 单次训练脚本新增：
+    - `RESUME_FROM_CHECKPOINT=<abs_path>`：传给 ms-swift 的 `--resume_from_checkpoint`
+    - `RESUME_ONLY_MODEL=true|false`：可选，仅恢复模型权重
+    - `OUTPUT_DIR_OVERRIDE=<path>`：覆盖实验根输出目录，再由 ms-swift 在其下生成新的 `v*/` 子目录
+  - `train_queue.sh` 现在会把以上三个变量透传到临时训练脚本，适用于“从旧 checkpoint 真恢复后继续跑队列”的场景
+  - 若要延续原实验命名并避免新建不同根目录，resume 时应同时设置 `RESUME_FROM_CHECKPOINT` 与 `OUTPUT_DIR_OVERRIDE`
 - 评测单模型：`src/swiftvln/scripts/eval/eval_by_name.sh`
 - 评测队列：`src/swiftvln/scripts/eval/eval_queue.sh`
 - 评测入队：`src/swiftvln/scripts/eval/enqueue_eval.sh`
+- Eval todo 锁修复（Updated: 2026-04-15）：
+  - `src/swiftvln/scripts/eval/eval_queue.sh`
+  - `src/swiftvln/scripts/eval/enqueue_eval.sh`
+  - 旧逻辑里 `eval_queue.sh` 在 `remove_line_from_todo()` 中使用
+    `exec 201>"$TODO_LOCK_FILE"; flock 201`，FD 会保留在长生命周期 shell 中，
+    并被后续 `eval_by_name.sh` / `torchrun` 子进程继承，导致整条 eval queue
+    运行期间持续占用 `eval_todo.txt.lock`
+  - 当前已改为短生命周期 subshell 持锁，更新完 todo 后立即释放
+  - `enqueue_eval.sh` 现在对 `eval_todo.txt.lock` 使用带超时的 `flock -w`
+    ，避免训练队列在“准备自动入评测队列”阶段无限阻塞
 - 评测 worker：`src/swiftvln/scripts/eval/start_eval_worker.sh`
 - 评测 monitor：`src/swiftvln/scripts/eval/start_eval_monitor.sh`
 - 评测 watchdog：`src/swiftvln/scripts/eval/eval_watchdog.sh`
@@ -70,6 +189,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 数据集 merge：`src/swiftvln/scripts/data_process/merge_satnav_data.py`
 - 数据同步：`src/swiftvln/scripts/data_sync/*.sh`
 - SatNav merge skill：`.codex/skills/merge-satnav-data/SKILL.md`
+- 主线评测 summary 重加权指标（Updated: 2026-04-14）：
+  - 公共汇总逻辑：`src/swiftvln/common/eval/runner.py`
+  - 权重/统计 helper：`src/swiftvln/common/eval/reporting.py`
+  - 当 `env_type=satnav` 且存在 `by_trajectory_type` 时，`evaluation_summary.json`
+    现在额外写出 `weighted_by_seen_unseen_distribution`
+  - 该字段使用 `satnav_task.yaml` 中 `DATA_PATH` 对应的 `val_seen + val_unseen`
+    episode 合并分布，输出统一加权后的：
+    `success_rate / mean_spl / oracle_success / navigation_error / avg_steps`
+  - 目的：在不修改实际评测 episode 的前提下，降低 `seen/unseen`
+    任务类型配比差异对总指标解释的干扰
 
 ### Baseline StreamVLN Layout (Updated: 2026-03-09)
 
@@ -108,10 +237,15 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
       `results/eval/<arch>/<model_name>/<split>/<timestamp>/`
       例：`results/eval/overlapvln/<model>/val_seen/20260319_143025/`
     - SatNav 默认同时跑 `val_seen` + `val_unseen`（不设置 `EVAL_SPLIT`），Habitat 默认 `EVAL_SPLIT=val_unseen`
-  - StreamVLN SatNav eval 约定（Updated: 2026-04-01）：
-    - 多卡汇总改为 rank0 从 `result.jsonl` 离线去重汇总，不再用末尾 `all_gather(...)` 汇总本地 `results`
-    - resume / 去重唯一键使用 `scene_id + episode_id`，避免仅按 `episode_id` 导致跨 scene 冲突
-    - `--max_episodes` 语义为“先截断总 episode，再做分布式切分”
+- StreamVLN SatNav eval 约定（Updated: 2026-04-01）：
+  - 多卡汇总改为 rank0 从 `result.jsonl` 离线去重汇总，不再用末尾 `all_gather(...)` 汇总本地 `results`
+  - resume / 去重唯一键使用 `scene_id + episode_id`，避免仅按 `episode_id` 导致跨 scene 冲突
+  - `--max_episodes` 语义为“先截断总 episode，再做分布式切分”
+  - `evaluation_summary.json`（Updated: 2026-04-14）在存在 `by_trajectory_type` 时会额外写出
+    `weighted_by_seen_unseen_distribution`
+  - 该字段使用 `src/swiftvln/configs/satnav_task.yaml` 对应的
+    `val_seen + val_unseen` 合并任务类型分布做统一加权，输出
+    `SR / SPL / OS / NE / avg_steps`
 
 ### Baseline NaVILA Layout (Updated: 2026-03-12)
 
@@ -163,7 +297,15 @@ NaVILA SatNav eval 约定：
   - 不再依赖末尾 `dist.all_gather(...)` 做跨 rank 汇总
   - rank0 直接读取 `result.jsonl`（联合键去重）并写 `evaluation_summary.json`
   - 用于规避长尾 rank 导致的 NCCL/TCPStore 超时退出
-  - 汇总前增加 `dist.barrier()`，避免 rank0 在其他 rank 尚未写完 `result.jsonl` 时提前出 summary
+  - 评测收尾同步（Updated: 2026-04-13）改为基于结果目录下 `_rank_sync/<run_id>/rank_<n>.json`
+    的文件标记等待，不再依赖末尾 `dist.barrier()`
+  - `baseline/navila/scripts/eval_satnav.sh` 现会为每个 split 传唯一 `--run_id`
+  - 目的：保留 8 卡断点续跑能力，同时规避收尾阶段 `Socket Timeout` / NCCL barrier 崩溃
+  - `evaluation_summary.json`（Updated: 2026-04-14）在存在 `by_trajectory_type` 时会额外写出
+    `weighted_by_seen_unseen_distribution`
+  - 该字段使用 `src/swiftvln/configs/satnav_task.yaml` 对应的
+    `val_seen + val_unseen` 合并任务类型分布做统一加权，输出
+    `SR / SPL / OS / NE / avg_steps`
 - 生成停止条件与 dtype 稳定性修复（Updated: 2026-04-07）：
   - `baseline/navila/src/eval_satnav.py` 不再直接使用上游 `KeywordsStoppingCriteria`
   - 当前改为本地 `SafeKeywordsStoppingCriteria`，只匹配**生成后缀**，避免 Llama 3 prompt 内自带 `<|eot_id|>` 时在 `0 token` 阶段被误判为 stop
@@ -218,6 +360,191 @@ NaVILA SatNav train 补充约定（Updated: 2026-03-25）：
   - `compact` 为单词级格式：`stop / forward / left / right`
   - `compact` 训练时会同步切换 prompt 文案为“reply with exactly one word”
   - `baseline/navila/scripts/train_satnav.sh` 在非默认动作格式下会自动把实验名后缀标成 `-act<format>`；当前仅 legacy `sentence` 会自动追加 `-actsentence`
+
+### Baseline OpenFly Layout (Updated: 2026-04-15)
+
+`baseline/openfly` 已新增 SatNav-only baseline 分层：
+
+- 入口脚本：`baseline/openfly/scripts/*.sh`
+  - `scripts/setup_env.sh`
+  - `scripts/download_model.sh`
+  - `scripts/train_satnav.sh`
+  - `scripts/eval_satnav.sh`
+- 源码目录：`baseline/openfly/src/*`
+  - `src/train_satnav.py`
+  - `src/eval_satnav.py`
+  - `src/action_formats.py`
+  - `src/dataset/satnav_dataset.py`
+  - `src/openfly_core/*`（本地注册的 OpenFly HF config/model/processor）
+- 配置目录：
+  - `baseline/openfly/configs/satnav_task.yaml`
+  - `baseline/openfly/configs/zero2.json`
+- 模型目录：
+  - `baseline/openfly/model/openfly-agent-7b/`（下载后落点）
+
+OpenFly SatNav baseline 约定：
+
+- 不依赖外部 `OpenFly-Platform` repo 运行时路径；训练与评测使用 `baseline/openfly/src/openfly_core/*`
+  中本地注册的 HF 组件
+- 支持两种 backend（Updated: 2026-04-17）：
+  - `continue`：直接加载 HF OpenFly checkpoint (`openfly-agent-7b`)，在 OpenFly 已完成 VLN 训练的基础上继续训练
+  - `scratch`：从 Prismatic/OpenVLA `.pt` checkpoint 初始化权重（OpenFly 任务训练前的原始 OpenVLA），
+    复用当前 HF `Trainer` / `checkpoint-*` 训练链路，相当于从 VLN 训练起点重新开始
+- backend 通过环境变量切换：
+  - `OPENFLY_BACKEND=continue|scratch`
+  - 当前默认是 `continue`
+- `scratch` backend 约定（Updated: 2026-04-17）：
+  - 默认模型路径：
+    `baseline/openfly/model/openvlaopenvla-7b-prismatic`
+  - 默认 processor/tokenizer 来源：
+    `baseline/openfly/model/openfly-agent-7b`
+  - 当前实现并不会在运行时 import 外部 `OpenFly-Platform` repo
+  - 而是通过
+    `baseline/openfly/src/native_core/checkpoint_conversion.py`
+    把 Prismatic checkpoint 映射到当前 `openfly_core` HF 模型结构后再训练
+  - `build_native_hf_model(...)` 当前会按请求的 `torch_dtype`
+    临时设置默认 dtype 后构模，避免 `scratch` 路径在启用 `flash_attention_2`
+    时仍以 `float32` 构建 7B 模型并触发不兼容 warning
+  - 因此 `scratch` 训练产物仍然是标准 HF `checkpoint-*` 目录，可直接复用现有
+    `baseline/openfly/src/eval_satnav.py`
+- 支持两种动作格式（Updated: 2026-04-15）：
+  - `compact`：四动作文本 supervision / decode
+    `stop / forward / left / right`
+  - `original`：保留 OpenFly action-token 表征；SatNav 仅开放 4 个合法 8 维动作模板
+- `original` 模式的 SatNav 8 维动作模板约定：
+  - `stop -> [1, 0, 0, 0, 0, 0, 0, 0]`
+  - `forward -> [0, 10, 0, 0, 0, 0, 0, 0]`
+  - `left -> [0, 0, 15, 0, 0, 0, 0, 0]`
+  - `right -> [0, 0, 0, 15, 0, 0, 0, 0]`
+  - 其中 SatNav forward 固定 `10m`，左/右转固定 `15deg`
+- 训练/评测脚本通过环境变量切换：
+  - `OPENFLY_BACKEND=continue|scratch`
+  - `OPENFLY_ACTION_FORMAT=compact|original`
+  - `OPENFLY_UNNORM_KEY` 默认 `satnav_original`
+- `scratch` backend 训练修复（Updated: 2026-04-16）：
+  - `baseline/openfly/src/native_core/checkpoint_conversion.py`
+  - `baseline/openfly/src/backends/native_backend.py`
+  - `baseline/openfly/src/openfly_core/modeling_prismatic.py`
+  - `baseline/openfly/configs/zero1.json`
+  - `baseline/openfly/configs/zero2.json`
+  - Prismatic → HF runtime 构模现在会：
+    - 按请求的 `torch_dtype` 建图，避免 `flash_attention_2 + fp32` 组合
+    - 在 `no_init_weights()` 下实例化 7B HF 模型，规避随机初始化导致的超长卡顿
+  - vision 前向现在会把 `pixel_values` cast 到视觉 backbone 的参数 dtype，
+    修复 `Input type (float) and bias type (c10::BFloat16)` 错误
+  - OpenFly DeepSpeed 配置已显式设置 `torch_adam=true`，避免在 H100 上 JIT 构建
+    `FusedAdam` 时触发 `nvcc fatal: Unsupported gpu architecture 'compute_90'`
+  - 98 服务器 smoke 结果：
+    - 单卡 `scratch + original + no-DeepSpeed` 已能正常进入训练并产出 loss / checkpoint
+    - 8 卡 `scratch + original + zero2` 已能正常完成 `max_steps=2` smoke
+    - 8 卡 smoke 的 `checkpoint-2` 落盘后仍会有一段较长尾部收尾；日志需看到
+      最终 `train_runtime / train_loss` 统计，不能只看 checkpoint 文件是否已出现
+- `baseline/openfly/scripts/train_satnav.sh` 默认实验名会显式追加动作模式后缀：
+  - `-bkcontinue`
+  - `-bkscratch`
+  - `-actcompact`
+  - `-actoriginal`
+  并追加 SatNav 采样标签：
+  - `-sample-hk<HEAD_KEEP>-fs<SAMPLE_STRIDE>-stopx<STOP_REPEAT>-stoph<STOP_HISTORY_AUG>`
+- OpenFly SatNav 训练收尾兼容（Updated: 2026-04-15）：
+  - `baseline/openfly/src/train_satnav.py`
+  - `baseline/openfly/scripts/train_satnav.sh`
+  - 训练入口会在进程内 monkey-patch `AcceleratedOptimizer.train/eval`：
+    若底层 optimizer 没有对应方法，则退化为 no-op，避免
+    `DeepSpeedZeroOptimizer has no attribute train`
+  - 多卡 DeepSpeed 训练结束后不再额外执行
+    `trainer.save_model(output_dir)` 根目录全量导出；默认以 `checkpoint-*`
+    作为可评测产物，规避 Zero2 收尾长时间卡住
+  - root 输出目录与每个 `checkpoint-*` 目录现在都会额外写
+    `backend_meta.json`，记录 `backend / model_name_or_path / processor_source`
+    等来源信息
+  - 新增 `OUTPUT_DIR_OVERRIDE=<abs_path>`，可把训练输出直接落到本地盘
+    （如 73 的 `/mnt/data3/...`），减少往 NFS 工作区写大 checkpoint 时的卡顿风险
+  - 训练脚本默认禁用 wandb：
+    - `--report_to none`
+    - `WANDB_DISABLED=true`
+    - `WANDB_MODE=disabled`
+  - 训练脚本新增可调开关：
+    - `USE_FLASH_ATTENTION_2`
+    - `WEIGHT_DECAY`
+    - `WARMUP_RATIO`
+    - `LR_SCHEDULER_TYPE`
+    - `MAX_GRAD_NORM`
+    - `DATALOADER_NUM_WORKERS`
+    - `REPORT_TO`
+  - 当前默认训练配置（Updated: 2026-04-16）：
+    - `TRAIN_BSZ=12`
+    - `GRAD_ACCUM=1`
+    - `TORCH_DTYPE=bfloat16`
+    - `USE_FLASH_ATTENTION_2=true`
+    - `LEARNING_RATE=2e-5`
+    - `SAVE_STEPS=10000`
+    - `LR_SCHEDULER_TYPE=linear`
+    - `WEIGHT_DECAY=0.0`
+    - 该默认值来自 73 上 8xH100 短程 benchmark；目标是无 acc-grad 前提下提高吞吐
+  - OpenFly SatNav 默认采样策略（Updated: 2026-04-17）：
+    - `baseline/openfly/src/dataset/satnav_dataset.py`
+    - 现已切到统一全局参数的 `head + denser forward + tail keep + stop window` 采样与监督
+      逻辑；不再按 `Boundary/LandmarkSet/Road` 分类型设置不同采样参数
+    - 当前默认值：
+      - `SATNAV_HEAD_KEEP=7`
+      - `SATNAV_SAMPLE_STRIDE=3`
+      - `SATNAV_STOP_REPEAT=2`
+      - `SATNAV_STOP_WINDOW=2`
+      - `SATNAV_TAIL_KEEP=5`
+      - `SATNAV_STOP_HISTORY_AUG=1`
+    - 语义：
+      - 保留每条轨迹前 `7` 步
+      - 所有 `left/right` 全保留
+      - 连续 `forward` 段按 stride=`3` 更密地保留
+      - near-goal tail 始终保留，最后 `2` 个保留的 near-goal step 统一重标为 `stop`
+      - `stop_history_aug` 默认保持 `1`，不再靠多 terminal history 变体做 stop 增强
+    - 0404 近似统计（Updated: 2026-04-17）：
+      - 原始全量：`5.396M`
+      - 当前默认：约 `3.929M`
+      - 全局动作占比约：
+        - `stop 10.7%`
+        - `forward 53.6%`
+        - `left 18.6%`
+        - `right 17.1%`
+      - 98 上最近一次 8xH100 实测吞吐为 `33430 steps / 26032.96s`
+        （约 `0.779s/step`，global batch `96`）
+      - 按此估算，当前默认配置 1 epoch 约 `8.9h`，实务上按 `9.0-9.5h`
+        预留更稳妥
+    - 训练产物中的 `dataset_statistics.json` 现会额外记录 `sampling_env`
+      与 `trajectory_type_counts`，便于回溯具体采样配置
+  - OpenFly `original` 训练监督（Updated: 2026-04-16）：
+    - `baseline/openfly/src/dataset/satnav_dataset.py`
+    - `baseline/openfly/src/train_satnav.py`
+    - 训练时仅监督 `original` 8 维动作 token 中前 `4` 个有效动作维度 token
+    - 后 `4` 个恒定 inactive 维度 token 与结尾 `eos` 不再参与 CE loss
+    - 训练默认通过自定义 `OpenFlyTrainer` 对这 4 个 token 施加位置加权：
+      - `OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS=0.4,1.2,1.2,1.2`
+    - 含义：
+      - 下调第 1 个动作 token 的权重
+      - 上调第 2/3/4 个动作 token 的权重
+    - 目的：削弱 `stop` 在第 1 个 supervised token 位置上的结构性优势，减少
+      “会走会转，但收尾时过早 stop” 的偏置
+- prompt 保持 OpenFly 原问句风格：
+  `What action should the robot take to ...?`
+- 训练输出目录：
+  `output/openfly-baseline/<EXP_NAME>/`
+- 评测结果目录：
+  `results/openfly-baseline/<EXP_NAME_or_subpath>/<split>/`
+- `baseline/openfly/src/eval_satnav.py` 的 `result.jsonl` 现在会显式写出：
+  - `action`
+  - `parsed_action`
+  - `generated_text`
+  - `action_trace`
+  便于直接检查 compact/original 两种动作模式的逐步输出；原始 `raw_outputs`
+  仍保留用于调试
+- 多卡 train/eval 启动约定：
+  - `baseline/openfly/scripts/train_satnav.sh`
+  - `baseline/openfly/scripts/eval_satnav.sh`
+  - 默认使用显式 `MASTER_ADDR=127.0.0.1` + `MASTER_PORT`，不使用 `torchrun --standalone`
+- 环境名：
+  `openfly-baseline`
+- 该 baseline 只面向 SatNav 离线数据与 SatNav 平台评测，不包含 AirSim / UE / GTAV / ROS2 / TFDS 工具链依赖
 
 ### Baseline UniNaVid Train Modes (Updated: 2026-03-26)
 

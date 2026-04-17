@@ -256,6 +256,24 @@ echo "=========================================="
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
+SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
+
+unset_proxy_for_swanlab() {
+    local -a proxy_vars=(http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY)
+    local proxy_var=""
+    local had_proxy="false"
+
+    for proxy_var in "${proxy_vars[@]}"; do
+        if [[ -n "${!proxy_var:-}" ]]; then
+            unset "$proxy_var"
+            had_proxy="true"
+        fi
+    done
+
+    if [[ "$had_proxy" == "true" ]]; then
+        echo "[INFO] SwanLab enabled: unset proxy env vars for direct SwanLab access."
+    fi
+}
 
 # DeepSpeed argument
 DEEPSPEED_ARG=""
@@ -290,6 +308,10 @@ fi
 # Run Training
 # ============================================================================
 cd "$SWIFTVLN_ROOT"
+
+if [[ "$USE_SWANLAB" == "true" && "$SWANLAB_DIRECT_NETWORK" == "true" ]]; then
+    unset_proxy_for_swanlab
+fi
 
 torchrun \
     --nnodes=1 \

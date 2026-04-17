@@ -111,10 +111,14 @@ remove_line_from_todo() {
     local model="$1"
     mkdir -p "$(dirname "$TODO_FILE")"
     touch "$TODO_FILE"
-    exec 201>"$TODO_LOCK_FILE"
-    flock 201
-    grep -Fxv "$model" "$TODO_FILE" > "${TODO_FILE}.tmp" || true
-    mv "${TODO_FILE}.tmp" "$TODO_FILE"
+    (
+        flock -w "${EVAL_TODO_LOCK_TIMEOUT:-30}" 201 || exit 1
+        grep -Fxv "$model" "$TODO_FILE" > "${TODO_FILE}.tmp" || true
+        mv "${TODO_FILE}.tmp" "$TODO_FILE"
+    ) 201>"$TODO_LOCK_FILE" || {
+        print_error "更新 todo 队列失败: 无法获取锁 ${TODO_LOCK_FILE}"
+        return 1
+    }
 }
 
 mark_model_done() {

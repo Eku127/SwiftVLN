@@ -98,6 +98,18 @@ GTC_NUM_ITERATIONS="${GTC_NUM_ITERATIONS:-1}"
 # - vanilla: Standard prompt without initial view image (must match training)
 # - initial: Add first frame (uncompressed) as initial observation
 SYSTEM_PROMPT_SETTING="${SYSTEM_PROMPT_SETTING:-vanilla}"
+MEMORY_METHOD="${MEMORY_METHOD:-history}"
+MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
+MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
+MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
+MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
+
+# Map-memory render cache.
+# "auto" (default): let the Python layer derive {dataset_root}/map_cache from
+# the habitat DATA_PATH (e.g. ver_260404/map_cache), so eval warms / reuses the
+# same cache as training. Any absolute path overrides; set to one of
+# {off,false,none,0,disable,disabled,no} to disable caching.
+MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
 # Embedding enhancement (must match training checkpoint setup)
 USE_PIXEL_EMBED="${USE_PIXEL_EMBED:-false}"
@@ -142,6 +154,16 @@ export NCCL_BUFFSIZE=2097152
 export NCCL_MAX_NCHANNELS=4
 export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
 
+# Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
+# OVERLAPVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (derive
+# {dataset_root}/map_cache from habitat DATA_PATH); explicit paths or "off"-
+# family sentinels are passed through verbatim.
+if [ "$MEMORY_METHOD" = "map" ]; then
+    if [ -n "$MAP_CACHE_DIR" ] && [ "$MAP_CACHE_DIR" != "auto" ]; then
+        export OVERLAPVLN_MAP_CACHE_DIR="$MAP_CACHE_DIR"
+    fi
+fi
+
 # Debug logging for SatNav (rank-specific logging)
 export SATNAV_DEBUG_RANK="${SATNAV_DEBUG_RANK}"
 if [ "${SATNAV_DEBUG_RANK}" != "-1" ]; then
@@ -172,19 +194,26 @@ echo "Output Dir:      ${OUTPUT_DIR}"
 echo "Num GPUs:        ${NUM_GPUS}"
 echo "CUDA Devices:    ${CUDA_DEVICES}"
 echo "Num Overlap:     ${NUM_OVERLAP}"
-echo "History Processor: ${HISTORY_PROCESSOR_TYPE}"
-if [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
+echo "Memory Method:   ${MEMORY_METHOD}"
+if [ "$MEMORY_METHOD" = "map" ]; then
+    echo "  Map: global=${MAP_GLOBAL_SIDE_M}m, local=${MAP_LOCAL_SIDE_M}m, render=${MAP_RENDER_PX}px, mask=${MAP_MASK_METHOD}"
+    echo "  Render cache: MAP_CACHE_DIR=${MAP_CACHE_DIR} (env OVERLAPVLN_MAP_CACHE_DIR=${OVERLAPVLN_MAP_CACHE_DIR:-<unset, will derive from DATA_PATH>})"
+    echo "  Compression: stride=${COMPRESS_STRIDE}, method=pool"
+else
+    echo "History Processor: ${HISTORY_PROCESSOR_TYPE}"
+fi
+if [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
     COMPRESS_METHOD="pool"
     [ "$USE_TOME" = "true" ] && COMPRESS_METHOD="tome"
     SAMPLING_TYPE="uniform"
     [ "$LOG_BASE" != "1.0" ] && [ "$LOG_BASE" != "1" ] && SAMPLING_TYPE="logarithmic (b=$LOG_BASE)"
     echo "  Sampling: $SAMPLING_TYPE, ${NUM_HISTORY} frames"
     echo "  Compression: stride=$COMPRESS_STRIDE, method=$COMPRESS_METHOD"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
+elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
     echo "  GTC Output Tokens: ${GTC_OUTPUT_TOKENS}"
     echo "  GTC Temperature:   ${GTC_TEMPERATURE}"
     echo "  GTC Iterations:    ${GTC_NUM_ITERATIONS}"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
+elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
     echo "  Segment GTC Output Tokens: ${GTC_OUTPUT_TOKENS}"
     echo "  Segment GTC Temperature:   ${GTC_TEMPERATURE}"
     echo "  Segment GTC Iterations:    ${GTC_NUM_ITERATIONS}"
@@ -209,6 +238,36 @@ fi
 if [ ! -d "$MODEL_PATH" ]; then
     echo "[ERROR] Model path does not exist: $MODEL_PATH"
     exit 1
+fi
+
+if [ "$MEMORY_METHOD" = "map" ]; then
+    if [ "$ENV_TYPE" != "satnav" ]; then
+        echo "[ERROR] MEMORY_METHOD=map currently supports only ENV_TYPE=satnav."
+        exit 1
+    fi
+    if [ "$HISTORY_PROCESSOR_TYPE" != "per_frame" ]; then
+        echo "[ERROR] MEMORY_METHOD=map currently requires HISTORY_PROCESSOR_TYPE=per_frame."
+        exit 1
+    fi
+    if [ "$USE_TOME" = "true" ]; then
+        echo "[ERROR] MEMORY_METHOD=map currently requires USE_TOME=false."
+        exit 1
+    fi
+    # Map images are synthesized top-down views, so RGB-frame embed
+    # enhancements (pixel / pose / uav_adapter) are not meaningful and must
+    # match the training-time constraint of staying disabled.
+    if [ "$USE_PIXEL_EMBED" = "true" ]; then
+        echo "[ERROR] MEMORY_METHOD=map requires USE_PIXEL_EMBED=false."
+        exit 1
+    fi
+    if [ "$USE_POSE_EMBED" = "true" ]; then
+        echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
+        exit 1
+    fi
+    if [ "$USE_UAV_ADAPTER" = "true" ]; then
+        echo "[ERROR] MEMORY_METHOD=map requires USE_UAV_ADAPTER=false."
+        exit 1
+    fi
 fi
 
 mkdir -p "$OUTPUT_DIR"
@@ -255,40 +314,63 @@ elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" = "seg
     HISTORY_PROCESSOR_ARGS="${HISTORY_PROCESSOR_ARGS} --gtc_num_iterations ${GTC_NUM_ITERATIONS}"
 fi
 
-# Build embedding enhancement arguments
-EMBED_ENHANCE_ARGS=""
-[ "$USE_PIXEL_EMBED" = "true" ] && EMBED_ENHANCE_ARGS="--use_pixel_embed"
+# Build the eval command with arrays so optional args cannot break shell parsing.
+EVAL_CMD=(
+    torchrun
+    --nproc_per_node="${NUM_GPUS}"
+    --master_port="${MASTER_PORT}"
+    -m swiftvln.models.overlapvln.eval
+    --model_path "${MODEL_PATH}"
+    --env-type "${ENV_TYPE}"
+    --habitat_config_path "${VLN_DIR}/${CONFIG_PATH}"
+    --satnav-config "${VLN_DIR}/${CONFIG_PATH}"
+    --eval_split "${EVAL_SPLIT}"
+    --num_frames "${NUM_FRAMES}"
+    --num_history "${NUM_HISTORY}"
+    --num_future_steps "${NUM_FUTURE_STEPS}"
+    --num_overlap "${NUM_OVERLAP}"
+    --system_prompt_setting "${SYSTEM_PROMPT_SETTING}"
+    --memory_method "${MEMORY_METHOD}"
+    --map_global_side_m "${MAP_GLOBAL_SIDE_M}"
+    --map_local_side_m "${MAP_LOCAL_SIDE_M}"
+    --map_render_px "${MAP_RENDER_PX}"
+    --map_mask_method "${MAP_MASK_METHOD}"
+)
+
+if [ "$USE_PIXEL_EMBED" = "true" ]; then
+    EVAL_CMD+=(--use_pixel_embed)
+fi
 if [ "$USE_POSE_EMBED" = "true" ]; then
-    EMBED_ENHANCE_ARGS="${EMBED_ENHANCE_ARGS} --use_pose_embed --pose_fusion_method ${POSE_FUSION_METHOD} --pose_norm_scale ${POSE_NORM_SCALE}"
+    EVAL_CMD+=(--use_pose_embed --pose_fusion_method "${POSE_FUSION_METHOD}" --pose_norm_scale "${POSE_NORM_SCALE}")
 fi
 if [ "$USE_UAV_ADAPTER" = "true" ]; then
-    EMBED_ENHANCE_ARGS="${EMBED_ENHANCE_ARGS} --use_uav_adapter --uav_adapter_type ${UAV_ADAPTER_TYPE} --uav_adapter_apply_scope ${UAV_ADAPTER_APPLY_SCOPE}"
+    EVAL_CMD+=(--use_uav_adapter --uav_adapter_type "${UAV_ADAPTER_TYPE}" --uav_adapter_apply_scope "${UAV_ADAPTER_APPLY_SCOPE}")
     if [ -n "$UAV_ADAPTER_PATH" ]; then
-        EMBED_ENHANCE_ARGS="${EMBED_ENHANCE_ARGS} --uav_adapter_path ${UAV_ADAPTER_PATH}"
+        EVAL_CMD+=(--uav_adapter_path "${UAV_ADAPTER_PATH}")
     fi
 fi
 
-torchrun \
-    --nproc_per_node="${NUM_GPUS}" \
-    --master_port="${MASTER_PORT}" \
-    -m swiftvln.models.overlapvln.eval \
-    --model_path "${MODEL_PATH}" \
-    --env-type "${ENV_TYPE}" \
-    --habitat_config_path "${VLN_DIR}/${CONFIG_PATH}" \
-    --satnav-config "${VLN_DIR}/${CONFIG_PATH}" \
-    --eval_split "${EVAL_SPLIT}" \
-    --num_frames "${NUM_FRAMES}" \
-    --num_history "${NUM_HISTORY}" \
-    --num_future_steps "${NUM_FUTURE_STEPS}" \
-    --num_overlap "${NUM_OVERLAP}" \
-    --system_prompt_setting "${SYSTEM_PROMPT_SETTING}" \
-    ${EMBED_ENHANCE_ARGS} \
-    ${HISTORY_PROCESSOR_ARGS} \
-    --output_dir "${OUTPUT_DIR}" \
-    --distributed \
-    ${VIDEO_ARGS} \
-    ${MAX_EPISODES_ARG} \
-    ${DEBUG_TIMING_ARG}
+if [ -n "${HISTORY_PROCESSOR_ARGS}" ]; then
+    read -r -a _HISTORY_ARGS <<< "${HISTORY_PROCESSOR_ARGS}"
+    EVAL_CMD+=("${_HISTORY_ARGS[@]}")
+fi
+
+EVAL_CMD+=(--output_dir "${OUTPUT_DIR}" --distributed)
+
+if [ -n "${VIDEO_ARGS}" ]; then
+    read -r -a _VIDEO_ARGS <<< "${VIDEO_ARGS}"
+    EVAL_CMD+=("${_VIDEO_ARGS[@]}")
+fi
+if [ -n "${MAX_EPISODES_ARG}" ]; then
+    read -r -a _MAX_EPISODES_ARGS <<< "${MAX_EPISODES_ARG}"
+    EVAL_CMD+=("${_MAX_EPISODES_ARGS[@]}")
+fi
+if [ -n "${DEBUG_TIMING_ARG}" ]; then
+    read -r -a _DEBUG_TIMING_ARGS <<< "${DEBUG_TIMING_ARG}"
+    EVAL_CMD+=("${_DEBUG_TIMING_ARGS[@]}")
+fi
+
+"${EVAL_CMD[@]}"
 
 echo "=============================================="
 echo "OverlapVLN Evaluation Complete!"

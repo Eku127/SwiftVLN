@@ -37,6 +37,8 @@ models/
 baseline/streamvln/model/
 baseline/uninavid/model/
 baseline/navila/model/
+baseline/openfly/model/*
+!baseline/openfly/model/.gitkeep
 
 # Ignore baseline training outputs and logs
 baseline/*/output/
