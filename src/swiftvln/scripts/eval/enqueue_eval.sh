@@ -45,15 +45,7 @@ fi
 
 parse_model_arch() {
     local name="$1"
-    if [[ "$name" == streamvln-* ]]; then
-        echo "streamvln"
-    elif [[ "$name" == monovln-* ]]; then
-        echo "monovln"
-    elif [[ "$name" == compressvln-* ]]; then
-        echo "compressvln"
-    elif [[ "$name" == uninavid-* ]]; then
-        echo "uninavid"
-    elif [[ "$name" == overlapvln-* ]]; then
+    if [[ "$name" == overlapvln-* ]]; then
         echo "overlapvln"
     else
         echo ""
