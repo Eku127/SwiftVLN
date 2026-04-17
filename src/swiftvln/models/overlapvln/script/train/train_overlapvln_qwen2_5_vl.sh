@@ -153,7 +153,7 @@ MODEL_SIZE=${MODEL_SIZE:-"3b"}
 # VLN Data Configuration
 # ============================================================================
 # Environment type: "habitat" (forward=0.25m) or "satnav" (forward=10m)
-VLN_ENV_TYPE="habitat"
+VLN_ENV_TYPE="satnav"
 
 # Define data paths for each environment
 HABITAT_DATA_PATHS=(
@@ -179,7 +179,7 @@ NUM_FRAMES=32
 NUM_HISTORY=8
 NUM_FUTURE_STEPS=4
 USE_RANDOM=false
-MAX_SAMPLES="600000"  # Max samples cap (0 = use all). If actual < this, uses all available.
+MAX_SAMPLES="16"  # Smoke test: minimal data to verify train/eval flow.
 
 # ============================================================================
 # Mixed Training: QA Dataset Configuration (Optional)
@@ -440,7 +440,7 @@ if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
 fi
 
 # Checkpoint Management
-SAVE_STEPS=1000
+SAVE_STEPS=1
 SAVE_TOTAL_LIMIT=1
 LOGGING_STEPS=10
 
@@ -456,13 +456,13 @@ fi
 # ============================================================================
 # SwanLab Configuration
 # ============================================================================
-USE_SWANLAB=true
+USE_SWANLAB=false
 SWANLAB_PROJECT="StreamVLN"
 SWANLAB_EXP_NAME="${EXP_NAME}"
 SWANLAB_MODE="cloud"
 
 # WXWork Notification
-USE_WXWORK_NOTIFICATION=true
+USE_WXWORK_NOTIFICATION=false
 SWANLAB_NOTIFICATION_METHOD="wxwork"
 SWANLAB_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d78d3128-7b16-4bf1-a6a7-403bf0915fe0"
 SWANLAB_SECRET=""
