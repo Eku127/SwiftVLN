@@ -19,6 +19,13 @@ from swiftvln.models.overlapvln.dataset import OverlapVLNDataset
 logger = get_logger()
 
 
+def _preview_text(text: str, limit: int = 260) -> str:
+    text = str(text).replace('\n', '\\n')
+    if len(text) <= limit:
+        return text
+    return text[:limit] + '...'
+
+
 class OverlapVLNSft(BaseVLNSft):
     """OverlapVLN SFT trainer with overlap context and mixed training."""
 
@@ -27,9 +34,30 @@ class OverlapVLNSft(BaseVLNSft):
     dataset_class = OverlapVLNDataset
     model_name = "OverlapVLN"
 
+    def _validate_memory_method(self):
+        memory_method = getattr(self.args, 'memory_method', 'history')
+        if memory_method != 'map':
+            return
+        if self.args.vln_env_type != 'satnav':
+            raise ValueError("OverlapVLN memory_method=map currently supports only satnav.")
+        if self.args.history_processor_type != 'per_frame':
+            raise ValueError("OverlapVLN memory_method=map currently requires history_processor_type=per_frame.")
+        if getattr(self.args, 'use_tome', False):
+            raise ValueError("OverlapVLN memory_method=map currently requires use_tome=false.")
+        # Map images are not real camera views, so none of the RGB-frame embed
+        # enhancements (pixel / pose / uav_adapter) apply. Reject them early so
+        # users do not silently combine conflicting settings.
+        if getattr(self.args, 'use_pixel_embed', False):
+            raise ValueError("OverlapVLN memory_method=map requires use_pixel_embed=false.")
+        if getattr(self.args, 'use_pose_embed', False):
+            raise ValueError("OverlapVLN memory_method=map requires use_pose_embed=false.")
+        if getattr(self.args, 'use_uav_adapter', False):
+            raise ValueError("OverlapVLN memory_method=map requires use_uav_adapter=false.")
+
     def _prepare_template(self):
         """Prepare template and set compression/history processor parameters."""
         super()._prepare_template()
+        self._validate_memory_method()
 
         # Critical: Update history_processor_type and recreate history_processor
         # because get_template() cannot pass custom parameters, so template uses defaults
@@ -49,6 +77,7 @@ class OverlapVLNSft(BaseVLNSft):
             # Log the configuration
             logger.info(f"[OverlapVLN] Configuring history processor:")
             logger.info(f"  - history_processor_type: {history_processor_type}")
+            logger.info(f"  - memory_method: {getattr(self.args, 'memory_method', 'history')}")
 
             # Recreate history_processor with correct parameters
             self.template.history_processor_type = history_processor_type
@@ -59,6 +88,11 @@ class OverlapVLNSft(BaseVLNSft):
             self.template.gtc_output_tokens = gtc_output_tokens
             self.template.gtc_temperature = gtc_temperature
             self.template.gtc_num_iterations = gtc_num_iterations
+            self.template.memory_method = getattr(self.args, 'memory_method', 'history')
+            self.template.map_global_side_m = getattr(self.args, 'map_global_side_m', 1000.0)
+            self.template.map_local_side_m = getattr(self.args, 'map_local_side_m', 400.0)
+            self.template.map_render_px = getattr(self.args, 'map_render_px', 384)
+            self.template.map_mask_method = getattr(self.args, 'map_mask_method', 'dilate20')
 
             self.template.history_processor = create_history_processor(
                 processor_type=history_processor_type,
@@ -205,10 +239,16 @@ class OverlapVLNSft(BaseVLNSft):
             "history_processor_type": self.args.history_processor_type,
             "log_base": self.args.log_base,
             "system_prompt_setting": self.args.system_prompt_setting,
+            "memory_method": self.args.memory_method,
+            "map_global_side_m": self.args.map_global_side_m,
+            "map_local_side_m": self.args.map_local_side_m,
+            "map_render_px": self.args.map_render_px,
+            "map_mask_method": self.args.map_mask_method,
         }
 
     def _log_dataset_created(self, dataset):
         super()._log_dataset_created(dataset)
+        self._log(f"memory_method={self.args.memory_method}")
         self._log(f"history_processor_type={self.args.history_processor_type}")
         if self.args.history_processor_type == 'per_frame':
             compress_method = "tome" if self.args.use_tome else "pool"
@@ -227,9 +267,17 @@ class OverlapVLNSft(BaseVLNSft):
             f"stride={self.args.num_frames - self.args.num_overlap}"
         )
         self._log(f"system_prompt_setting={self.args.system_prompt_setting}")
+        if self.args.memory_method == 'map':
+            self._log(
+                f"map: global={self.args.map_global_side_m}m, "
+                f"local={self.args.map_local_side_m}m, "
+                f"render={self.args.map_render_px}px, "
+                f"mask={self.args.map_mask_method}"
+            )
 
     def _log_dataset_summary(self, dataset):
         self._log(f"system_prompt_setting: {dataset.system_prompt_setting}")
+        self._log(f"memory_method: {dataset.memory_method}")
         if dataset.system_prompt_setting == "initial":
             self._log("[INITIAL] Initial view ENABLED: first frame (uncompressed) in system prompt")
 
@@ -237,13 +285,31 @@ class OverlapVLNSft(BaseVLNSft):
         super()._log_sample_details(sample, dataset)
         if sample.get('messages'):
             first_msg = sample['messages'][0]
-            has_history = '<image>' in first_msg.get('content', '')
+            sys_content = first_msg.get('content', '')
+            has_history = (
+                '<history_memory>' in sys_content
+                or 'historical observations' in sys_content
+                or 'explored map memories' in sys_content
+            )
             self._log(f"Has history images: {has_history}")
             self._log(f"num_history_images: {sample.get('num_history_images', 0)}")
             num_initial = sample.get('num_initial_images', 0)
             self._log(f"num_initial_images: {num_initial}")
+            self._log(f"memory_method: {sample.get('memory_method', 'history')}")
+            self._log(f"system_prompt preview: {_preview_text(sys_content)}")
+            self._log(
+                f"system_prompt tags: <history_memory>={sys_content.count('<history_memory>')}, "
+                f"<image>={sys_content.count('<image>')}, map_phrase={'explored map memories' in sys_content}"
+            )
+            self._log(f"images total: {len(sample.get('images', []))}")
+            self._log(f"frame_poses total: {len(sample.get('frame_poses', []))}")
+            user_msgs = [m for m in sample['messages'] if m.get('role') == 'user']
+            assistant_msgs = [m for m in sample['messages'] if m.get('role') == 'assistant']
+            if user_msgs:
+                self._log(f"first user turn: {_preview_text(user_msgs[0].get('content', ''), limit=160)}")
+            if assistant_msgs:
+                self._log(f"first assistant turn: {_preview_text(assistant_msgs[0].get('content', ''), limit=160)}")
             if num_initial > 0:
-                sys_content = first_msg.get('content', '')
                 has_initial_tag = 'initial observation' in sys_content
                 self._log(f"[INITIAL] System prompt contains 'initial observation': {has_initial_tag}")
                 image_count_in_sys = sys_content.count('<image>')

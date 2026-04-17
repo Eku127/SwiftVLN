@@ -27,6 +27,29 @@ from swiftvln.common.constants import (
 )
 from swiftvln.models.streamvln.dataset import StreamVLNDataset
 from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
+from swiftvln.models.overlapvln.map_memory import (
+    SatNavMapMemoryBuilder,
+    SatNavTrajectoryMetadataResolver,
+)
+
+
+def _debug_enabled() -> bool:
+    return os.environ.get('OVERLAPVLN_DEBUG', '') != ''
+
+
+def _debug_rank() -> int:
+    raw = os.environ.get('RANK', os.environ.get('LOCAL_RANK', '0'))
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
+
+
+def _preview_text(text: str, limit: int = 220) -> str:
+    text = str(text).replace('\n', '\\n')
+    if len(text) <= limit:
+        return text
+    return text[:limit] + '...'
 
 
 class OverlapVLNDataset(StreamVLNDataset):
@@ -58,6 +81,11 @@ class OverlapVLNDataset(StreamVLNDataset):
         history_processor_type: str = "per_frame",  # History sampling strategy
         log_base: float = 1.0,  # Sampling distribution (1.0=uniform, >1.0=logarithmic)
         system_prompt_setting: str = "vanilla",  # System prompt strategy: "vanilla" or "initial"
+        memory_method: str = "history",
+        map_global_side_m: float = 1000.0,
+        map_local_side_m: float = 400.0,
+        map_render_px: int = 384,
+        map_mask_method: str = "dilate20",
     ):
         # Store num_overlap before calling super().__init__ 
         # because we need to override the data indexing logic
@@ -78,6 +106,15 @@ class OverlapVLNDataset(StreamVLNDataset):
         self.history_processor_type = history_processor_type.lower()
         self.log_base = log_base  # Sampling distribution
         self.system_prompt_setting = system_prompt_setting.lower()  # "vanilla" or "initial"
+        self.memory_method = memory_method.lower()
+        self.map_global_side_m = float(map_global_side_m)
+        self.map_local_side_m = float(map_local_side_m)
+        self.map_render_px = int(map_render_px)
+        self.map_mask_method = str(map_mask_method).lower()
+        self.map_builder: Optional[SatNavMapMemoryBuilder] = None
+        self._map_scenes_dir: Optional[str] = None
+        self._debug_map_sample_count = 0
+        self._debug_prompt_count = 0
         
         # Set forward distance based on environment type
         if self.env_type == "satnav":
@@ -90,6 +127,13 @@ class OverlapVLNDataset(StreamVLNDataset):
             raise ValueError(f"num_overlap must be >= 0, got {self.num_overlap}")
         if self.num_overlap >= self.num_frames:
             raise ValueError(f"num_overlap ({self.num_overlap}) must be < num_frames ({self.num_frames})")
+        if self.memory_method not in ("history", "map"):
+            raise ValueError(f"memory_method must be 'history' or 'map', got {self.memory_method}")
+        if self.memory_method == "map":
+            if self.env_type != "satnav":
+                raise ValueError("memory_method=map currently supports only satnav.")
+            if self.history_processor_type != "per_frame":
+                raise ValueError("memory_method=map currently requires history_processor_type=per_frame.")
         
         # Calculate stride
         self.stride = self.num_frames - self.num_overlap
@@ -102,10 +146,36 @@ class OverlapVLNDataset(StreamVLNDataset):
             if not os.path.exists(anno_path):
                 print(f"Warning: {anno_path} not found, skipping...")
                 continue
+
+            map_resolver = None
+            if self.memory_method == "map":
+                map_resolver = SatNavTrajectoryMetadataResolver(vf)
+                scenes_dir = os.path.abspath(map_resolver.scenes_dir)
+                if self.map_builder is None:
+                    self.map_builder = SatNavMapMemoryBuilder(
+                        scenes_dir=scenes_dir,
+                        global_side_m=self.map_global_side_m,
+                        local_side_m=self.map_local_side_m,
+                        render_px=self.map_render_px,
+                        mask_method=self.map_mask_method,
+                    )
+                    self._map_scenes_dir = scenes_dir
+                elif scenes_dir != self._map_scenes_dir:
+                    raise ValueError(
+                        "memory_method=map expects a shared scenes dir across data roots, "
+                        f"got {self._map_scenes_dir} vs {scenes_dir}"
+                    )
+
             with open(anno_path, 'r') as f:
                 anno_json = json.load(f)
             for tdata in anno_json:
                 tdata['video'] = os.path.join(vf, tdata['video'])
+                if map_resolver is not None:
+                    map_meta = map_resolver.resolve(tdata)
+                    tdata['_map_scene_id'] = map_meta.scene_id
+                    tdata['_map_episode_id'] = map_meta.episode_id
+                    tdata['_map_start_position'] = map_meta.start_position
+                    tdata['_map_start_rotation'] = map_meta.start_rotation
             self.nav_data += anno_json
             print(f"Loaded {len(anno_json)} episodes from {vf}")
         
@@ -215,8 +285,16 @@ class OverlapVLNDataset(StreamVLNDataset):
         print(f"OverlapVLNDataset initialized: {len(self.data_list)} samples from {len(self.nav_data)} episodes")
         print(f"  env_type={self.env_type}, forward_distance={self.forward_distance}")
         print(f"  system_prompt_setting={self.system_prompt_setting}")
+        print(f"  memory_method={self.memory_method}")
         if self.system_prompt_setting == "initial":
             print(f"  [INITIAL] Initial view ENABLED: first frame (uncompressed) will be added to system prompt")
+        if self.memory_method == "map":
+            print(
+                f"  map: global={self.map_global_side_m:.0f}m, local={self.map_local_side_m:.0f}m, "
+                f"render={self.map_render_px}px, mask={self.map_mask_method}"
+            )
+            if os.environ.get('OVERLAPVLN_DEBUG'):
+                print(f"  [MAP DEBUG] scenes_dir={self._map_scenes_dir}")
         if self.history_processor_type == 'per_frame':
             print(f"  history: per_frame (h={self.num_history}, log_base={self.log_base})")
             # Debug: show sampling distribution
@@ -342,6 +420,45 @@ class OverlapVLNDataset(StreamVLNDataset):
         
         return history_step_ids
 
+    def _build_map_memory_images(
+        self,
+        data: Dict[str, Any],
+        raw_actions: List[int],
+        window_start: int,
+    ) -> List[Any]:
+        if self.map_builder is None:
+            raise RuntimeError("memory_method=map requested but map_builder is not initialized.")
+
+        scene_id = data.get('_map_scene_id')
+        start_position = data.get('_map_start_position')
+        start_rotation = data.get('_map_start_rotation')
+        if scene_id is None or start_position is None or start_rotation is None:
+            raise KeyError("SatNav map metadata missing from annotation record.")
+
+        step_size = 10.0 if self.env_type == 'satnav' else 0.25
+        turn_angle = 15.0 if self.env_type == 'satnav' else 30.0
+        map_images = self.map_builder.render_from_actions(
+            scene_id=scene_id,
+            start_position=start_position,
+            start_rotation=float(start_rotation),
+            actions=raw_actions,
+            window_start=window_start,
+            step_size=step_size,
+            turn_angle=turn_angle,
+        )
+        if _debug_enabled() and self._debug_map_sample_count < 6:
+            image_sizes = [img.size for img in map_images]
+            print(
+                f"[MAP DEBUG][dataset] sample[{self._debug_map_sample_count}] "
+                f"rank={_debug_rank()} "
+                f"scene={scene_id} episode={data.get('_map_episode_id', 'unknown')} "
+                f"window_start={window_start} actions={len(raw_actions)} "
+                f"history_images={len(map_images)} sizes={image_sizes} "
+                f"global_center_mode={getattr(self.map_builder, 'global_center_mode', 'unknown')}"
+            )
+            self._debug_map_sample_count += 1
+        return map_images
+
     def __getitem__(self, i) -> Dict[str, Any]:
         """
         Get a training sample with overlap-aware loss masking.
@@ -433,9 +550,13 @@ class OverlapVLNDataset(StreamVLNDataset):
         
         # Sample historical frames if not first segment
         history_frame_paths = []
+        history_images = []
         history_step_ids = np.array([], dtype=np.int32)
         has_history = False
-        if time_ids[0] != 0:
+        if self.memory_method == "map":
+            history_images = self._build_map_memory_images(data, raw_actions, start_idx_abs)
+            has_history = len(history_images) > 0
+        elif time_ids[0] != 0:
             current_start_abs = min(time_ids[0], num_video_frames)
             
             # Different sampling strategies based on history_processor_type
@@ -456,20 +577,23 @@ class OverlapVLNDataset(StreamVLNDataset):
         # Load images as PIL Images
         # Order: history frames, initial frame, current frames
         from PIL import Image
-        all_frame_paths = history_frame_paths + initial_frame_paths + sample_frame_paths
-        all_frame_indices = list(history_step_ids.tolist())
+        images = list(history_images)
+        frame_poses: List[Optional[List[float]]] = [None] * len(history_images)
+
+        history_files_to_load: List[str] = []
+        if self.memory_method != "map":
+            all_history_indices = list(history_step_ids.tolist())
+            frame_poses.extend(frame_poses_all[idx].tolist() for idx in all_history_indices)
+            history_files_to_load = history_frame_paths
+
+        image_files_to_load = history_files_to_load + initial_frame_paths + sample_frame_paths
+        non_history_indices: List[int] = []
         if num_initial_images > 0:
-            all_frame_indices.append(0)
-        all_frame_indices.extend(sample_step_ids.tolist())
+            non_history_indices.append(0)
+        non_history_indices.extend(sample_step_ids.tolist())
+        frame_poses.extend(frame_poses_all[idx].tolist() for idx in non_history_indices)
 
-        frame_poses = [frame_poses_all[idx].tolist() for idx in all_frame_indices]
-        if len(frame_poses) < len(all_frame_paths):
-            frame_poses.extend([[0.0, 0.0, 0.0, 1.0]] * (len(all_frame_paths) - len(frame_poses)))
-        elif len(frame_poses) > len(all_frame_paths):
-            frame_poses = frame_poses[:len(all_frame_paths)]
-
-        images = []
-        for image_file in all_frame_paths:
+        for image_file in image_files_to_load:
             try:
                 image = Image.open(image_file).convert('RGB')
                 images.append(image)
@@ -500,12 +624,17 @@ class OverlapVLNDataset(StreamVLNDataset):
         # Add history description with unified memory token.
         # If num_history_images == 0 (e.g. per_frame + NUM_HISTORY=0), the prompt
         # stays memory-free and no <history_memory> block is inserted.
-        num_history_images = len(history_frame_paths)
+        num_history_images = len(history_images) if self.memory_method == "map" else len(history_frame_paths)
         if has_history:
-            # Use unified <history_memory> token in vision wrapper
-            # Template will expand this to the correct number of tokens based on compression
-            system_prompt += f" These are your historical observations: <|vision_start|>{HISTORY_MEMORY_TOKEN}<|vision_end|>."
-        
+            if self.memory_method == "map":
+                system_prompt += (
+                    f" These are your explored map memories: "
+                    f"<|vision_start|>{HISTORY_MEMORY_TOKEN}<|vision_end|>."
+                )
+            else:
+                # Use unified <history_memory> token in vision wrapper
+                # Template will expand this to the correct number of tokens based on compression
+                system_prompt += f" These are your historical observations: <|vision_start|>{HISTORY_MEMORY_TOKEN}<|vision_end|>."
         messages = [{'role': 'system', 'content': system_prompt}]
         
         # Calculate number of turns to mask
@@ -551,15 +680,19 @@ class OverlapVLNDataset(StreamVLNDataset):
             'num_history_images': num_history_images,  # Metadata for template
             'num_initial_images': num_initial_images,  # Metadata for initial prompt
             'frame_poses': frame_poses,  # Per-image metadata, aligned with image order
+            'memory_method': self.memory_method,
         }
         
         # Debug: log initial strategy details for first few samples
-        if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_initial_count < 3:
-            rank = int(os.environ.get('RANK', os.environ.get('LOCAL_RANK', 0)))
+        if _debug_enabled() and self._debug_initial_count < 3:
+            rank = _debug_rank()
             print(f"\n[INITIAL DEBUG] Rank={rank} Sample[{i}] (ep={ep_id}, ins={ins_id}, start={start_idx}):")
             print(f"  system_prompt_setting={self.system_prompt_setting}")
+            print(f"  memory_method={self.memory_method}")
             print(f"  num_history_images={num_history_images}, num_initial_images={num_initial_images}, "
                   f"num_current_images={num_current_images}")
+            if self.memory_method == "map":
+                print(f"  [MAP] history image sizes: {[img.size for img in history_images]}")
             print(f"  total_images={len(images)} "
                   f"(expected: {num_history_images} + {num_initial_images} + {num_current_images} = "
                   f"{num_history_images + num_initial_images + num_current_images})")
@@ -574,7 +707,37 @@ class OverlapVLNDataset(StreamVLNDataset):
                 print(f"  [VANILLA] No initial frame (vanilla mode)")
             # Show system prompt (truncated)
             sys_content = messages[0].get('content', '')
-            print(f"  system_prompt (first 200 chars): {sys_content[:200]}...")
+            print(f"  system_prompt: {_preview_text(sys_content, limit=240)}")
             self._debug_initial_count += 1
-        
+
+        if _debug_enabled() and self._debug_prompt_count < 4:
+            rank = _debug_rank()
+            sys_content = messages[0].get('content', '')
+            user_turns = [m for m in messages if m.get('role') == 'user']
+            assistant_turns = [m for m in messages if m.get('role') == 'assistant']
+            none_pose_count = sum(1 for pose in frame_poses if pose is None)
+            print(
+                f"[MAP DEBUG][dataset.prompt] sample[{self._debug_prompt_count}] "
+                f"rank={rank} ep={ep_id} ins={ins_id} start={start_idx} "
+                f"memory_method={self.memory_method} images={len(images)} "
+                f"history={num_history_images} initial={num_initial_images} current={num_current_images} "
+                f"frame_poses={len(frame_poses)} none_poses={none_pose_count}"
+            )
+            print(
+                f"[MAP DEBUG][dataset.prompt] system tags: "
+                f"<history_memory>={sys_content.count(HISTORY_MEMORY_TOKEN)} "
+                f"<image>={sys_content.count(DEFAULT_IMAGE_TOKEN)} "
+                f"map_phrase={'explored map memories' in sys_content}"
+            )
+            print(f"[MAP DEBUG][dataset.prompt] system_prompt={_preview_text(sys_content, limit=320)}")
+            if user_turns:
+                print(
+                    f"[MAP DEBUG][dataset.prompt] first_user={_preview_text(user_turns[0].get('content', ''), limit=160)}"
+                )
+            if assistant_turns:
+                print(
+                    f"[MAP DEBUG][dataset.prompt] first_assistant={_preview_text(assistant_turns[0].get('content', ''), limit=160)}"
+                )
+            self._debug_prompt_count += 1
+
         return result

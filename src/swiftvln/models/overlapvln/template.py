@@ -42,6 +42,42 @@ DEBUG_PROCESSOR_TYPE = False
 DEBUG_INITIAL = os.environ.get('OVERLAPVLN_DEBUG', '') != ''
 
 
+def _debug_rank() -> int:
+    raw = os.environ.get('RANK', os.environ.get('LOCAL_RANK', '0'))
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
+
+
+def _preview_list(values: List[int], limit: int = 8) -> str:
+    if len(values) <= limit:
+        return str(values)
+    return str(values[:limit] + ['...'])
+
+
+def _tensor_debug_stats(tensor: Optional[torch.Tensor], sample_limit: int = 4) -> str:
+    if tensor is None:
+        return "none"
+    if not isinstance(tensor, torch.Tensor):
+        return f"type={type(tensor).__name__}"
+    if tensor.numel() == 0:
+        return f"shape={tuple(tensor.shape)} empty"
+    with torch.no_grad():
+        flat = tensor.detach().float().cpu().reshape(-1)
+        mean = float(flat.mean().item())
+        std = float(flat.std(unbiased=False).item()) if flat.numel() > 1 else 0.0
+        checksum = float(flat.sum().item())
+        abs_checksum = float(flat.abs().sum().item())
+        l2 = float(torch.linalg.vector_norm(flat).item())
+        sample = ", ".join(f"{v:.4f}" for v in flat[:sample_limit].tolist())
+    return (
+        f"shape={tuple(tensor.shape)} mean={mean:.6f} std={std:.6f} "
+        f"sum={checksum:.6f} abs_sum={abs_checksum:.6f} l2={l2:.6f} "
+        f"sample=[{sample}]"
+    )
+
+
 class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
     """
     OverlapVLN Template with pluggable history processing.
@@ -293,6 +329,31 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
                     num_current = 0
                 elif num_history + num_current > num_images:
                     num_current = num_images - num_history
+
+            if DEBUG_INITIAL and getattr(self, 'memory_method', 'history') == 'map':
+                if not hasattr(self, '_debug_map_tokenize_count'):
+                    self._debug_map_tokenize_count = 0
+                if self._debug_map_tokenize_count < 6:
+                    history_positions_before = list(history_memory_idx_list[:8])
+                    current_positions_before = list(current_idx_list[:8])
+                    pose_entries = len(frame_poses) if isinstance(frame_poses, list) else 0
+                    none_pose_entries = (
+                        sum(1 for pose in frame_poses if pose is None)
+                        if isinstance(frame_poses, list)
+                        else 0
+                    )
+                    print(
+                        f"[MAP DEBUG][template._encode.pre] Rank={_debug_rank()} "
+                        f"input_len={len(input_ids)} num_images={num_images} "
+                        f"num_history_images={num_history} num_initial_images={num_initial_images} "
+                        f"num_current_placeholders={num_current} "
+                        f"history_placeholder_count={len(history_memory_idx_list)} "
+                        f"current_placeholder_count={len(current_idx_list)} "
+                        f"frame_poses={pose_entries} none_poses={none_pose_entries} "
+                        f"history_pos={_preview_list(history_positions_before)} "
+                        f"current_pos={_preview_list(current_positions_before)}"
+                    )
+                    self._debug_map_tokenize_count += 1
             
             # Debug: log initial image in _encode
             if DEBUG_INITIAL and num_initial_images > 0:
@@ -317,7 +378,6 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
             encoded['_current_image_count'] = num_current
             encoded['_num_initial_images'] = num_initial_images
             encoded['_frame_poses'] = frame_poses
-            
             # Process unified history memory token
             if history_memory_idx_list and num_history > 0:
                 # Calculate total tokens using HistoryProcessor
@@ -354,6 +414,18 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
                 
                 # Store total for _post_encode
                 encoded['_total_history_tokens'] = total_history_tokens
+
+                if DEBUG_INITIAL and getattr(self, 'memory_method', 'history') == 'map':
+                    if not hasattr(self, '_debug_map_encode_count'):
+                        self._debug_map_encode_count = 0
+                    if self._debug_map_encode_count < 5:
+                        rank = int(os.environ.get('RANK', os.environ.get('LOCAL_RANK', 0)))
+                        print(
+                            f"[MAP DEBUG][template._encode] Rank={rank} "
+                            f"num_history_images={num_history} frame_infos={frame_infos} "
+                            f"unified_history_tokens={total_history_tokens}"
+                        )
+                        self._debug_map_encode_count += 1
                 
                 # Only process the first <history_memory> token (should be only one)
                 history_to_process = history_memory_idx_list[:1]
@@ -383,6 +455,21 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
                 input_ids, labels, loss_scale = self._extend_tokens(
                     input_ids, labels, loss_scale, current_to_process, _get_current_tokens
                 )
+
+            if DEBUG_INITIAL and getattr(self, 'memory_method', 'history') == 'map':
+                if not hasattr(self, '_debug_map_expand_count'):
+                    self._debug_map_expand_count = 0
+                if self._debug_map_expand_count < 6:
+                    history_token_count = sum(1 for token in input_ids if token == self.history_memory_token_id)
+                    current_token_count = sum(1 for token in input_ids if token == self.current_image_token_id)
+                    print(
+                        f"[MAP DEBUG][template._encode.post] Rank={_debug_rank()} "
+                        f"expanded_input_len={len(input_ids)} "
+                        f"history_tokens={history_token_count} "
+                        f"current_tokens={current_token_count} "
+                        f"stored_total_history_tokens={encoded.get('_total_history_tokens', 0)}"
+                    )
+                    self._debug_map_expand_count += 1
         
         # Process videos (unchanged from parent)
         if videos:
@@ -482,6 +569,14 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
                 return False
             return all(isinstance(v, (int, float)) for v in item[:4])
 
+        def _is_pose_entry(item):
+            return item is None or _is_pose_vec(item)
+
+        def _is_pose_sample(item):
+            if not isinstance(item, list):
+                return False
+            return all(_is_pose_entry(entry) for entry in item)
+
         def _to_pose_samples(value):
             """
             Convert collated/raw pose metadata to per-sample list.
@@ -501,8 +596,8 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
             if len(value) == 0:
                 return []
 
-            # Single-sample direct format: [pose_vec, pose_vec, ...]
-            if _is_pose_vec(value[0]):
+            # Single-sample direct format: [pose_vec|None, pose_vec|None, ...]
+            if _is_pose_sample(value):
                 return [value]
 
             # Collated format: [[pose_vec, ...], [pose_vec, ...], ...]
@@ -518,15 +613,16 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
                         samples.append([])
                         continue
                 if isinstance(item, list):
-                    if len(item) > 0 and _is_pose_vec(item[0]):
+                    if _is_pose_sample(item):
                         samples.append(item)
+                    elif _is_pose_vec(item):
+                        samples.append([item])
                     else:
-                        # Flatten one level when needed
-                        flattened = []
+                        cleaned = []
                         for sub in item:
-                            if _is_pose_vec(sub):
-                                flattened.append(sub)
-                        samples.append(flattened)
+                            if _is_pose_entry(sub):
+                                cleaned.append(sub)
+                        samples.append(cleaned)
                 else:
                     samples.append([])
             return samples
@@ -784,6 +880,7 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
             embeds_count = history_embeds.shape[0]
             if DEBUG_COMPRESSION:
                 print(f"\n  [masked_scatter] History: mask_true={mask_true_count}, embeds={embeds_count}")
+            injection_matched_before_fix = (mask_true_count == embeds_count)
             if mask_true_count != embeds_count:
                 print(f"[OverlapVLN] CRITICAL: History token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
@@ -796,6 +893,34 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
                 else:
                     history_embeds = history_embeds[:mask_true_count]
                     print(f"  -> Truncated history_embeds to {history_embeds.shape[0]}")
+
+            if DEBUG_INITIAL and getattr(self, 'memory_method', 'history') == 'map':
+                if not hasattr(self, '_debug_map_post_encode_count'):
+                    self._debug_map_post_encode_count = 0
+                if self._debug_map_post_encode_count < 5:
+                    rank = _debug_rank()
+                    per_sample_tokens = [embed.shape[0] for embed in history_embeds_list]
+                    per_sample_mask = [
+                        int((input_ids[sample_idx] == self.history_memory_token_id).sum().item())
+                        for sample_idx in range(input_ids.shape[0])
+                    ]
+                    per_sample_current_mask = [
+                        int((input_ids[sample_idx] == self.current_image_token_id).sum().item())
+                        for sample_idx in range(input_ids.shape[0])
+                    ]
+                    print(
+                        f"[MAP DEBUG][template._post_encode] Rank={rank} "
+                        f"history_counts={history_counts} per_sample_tokens={per_sample_tokens} "
+                        f"per_sample_history_mask={per_sample_mask} "
+                        f"per_sample_current_mask={per_sample_current_mask} "
+                        f"mask_true={mask_true_count} embeds={embeds_count} "
+                        f"matched_before_fix={injection_matched_before_fix}"
+                    )
+                    print(
+                        f"[MAP DEBUG][template._post_encode] "
+                        f"history_embed_stats={_tensor_debug_stats(history_embeds)}"
+                    )
+                    self._debug_map_post_encode_count += 1
             
             inputs_embeds = inputs_embeds.masked_scatter(history_mask, history_embeds)
         

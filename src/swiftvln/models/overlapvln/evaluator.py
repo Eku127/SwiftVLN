@@ -57,6 +57,7 @@ try:
         PerFrameCompressor,
     )
     from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
+    from swiftvln.models.overlapvln.map_memory import SatNavMapMemoryBuilder
 except ImportError:
     from ..common import (
         BaseVLNEvaluator,
@@ -77,6 +78,49 @@ except ImportError:
         PerFrameCompressor,
     )
     from ..common.embedding_enhancement import reconstruct_pose_from_actions
+    from .map_memory import SatNavMapMemoryBuilder
+
+
+def _debug_enabled() -> bool:
+    return os.environ.get('OVERLAPVLN_DEBUG', '') != ''
+
+
+def _debug_rank() -> int:
+    raw = os.environ.get('RANK', os.environ.get('LOCAL_RANK', '0'))
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
+
+
+def _preview_text(text: str, limit: int = 260) -> str:
+    text = str(text).replace('\n', '\\n')
+    if len(text) <= limit:
+        return text
+    return text[:limit] + '...'
+
+
+def _tensor_debug_stats(tensor: Optional[torch.Tensor], sample_limit: int = 4) -> str:
+    if tensor is None:
+        return "none"
+    if not isinstance(tensor, torch.Tensor):
+        return f"type={type(tensor).__name__}"
+    if tensor.numel() == 0:
+        return f"shape={tuple(tensor.shape)} empty"
+    with torch.no_grad():
+        flat = tensor.detach().float().cpu().reshape(-1)
+        mean = float(flat.mean().item())
+        std = float(flat.std(unbiased=False).item()) if flat.numel() > 1 else 0.0
+        checksum = float(flat.sum().item())
+        abs_checksum = float(flat.abs().sum().item())
+        l2 = float(torch.linalg.vector_norm(flat).item())
+        sample = ", ".join(f"{v:.4f}" for v in flat[:sample_limit].tolist())
+    return (
+        f"shape={tuple(tensor.shape)} mean={mean:.6f} std={std:.6f} "
+        f"sum={checksum:.6f} abs_sum={abs_checksum:.6f} l2={l2:.6f} "
+        f"sample=[{sample}]"
+    )
+
 
 @dataclass
 class OverlapContext:
@@ -177,7 +221,41 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         # System prompt setting
         # ==========================================================================
         self.system_prompt_setting = getattr(self.args, 'system_prompt_setting', 'vanilla').lower()
-        
+        self.memory_method = getattr(self.args, 'memory_method', 'history').lower()
+        self.map_global_side_m = float(getattr(self.args, 'map_global_side_m', 1000.0))
+        self.map_local_side_m = float(getattr(self.args, 'map_local_side_m', 400.0))
+        self.map_render_px = int(getattr(self.args, 'map_render_px', 384))
+        self.map_mask_method = str(getattr(self.args, 'map_mask_method', 'dilate20')).lower()
+        self.map_builder: Optional[SatNavMapMemoryBuilder] = None
+        if self.memory_method not in ('history', 'map'):
+            raise ValueError(f"Unsupported memory_method: {self.memory_method}")
+        if self.memory_method == 'map':
+            if self.env_type != 'satnav':
+                raise ValueError("OverlapVLN memory_method=map currently supports only satnav.")
+            if self.history_processor_type != 'per_frame':
+                raise ValueError("OverlapVLN memory_method=map currently requires history_processor_type=per_frame.")
+            if self.use_tome:
+                raise ValueError("OverlapVLN memory_method=map currently requires use_tome=false.")
+            # Map images are synthesized top-down views, not real camera frames,
+            # so pixel / pose / uav_adapter embed enhancements are not meaningful
+            # and must stay disabled to match the training-time constraint.
+            if getattr(self.args, 'use_pixel_embed', False):
+                raise ValueError("OverlapVLN memory_method=map requires use_pixel_embed=false.")
+            if getattr(self.args, 'use_pose_embed', False):
+                raise ValueError("OverlapVLN memory_method=map requires use_pose_embed=false.")
+            if getattr(self.args, 'use_uav_adapter', False):
+                raise ValueError("OverlapVLN memory_method=map requires use_uav_adapter=false.")
+            self.map_builder = SatNavMapMemoryBuilder(
+                scenes_dir=self.config.DATASET.SCENES_DIR,
+                global_side_m=self.map_global_side_m,
+                local_side_m=self.map_local_side_m,
+                render_px=self.map_render_px,
+                mask_method=self.map_mask_method,
+                hfov=float(self.config.SIMULATOR.RGB_SENSOR.HFOV),
+                sensor_width=int(self.config.SIMULATOR.RGB_SENSOR.WIDTH),
+                sensor_height=int(self.config.SIMULATOR.RGB_SENSOR.HEIGHT),
+            )
+
         # ==========================================================================
         # Prompt templates (must match dataset.py)
         # ==========================================================================
@@ -218,11 +296,22 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         print(f"  System Prompt: {self.system_prompt_setting}")
         if self.system_prompt_setting == "initial":
             print(f"    [INITIAL] Initial view ENABLED: first frame (uncompressed) in system prompt")
+        print(f"  Memory Method: {self.memory_method}")
+        if self.memory_method == 'map':
+            print(
+                f"    map: global={self.map_global_side_m:.0f}m, "
+                f"local={self.map_local_side_m:.0f}m, "
+                f"render={self.map_render_px}px, mask={self.map_mask_method}"
+            )
         if self.has_embed_enhance:
             print(f"  Embed Enhance: {self.model.embed_enhance} (auto-detected from checkpoint)")
         
         # Debug counter for initial verification
         self._debug_initial_eval_count = 0
+        self._debug_map_eval_count = 0
+        self._debug_map_prompt_count = 0
+        self._debug_map_user_prompt_count = 0
+        self._debug_map_embed_count = 0
     
     def _reset_caches(self):
         """Reset all caches at the start of each episode."""
@@ -464,6 +553,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         rgb_list: List[Image.Image],
         pose_list: List[List[float]],
         window_start: int,
+        episode: Any,
     ):
         """
         Compute history features based on history_processor_type.
@@ -483,14 +573,72 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
             rgb_list: All collected RGB images so far
             window_start: Start index of current window
         """
+        if self.memory_method == 'map':
+            self._compute_history_cache_map(episode, window_start)
+            return
+
         if window_start <= 0:
             self.history_cache = []
             return
-        
+
         if self.history_processor_type in ('gtc', 'segment_gtc'):
             self._compute_history_cache_gtc(rgb_list, pose_list, window_start)
         else:
             self._compute_history_cache_per_frame(rgb_list, pose_list, window_start)
+
+    def _compute_history_cache_map(
+        self,
+        episode: Any,
+        window_start: int,
+    ):
+        if self.map_builder is None:
+            raise RuntimeError("memory_method=map requested but map_builder is not initialized.")
+        scene_id = getattr(episode, 'scene_id', None)
+        start_position = getattr(episode, 'start_position', None)
+        start_rotation = getattr(episode, 'start_rotation', None)
+        if scene_id is None or start_position is None or start_rotation is None:
+            raise ValueError("SatNav episode is missing scene/start metadata required for map memory.")
+
+        step_size = 10.0 if self.env_type == 'satnav' else 0.25
+        turn_angle = 15.0 if self.env_type == 'satnav' else 30.0
+        map_images = self.map_builder.render_from_actions(
+            scene_id=scene_id,
+            start_position=start_position,
+            start_rotation=float(start_rotation),
+            actions=self.executed_actions,
+            window_start=window_start,
+            step_size=step_size,
+            turn_angle=turn_angle,
+        )
+
+        features_list, grid_thw_list = self._encode_batch_frames(
+            map_images,
+            poses=[None] * len(map_images),
+        )
+        self.history_cache = []
+        for features, grid_thw in zip(features_list, grid_thw_list):
+            compressed = self._compress_features(features, grid_thw)
+            self.history_cache.append((compressed, None))
+        if _debug_enabled() and self._debug_map_eval_count < 6:
+            raw_token_counts = [int(features.shape[0]) for features in features_list]
+            token_counts = [int(item[0].shape[0]) for item in self.history_cache]
+            map_labels = ['global', 'local']
+            print(
+                f"[MAP DEBUG][eval] cache[{self._debug_map_eval_count}] "
+                f"rank={_debug_rank()} "
+                f"episode={getattr(episode, 'episode_id', 'unknown')} "
+                f"window_start={window_start} executed_actions={len(self.executed_actions)} "
+                f"map_images={len(map_images)} raw_tokens={raw_token_counts} "
+                f"compressed_tokens={token_counts}"
+            )
+            for idx, (features, cache_item) in enumerate(zip(features_list, self.history_cache)):
+                label = map_labels[idx] if idx < len(map_labels) else f"map{idx}"
+                print(
+                    f"[MAP DEBUG][eval] cache[{self._debug_map_eval_count}].{label} "
+                    f"raw={_tensor_debug_stats(features)} "
+                    f"compressed={_tensor_debug_stats(cache_item[0])}"
+                )
+            self._debug_map_eval_count += 1
 
     def _compute_history_cache_per_frame(
         self,
@@ -658,7 +806,10 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
             total_history_tokens = sum(history_token_counts)
             # All history embeddings are packed into a single unified block
             history_str = f'<|vision_start|>{HISTORY_MEMORY_TOKEN * total_history_tokens}<|vision_end|>'
-            system_prompt += f" These are your historical observations: {history_str}."
+            if self.memory_method == 'map':
+                system_prompt += f" These are your explored map memories: {history_str}."
+            else:
+                system_prompt += f" These are your historical observations: {history_str}."
         
         # Format as system message
         messages = [{'role': 'system', 'content': system_prompt}]
@@ -670,6 +821,24 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
             return_tensors='pt',
             return_dict=True
         )
+
+        if _debug_enabled() and self.memory_method == 'map' and self._debug_map_prompt_count < 6:
+            token_ids = inputs['input_ids']
+            history_positions = (token_ids[0] == self.history_memory_token_id).nonzero(as_tuple=True)[0]
+            current_positions = (token_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
+            print(
+                f"[MAP DEBUG][eval.prompt.system] rank={_debug_rank()} "
+                f"history_token_counts={history_token_counts} initial_token_count={initial_token_count} "
+                f"tokenized_len={token_ids.shape[1]} "
+                f"history_positions={len(history_positions)} current_positions={len(current_positions)}"
+            )
+            print(
+                f"[MAP DEBUG][eval.prompt.system] instruction={_preview_text(instruction, limit=180)}"
+            )
+            print(
+                f"[MAP DEBUG][eval.prompt.system] prompt={_preview_text(system_prompt, limit=340)}"
+            )
+            self._debug_map_prompt_count += 1
         
         return inputs['input_ids'].to(self.device)
     
@@ -712,6 +881,20 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
             return_tensors='pt',
             return_dict=True
         )
+
+        if _debug_enabled() and self.memory_method == 'map' and self._debug_map_user_prompt_count < 6:
+            token_ids = inputs['input_ids']
+            current_positions = (token_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
+            print(
+                f"[MAP DEBUG][eval.prompt.user] rank={_debug_rank()} "
+                f"generation_prompt={add_generation_prompt} "
+                f"current_token_count={current_token_count} tokenized_len={token_ids.shape[1]} "
+                f"current_positions={len(current_positions)}"
+            )
+            print(
+                f"[MAP DEBUG][eval.prompt.user] content={_preview_text(content, limit=240)}"
+            )
+            self._debug_map_user_prompt_count += 1
         
         return inputs['input_ids'].to(self.device)
     
@@ -796,6 +979,9 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
                       f"Found {len(init_positions)}, need {init_count}")
         
         # 3b. Replace unified history memory tokens with cached features
+        history_injection_ok = True
+        history_injection_msg = "no_history"
+        history_embeds = None
         if self.history_cache:
             # Use history_memory_token_id for unified memory mode
             history_positions = (system_ids[0] == self.history_memory_token_id).nonzero(as_tuple=True)[0]
@@ -806,6 +992,19 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
                 history_positions_slice = history_positions[:total_history_tokens]
                 history_embeds = history_embeds.to(system_embeds.device, system_embeds.dtype)
                 system_embeds[0, history_positions_slice] = history_embeds
+                history_injection_msg = (
+                    f"ok positions=[{history_positions_slice[0].item()}.."
+                    f"{history_positions_slice[-1].item()}]"
+                )
+            else:
+                history_injection_ok = False
+                history_injection_msg = (
+                    f"failed positions={len(history_positions)} need={total_history_tokens}"
+                )
+                print(
+                    f"[MAP WARNING][eval.embed] system history injection skipped: "
+                    f"rank={_debug_rank()} {history_injection_msg}"
+                )
         
         embeds_parts = [system_embeds]
         
@@ -862,6 +1061,41 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         # Concatenate all parts
         inputs_embeds = torch.cat(embeds_parts, dim=1)
         seq_len = inputs_embeds.shape[1]
+
+        if _debug_enabled() and self.memory_method == 'map' and self._debug_map_embed_count < 6:
+            overlap_len = (
+                int(self.overlap_context.input_ids.shape[1])
+                if self.overlap_context is not None and self.overlap_context.input_ids is not None
+                else 0
+            )
+            completed_turn_count = len(self.window_turns)
+            completed_turn_token_count = int(sum(turn.user_input_ids.shape[1] for turn in self.window_turns))
+            history_positions = (system_ids[0] == self.history_memory_token_id).nonzero(as_tuple=True)[0]
+            current_positions_system = (system_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
+            current_positions_new = (new_user_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
+            print(
+                f"[MAP DEBUG][eval.embed] rank={_debug_rank()} "
+                f"history_cache_tokens={history_token_counts} initial_tokens={initial_token_count} "
+                f"system_len={system_ids.shape[1]} overlap_len={overlap_len} "
+                f"completed_turns={completed_turn_count} completed_user_tokens={completed_turn_token_count} "
+                f"new_user_len={new_user_ids.shape[1]} seq_len={seq_len} "
+                f"history_injection={history_injection_msg}"
+            )
+            print(
+                f"[MAP DEBUG][eval.embed] system_history_positions={len(history_positions)} "
+                f"system_current_positions={len(current_positions_system)} "
+                f"new_user_current_positions={len(current_positions_new)} "
+                f"current_vit_tokens={current_token_count}"
+            )
+            if history_embeds is not None:
+                print(
+                    f"[MAP DEBUG][eval.embed] history_embed_stats={_tensor_debug_stats(history_embeds)} "
+                    f"injection_ok={history_injection_ok}"
+                )
+            print(
+                f"[MAP DEBUG][eval.embed] current_vit_stats={_tensor_debug_stats(current_vit_features)}"
+            )
+            self._debug_map_embed_count += 1
         
         return inputs_embeds, seq_len, current_vit_features, current_grid_thw
     
@@ -924,6 +1158,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         rgb_list: List[Image.Image],
         pose_list: List[List[float]],
         new_window_start: int,
+        episode: Any,
     ):
         """
         Slide the window and update caches.
@@ -936,8 +1171,13 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         self._prepare_overlap_context()
         
         # 2. Recompute history cache for new window
-        self._compute_history_cache(rgb_list, pose_list, new_window_start)
-        
+        self._compute_history_cache(rgb_list, pose_list, new_window_start, episode)
+        if os.environ.get('OVERLAPVLN_DEBUG') and self.memory_method == 'map':
+            print(
+                f"[MAP DEBUG][eval] slide_window -> new_window_start={new_window_start}, "
+                f"history_cache={len(self.history_cache)}, overlap_turns={self.overlap_turns}"
+            )
+
         # 3. Reset window state
         self.window_turns = []
         self.window_start_step = new_window_start
@@ -1253,12 +1493,14 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
                     if step_id > 0 and step_id % self.stride == 0 and step_id >= self.num_frames:
                         t0 = time.time()
                         new_window_start = step_id - self.num_overlap
-                        self._slide_window(rgb_list, self.pose_history, new_window_start)
+                        self._slide_window(rgb_list, self.pose_history, new_window_start, episode)
                         timing_stats['window_slide'] += time.time() - t0
                     elif step_id == 0:
                         # First window
                         self.window_start_step = 0
                         self.current_window_idx = 0
+                        if self.memory_method == 'map':
+                            self._compute_history_cache(rgb_list, self.pose_history, 0, episode)
                     
                     try:
                         # Build complete prompt embeddings

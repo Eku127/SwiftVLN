@@ -22,6 +22,25 @@ Related skills:
 - `log_base` / `use_random` 仍可保留在配置中，但在 `NUM_HISTORY=0` 时不会实际影响采样。
 - `gtc` / `segment_gtc` 不适用这套 no-memory 约定；它们的历史采样逻辑不依赖 `NUM_HISTORY`。
 
+## Map-Memory Convention (OverlapVLN)
+
+- OverlapVLN 现在支持 `MEMORY_METHOD=map`，表示用 `global map + local map` 替换历史帧 memory。
+- 当前约束：
+  - `VLN_ENV_TYPE=satnav`
+  - `HISTORY_PROCESSOR_TYPE=per_frame`
+  - `USE_TOME=false`
+- 训练脚本会把 map 参数写进实验名，格式为：
+  - `map-g{global}-l{local}-r{render}-{mask}-s{compress_stride}`
+  - 例：`map-g1000-l400-r384-d20-s2`
+- 训练脚本中的 map 相关变量：
+  - `MEMORY_METHOD`
+  - `MAP_GLOBAL_SIDE_M`
+  - `MAP_LOCAL_SIDE_M`
+  - `MAP_RENDER_PX`
+  - `MAP_MASK_METHOD`
+- `train_queue.sh` 会透传并覆写这些变量；如需入队训练 map memory，必须把这几个变量一起明确写进配置。
+- 当前推荐把 `OVERLAPVLN_DEBUG=1` 一并透传，用于检查 dataset prompt、template tokenize、history token 注入是否符合预期。
+
 ---
 
 ## Shared Workspace Mount
@@ -58,6 +77,10 @@ Before starting, confirm with the user:
    - `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
 2. Produce **run checklist**: model set, stage, environment, data version, offline model path, launch mode, expected output naming.
    For `stage1`, confirm the resolved path is the absolute local cache path above, not `Qwen/Qwen2.5-VL-3B-Instruct`.
+   If `MEMORY_METHOD=map`, checklist 里必须额外确认：
+   - `global/local/render/mask`
+   - 约束 `satnav + per_frame + no ToMe`
+   - 预期实验名中是否包含 `map-g...-l...-r...-...-s...`
 3. Apply default model rule: `baseline`/unspecified → `overlapvln`.
 4. **Wait for user confirmation**.
 

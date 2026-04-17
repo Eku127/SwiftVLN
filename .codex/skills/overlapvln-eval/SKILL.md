@@ -73,6 +73,31 @@ Before starting, confirm the following with the user:
 | Low-level queue runner | `eval_queue.sh` | Internal queue engine, usually invoked by worker/monitor |
 | Async completion monitor | `eval_watchdog.sh` | Background watchdog, triggers Codex callback |
 
+## Map-Memory Parsing Notes (OverlapVLN)
+
+- `eval_by_name.sh` 现在支持从 OverlapVLN 实验名里直接解析 map memory 配置。
+- 约定命名块：
+  - `map-g{global}-l{local}-r{render}-{mask}-s{compress_stride}`
+  - 例：`map-g1000-l400-r384-d20-s2`
+- 解析结果会还原为：
+  - `MEMORY_METHOD=map`
+  - `MAP_GLOBAL_SIDE_M`
+  - `MAP_LOCAL_SIDE_M`
+  - `MAP_RENDER_PX`
+  - `MAP_MASK_METHOD`
+  - `HISTORY_PROCESSOR_TYPE=per_frame`
+  - `USE_TOME=false`
+- `eval_queue.sh` 本身不单独解析 map 参数；它把模型名原样交给 `eval_by_name.sh`，因此 queue 模式是否正确，取决于：
+  - 实验名是否包含完整 `map-g...` 命名块
+  - `eval_by_name.sh` 是否能正确解析该模型名
+- 推荐在真正评测前先跑一次：
+
+```bash
+CHECK_ONLY=true bash src/swiftvln/scripts/eval/eval_by_name.sh <model_name>
+```
+
+若输出里明确出现 `MEMORY_METHOD=map` 和四个 `MAP_*` 参数，则按名评测与 queue 评测都会走 map memory 配置。
+
 ---
 
 ## Step 1 → Check Servers & Pick Eval Host
@@ -145,6 +170,13 @@ For parsing validation before real eval:
 ```bash
 CHECK_ONLY=true bash src/swiftvln/scripts/eval/eval_by_name.sh <model_name>
 ```
+
+如果是 OverlapVLN map 实验，必须确认 `CHECK_ONLY` 输出中包含：
+- `MEMORY_METHOD: map`
+- `MAP_GLOBAL_SIDE_M`
+- `MAP_LOCAL_SIDE_M`
+- `MAP_RENDER_PX`
+- `MAP_MASK_METHOD`
 
 ### Mode B: Queue Eval (multiple models)
 

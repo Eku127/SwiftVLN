@@ -70,6 +70,11 @@ TRAIN_DRY_RUN="${TRAIN_DRY_RUN:-false}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
 RESUME_ONLY_MODEL="${RESUME_ONLY_MODEL:-false}"
 OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR_OVERRIDE:-}"
+MEMORY_METHOD="${MEMORY_METHOD:-history}"
+MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
+MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
+MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
+MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
 # QA 混合训练配置
 USE_QA_MIXED_TRAINING=false
@@ -1299,6 +1304,13 @@ run_experiment() {
                 # 替换脚本中的变量赋值
                 # 匹配: VAR_NAME=value 或 VAR_NAME="value" 或 VAR_NAME='value'
                 sed -i "s/^${var_name}=.*/${var_name}=${var_value_escaped}/" "$temp_script"
+                case "$var_name" in
+                    MEMORY_METHOD) MEMORY_METHOD="$var_value" ;;
+                    MAP_GLOBAL_SIDE_M) MAP_GLOBAL_SIDE_M="$var_value" ;;
+                    MAP_LOCAL_SIDE_M) MAP_LOCAL_SIDE_M="$var_value" ;;
+                    MAP_RENDER_PX) MAP_RENDER_PX="$var_value" ;;
+                    MAP_MASK_METHOD) MAP_MASK_METHOD="$var_value" ;;
+                esac
                 print_info "配置覆盖: ${var_name}=${var_value}"
             fi
         done
@@ -1354,6 +1366,13 @@ run_experiment() {
         sed -i "s|^OUTPUT_DIR_OVERRIDE=.*|OUTPUT_DIR_OVERRIDE=\"$OUTPUT_DIR_OVERRIDE\"|" "$temp_script"
         print_info "输出目录覆盖: $OUTPUT_DIR_OVERRIDE"
     fi
+
+    sed -i "s|^MEMORY_METHOD=.*|MEMORY_METHOD=\"$MEMORY_METHOD\"|" "$temp_script"
+    sed -i "s|^MAP_GLOBAL_SIDE_M=.*|MAP_GLOBAL_SIDE_M=\"$MAP_GLOBAL_SIDE_M\"|" "$temp_script"
+    sed -i "s|^MAP_LOCAL_SIDE_M=.*|MAP_LOCAL_SIDE_M=\"$MAP_LOCAL_SIDE_M\"|" "$temp_script"
+    sed -i "s|^MAP_RENDER_PX=.*|MAP_RENDER_PX=\"$MAP_RENDER_PX\"|" "$temp_script"
+    sed -i "s|^MAP_MASK_METHOD=.*|MAP_MASK_METHOD=\"$MAP_MASK_METHOD\"|" "$temp_script"
+    print_info "Memory 配置: method=$MEMORY_METHOD, global=$MAP_GLOBAL_SIDE_M, local=$MAP_LOCAL_SIDE_M, render=$MAP_RENDER_PX, mask=$MAP_MASK_METHOD"
     
     # 修改数据路径 - 根据环境类型替换对应的数组
     local data_array_name="HABITAT_DATA_PATHS"
@@ -1769,3 +1788,4 @@ main() {
 # 执行
 # ============================================================================
 main "$@"
+exit $?
