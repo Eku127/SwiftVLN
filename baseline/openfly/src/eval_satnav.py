@@ -309,8 +309,14 @@ class OpenFlySatNavEvaluator:
         return action, generated_text
 
     @torch.inference_mode()
-    def predict_action(self, instruction: str, history_frames: deque[np.ndarray], current_rgb: np.ndarray) -> tuple[int, str]:
-        prompt_text = build_openfly_prompt(instruction)
+    def predict_action(
+        self,
+        instruction: str,
+        history_frames: deque[np.ndarray],
+        current_rgb: np.ndarray,
+        action_history: list[int] | None = None,
+    ) -> tuple[int, str]:
+        prompt_text = build_openfly_prompt(instruction, action_history=action_history)
         input_ids = self.tokenizer(prompt_text, truncation=True, return_tensors="pt").input_ids.to(self.device)
         attention_mask = input_ids.ne(self.tokenizer.pad_token_id).to(self.device)
         pixel_values = self._build_pixel_values(history_frames, current_rgb).unsqueeze(0).to(self.device, dtype=self.model.dtype)
@@ -323,6 +329,7 @@ class OpenFlySatNavEvaluator:
         obs = env_wrapper.reset(episode)
         instruction = env_wrapper.get_instruction(episode)
         history_frames: deque[np.ndarray] = deque(maxlen=2)
+        executed_actions: list[int] = []
         done = False
         step = 0
         raw_outputs: list[str] = []
@@ -332,7 +339,12 @@ class OpenFlySatNavEvaluator:
         while not done and step < env_wrapper.max_steps:
             current_rgb = env_wrapper.get_rgb(obs)
             try:
-                action, generated_text = self.predict_action(instruction, history_frames, current_rgb)
+                action, generated_text = self.predict_action(
+                    instruction,
+                    history_frames,
+                    current_rgb,
+                    action_history=executed_actions,
+                )
             except Exception as exc:
                 runtime_error = repr(exc)
                 action = 0
@@ -347,8 +359,18 @@ class OpenFlySatNavEvaluator:
                     "raw_output": generated_text,
                 }
             )
-            obs, done = env_wrapper.step(action)
+            try:
+                obs, done = env_wrapper.step(action)
+            except Exception as exc:
+                # Simulator may raise when the agent walks past the scene bounds.
+                # Treat as terminal failure so eval can continue on other episodes.
+                runtime_error = f"env_step:{exc!r}"
+                history_frames.append(current_rgb)
+                executed_actions.append(int(action))
+                step += 1
+                break
             history_frames.append(current_rgb)
+            executed_actions.append(int(action))
             step += 1
             if action == 0:
                 break

@@ -18,6 +18,31 @@ from backends import HF_BACKEND, build_train_backend, patch_accelerate_optimizer
 from dataset.satnav_dataset import SatNavOpenFlyDataset
 
 
+def _collect_openfly_sampling_env() -> dict[str, str]:
+    keys = [
+        "SATNAV_HEAD_KEEP",
+        "SATNAV_SAMPLE_STRIDE",
+        "SATNAV_STOP_REPEAT",
+        "SATNAV_STOP_HISTORY_AUG",
+        "SATNAV_STOP_WINDOW",
+        "SATNAV_TAIL_KEEP",
+        "SATNAV_BOUNDARY_SAMPLE_STRIDE",
+        "SATNAV_BOUNDARY_STOP_REPEAT",
+        "SATNAV_BOUNDARY_STOP_WINDOW",
+        "SATNAV_BOUNDARY_TAIL_KEEP",
+        "SATNAV_LANDMARKSET_SAMPLE_STRIDE",
+        "SATNAV_LANDMARKSET_STOP_REPEAT",
+        "SATNAV_LANDMARKSET_STOP_WINDOW",
+        "SATNAV_LANDMARKSET_TAIL_KEEP",
+        "SATNAV_ROAD_SAMPLE_STRIDE",
+        "SATNAV_ROAD_STOP_REPEAT",
+        "SATNAV_ROAD_STOP_WINDOW",
+        "SATNAV_ROAD_TAIL_KEEP",
+        "OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS",
+    ]
+    return {key: os.getenv(key, "") for key in keys if os.getenv(key, "") != ""}
+
+
 class ArtifactSaveCallback(TrainerCallback):
     def __init__(self, processor, metadata: dict, backend_meta: dict) -> None:
         self.processor = processor
@@ -145,6 +170,8 @@ def main() -> None:
 
     metadata["action_counts"] = train_dataset.action_counts
     metadata["num_samples"] = len(train_dataset)
+    metadata["sampling_env"] = _collect_openfly_sampling_env()
+    metadata["trajectory_type_counts"] = train_dataset.trajectory_type_counts
 
     trainer = OpenFlyTrainer(
         model=backend_artifacts.model,
