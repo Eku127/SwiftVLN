@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
+import tempfile
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+
+# Bumping this invalidates *all* existing cache entries across hosts. Increment
+# whenever the map rendering math changes in a way existing PNGs no longer
+# reflect what `render_from_poses` would currently produce.
+_MAP_CACHE_FORMAT_VERSION = 1
+
+_CACHE_DISABLE_SENTINELS = {"off", "false", "none", "0", "disable", "disabled", "no"}
 
 
 def _require_geo_deps():
@@ -68,6 +79,28 @@ def _map_debug_dir() -> Optional[str]:
     if not _map_debug_enabled():
         return None
     return os.path.abspath(os.path.join(os.getcwd(), "runtime", "debug", "overlapvln_map"))
+
+
+def _resolve_cache_dir(cache_dir: Optional[str]) -> Optional[str]:
+    """Resolve the effective on-disk cache directory.
+
+    Precedence:
+      1. ``OVERLAPVLN_MAP_CACHE_DIR`` env var (sentinel values disable cache).
+      2. ``cache_dir`` argument supplied by the caller.
+      3. ``None`` → cache disabled.
+    """
+
+    env_override = os.environ.get("OVERLAPVLN_MAP_CACHE_DIR", "").strip()
+    if env_override:
+        if env_override.lower() in _CACHE_DISABLE_SENTINELS:
+            return None
+        return os.path.abspath(env_override)
+    if cache_dir:
+        cache_dir = str(cache_dir).strip()
+        if not cache_dir or cache_dir.lower() in _CACHE_DISABLE_SENTINELS:
+            return None
+        return os.path.abspath(cache_dir)
+    return None
 
 
 def _sanitize_debug_name(value: str) -> str:
@@ -202,6 +235,7 @@ class SatNavMapMemoryBuilder:
         sensor_width: int = 448,
         sensor_height: int = 448,
         global_center_mode: str = "adaptive_start",
+        cache_dir: Optional[str] = None,
     ):
         self.scenes_dir = os.path.abspath(scenes_dir)
         self.global_side_m = float(global_side_m)
@@ -233,6 +267,42 @@ class SatNavMapMemoryBuilder:
         self._global_shift_margin_ratio = 0.10
         self._global_shift_quantize_m = 25.0
 
+        # On-disk cache for rendered (global, local) pairs. See _resolve_cache_dir
+        # for precedence. When enabled, cache key is content-addressable over all
+        # render-affecting parameters + scene_id + window_start + poses prefix.
+        self.cache_dir = _resolve_cache_dir(cache_dir)
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._cache_writes = 0
+        self._render_config_meta = {
+            "format_version": _MAP_CACHE_FORMAT_VERSION,
+            "scenes_dir": self.scenes_dir,
+            "global_side_m": self.global_side_m,
+            "local_side_m": self.local_side_m,
+            "render_px": self.render_px,
+            "mask_method": self.mask_method,
+            "hfov": self.hfov,
+            "sensor_width": self.sensor_width,
+            "sensor_height": self.sensor_height,
+            "global_center_mode": self.global_center_mode,
+            "global_shift_margin_ratio": self._global_shift_margin_ratio,
+            "global_shift_quantize_m": self._global_shift_quantize_m,
+        }
+        self._render_config_digest = hashlib.blake2b(
+            json.dumps(self._render_config_meta, sort_keys=True).encode("utf-8"),
+            digest_size=16,
+        ).digest()
+        if self.cache_dir:
+            try:
+                os.makedirs(self.cache_dir, exist_ok=True)
+                self._write_cache_meta_once()
+            except OSError as exc:
+                warnings.warn(
+                    f"[MapCache] failed to prepare cache_dir={self.cache_dir}: {exc}; "
+                    "disabling cache for this builder."
+                )
+                self.cache_dir = None
+
     def _maybe_save_debug_maps(
         self,
         scene_id: str,
@@ -261,6 +331,141 @@ class SatNavMapMemoryBuilder:
         global_map.save(global_path)
         local_map.save(local_path)
         return [str(global_path), str(local_path)]
+
+    # ------------------------------------------------------------------
+    # On-disk render cache (see __init__ for config + env precedence)
+    # ------------------------------------------------------------------
+
+    def _write_cache_meta_once(self) -> None:
+        """Emit a human-readable README describing the render config.
+
+        The cache key already encodes the full render config, so stale configs
+        never produce stale hits; this file is informational only.
+        """
+        if not self.cache_dir:
+            return
+        meta_path = os.path.join(self.cache_dir, "_cache_meta.json")
+        if os.path.exists(meta_path):
+            return
+        payload = {
+            "note": (
+                "OverlapVLN map-memory render cache. Files are content-addressable "
+                "over render config + scene_id + window_start + poses prefix. Safe "
+                "to `rm -rf` at any time; will be lazily repopulated."
+            ),
+            "format_version": _MAP_CACHE_FORMAT_VERSION,
+            "render_config": self._render_config_meta,
+        }
+        try:
+            self._atomic_write_json(meta_path, payload)
+        except OSError:
+            pass
+
+    def _compute_cache_key(
+        self,
+        scene_id: str,
+        poses: Sequence[MapPose],
+        window_start: int,
+    ) -> str:
+        h = hashlib.blake2b(digest_size=16)
+        h.update(self._render_config_digest)
+        h.update(b"|scene|")
+        h.update(_normalize_scene_name(scene_id).encode("utf-8"))
+        h.update(b"|ws|")
+        h.update(int(window_start).to_bytes(8, "little", signed=True))
+        h.update(b"|poses|")
+        # Only the prefix up to current_index affects the render output, but
+        # keeping the full passed-in poses in the hash avoids accidental
+        # collisions from upstream slicing changes.
+        if poses:
+            arr = np.asarray(
+                [(p.x, p.y, p.altitude, p.heading_deg) for p in poses],
+                dtype=np.float64,
+            )
+            # Round to 1 µm / 1e-4 deg — well within simulator repeatability.
+            arr = np.round(arr, decimals=6)
+            h.update(arr.tobytes())
+            h.update(len(poses).to_bytes(4, "little", signed=False))
+        return h.hexdigest()
+
+    def _cache_paths(self, key: str) -> Tuple[str, str]:
+        # Two-level sharding so a single directory never holds the full cache.
+        subdir = os.path.join(self.cache_dir, key[:2], key[2:4])
+        global_path = os.path.join(subdir, f"{key}_global.png")
+        local_path = os.path.join(subdir, f"{key}_local.png")
+        return global_path, local_path
+
+    def _try_load_cache(
+        self, key: str
+    ) -> Optional[Tuple[Image.Image, Image.Image]]:
+        if not self.cache_dir:
+            return None
+        global_path, local_path = self._cache_paths(key)
+        if not (os.path.exists(global_path) and os.path.exists(local_path)):
+            return None
+        try:
+            with Image.open(global_path) as img_g:
+                img_g.load()
+                global_img = img_g.copy()
+            with Image.open(local_path) as img_l:
+                img_l.load()
+                local_img = img_l.copy()
+            return global_img, local_img
+        except Exception as exc:
+            # Corrupted / partially written files: fall through to re-render.
+            warnings.warn(f"[MapCache] failed to load key={key[:12]}: {exc}")
+            return None
+
+    def _save_cache(
+        self,
+        key: str,
+        global_img: Image.Image,
+        local_img: Image.Image,
+    ) -> None:
+        if not self.cache_dir:
+            return
+        global_path, local_path = self._cache_paths(key)
+        os.makedirs(os.path.dirname(global_path), exist_ok=True)
+        self._atomic_write_png(global_path, global_img)
+        self._atomic_write_png(local_path, local_img)
+
+    @staticmethod
+    def _atomic_write_png(target_path: str, img: Image.Image) -> None:
+        directory = os.path.dirname(target_path) or "."
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=".tmp_", suffix=".png.part", dir=directory
+        )
+        os.close(fd)
+        try:
+            # optimize=False keeps write cost low; these caches are ephemeral.
+            img.save(tmp_path, format="PNG", optimize=False)
+            os.replace(tmp_path, target_path)
+        except Exception:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    @staticmethod
+    def _atomic_write_json(target_path: str, payload: Dict[str, Any]) -> None:
+        directory = os.path.dirname(target_path) or "."
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=".tmp_", suffix=".json.part", dir=directory
+        )
+        os.close(fd)
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, sort_keys=True)
+            os.replace(tmp_path, target_path)
+        except Exception:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def _ensure_transformer(self):
         if self._wgs84_to_mercator is None:
@@ -732,6 +937,27 @@ class SatNavMapMemoryBuilder:
 
         debug_enabled = _map_debug_enabled()
         debug_start = time.perf_counter() if debug_enabled else 0.0
+
+        cache_key: Optional[str] = None
+        if self.cache_dir:
+            cache_key = self._compute_cache_key(scene_id, poses, window_start)
+            cached = self._try_load_cache(cache_key)
+            if cached is not None:
+                global_map, local_map = cached
+                self._cache_hits += 1
+                if debug_enabled and self._debug_render_count < _map_debug_limit():
+                    elapsed_ms = (time.perf_counter() - debug_start) * 1000.0
+                    print(
+                        f"[MAP DEBUG][builder] cache_hit[{self._debug_render_count}] "
+                        f"scene={_normalize_scene_name(scene_id)} "
+                        f"window_start={window_start} poses={len(poses)} "
+                        f"key={cache_key[:12]} hits={self._cache_hits} "
+                        f"elapsed_ms={elapsed_ms:.1f}"
+                    )
+                    self._debug_render_count += 1
+                return [global_map, local_map]
+            self._cache_misses += 1
+
         current_index = max(0, min(int(window_start), len(poses) - 1))
         observed_until = max(0, min(int(window_start), len(poses)))
 
@@ -767,6 +993,15 @@ class SatNavMapMemoryBuilder:
             start_pose=start_pose,
             current_pose=current_pose,
         )
+        if self.cache_dir and cache_key is not None:
+            try:
+                self._save_cache(cache_key, global_map, local_map)
+                self._cache_writes += 1
+            except Exception as exc:
+                warnings.warn(
+                    f"[MapCache] failed to save key={cache_key[:12]}: {exc}"
+                )
+
         if debug_enabled and self._debug_render_count < _map_debug_limit():
             elapsed_ms = (time.perf_counter() - debug_start) * 1000.0
             saved_paths = self._maybe_save_debug_maps(
@@ -776,6 +1011,11 @@ class SatNavMapMemoryBuilder:
                 observed_count=len(observed_poses),
                 global_map=global_map,
                 local_map=local_map,
+            )
+            cache_tag = (
+                f"cache=miss({self._cache_misses}/w{self._cache_writes})"
+                if self.cache_dir
+                else "cache=off"
             )
             print(
                 f"[MAP DEBUG][builder] render[{self._debug_render_count}] "
@@ -787,7 +1027,7 @@ class SatNavMapMemoryBuilder:
                 f"content=({global_center_meta['content_width_m']:.1f}m,{global_center_meta['content_height_m']:.1f}m) "
                 f"global={self.global_side_m:.0f}m local={self.local_side_m:.0f}m "
                 f"render_px={self.render_px} heading={current_pose.heading_deg:.1f} "
-                f"elapsed_ms={elapsed_ms:.1f}"
+                f"{cache_tag} elapsed_ms={elapsed_ms:.1f}"
             )
             if saved_paths:
                 print(

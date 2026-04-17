@@ -104,6 +104,13 @@ MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
 MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
+# Map-memory render cache.
+# "auto" (default): let the Python layer derive {dataset_root}/map_cache from
+# the habitat DATA_PATH (e.g. ver_260404/map_cache), so eval warms / reuses the
+# same cache as training. Any absolute path overrides; set to one of
+# {off,false,none,0,disable,disabled,no} to disable caching.
+MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
+
 # Embedding enhancement (must match training checkpoint setup)
 USE_PIXEL_EMBED="${USE_PIXEL_EMBED:-false}"
 USE_POSE_EMBED="${USE_POSE_EMBED:-false}"
@@ -147,6 +154,16 @@ export NCCL_BUFFSIZE=2097152
 export NCCL_MAX_NCHANNELS=4
 export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
 
+# Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
+# OVERLAPVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (derive
+# {dataset_root}/map_cache from habitat DATA_PATH); explicit paths or "off"-
+# family sentinels are passed through verbatim.
+if [ "$MEMORY_METHOD" = "map" ]; then
+    if [ -n "$MAP_CACHE_DIR" ] && [ "$MAP_CACHE_DIR" != "auto" ]; then
+        export OVERLAPVLN_MAP_CACHE_DIR="$MAP_CACHE_DIR"
+    fi
+fi
+
 # Debug logging for SatNav (rank-specific logging)
 export SATNAV_DEBUG_RANK="${SATNAV_DEBUG_RANK}"
 if [ "${SATNAV_DEBUG_RANK}" != "-1" ]; then
@@ -180,6 +197,7 @@ echo "Num Overlap:     ${NUM_OVERLAP}"
 echo "Memory Method:   ${MEMORY_METHOD}"
 if [ "$MEMORY_METHOD" = "map" ]; then
     echo "  Map: global=${MAP_GLOBAL_SIDE_M}m, local=${MAP_LOCAL_SIDE_M}m, render=${MAP_RENDER_PX}px, mask=${MAP_MASK_METHOD}"
+    echo "  Render cache: MAP_CACHE_DIR=${MAP_CACHE_DIR} (env OVERLAPVLN_MAP_CACHE_DIR=${OVERLAPVLN_MAP_CACHE_DIR:-<unset, will derive from DATA_PATH>})"
     echo "  Compression: stride=${COMPRESS_STRIDE}, method=pool"
 else
     echo "History Processor: ${HISTORY_PROCESSOR_TYPE}"

@@ -152,12 +152,21 @@ class OverlapVLNDataset(StreamVLNDataset):
                 map_resolver = SatNavTrajectoryMetadataResolver(vf)
                 scenes_dir = os.path.abspath(map_resolver.scenes_dir)
                 if self.map_builder is None:
+                    # Default cache next to the dataset version (e.g.
+                    # ver_260404/map_cache). Env var OVERLAPVLN_MAP_CACHE_DIR
+                    # overrides this, and the sentinel value "off" disables
+                    # caching entirely. See map_memory._resolve_cache_dir.
+                    default_cache_dir = os.path.join(
+                        os.path.abspath(map_resolver.dataset_root),
+                        "map_cache",
+                    )
                     self.map_builder = SatNavMapMemoryBuilder(
                         scenes_dir=scenes_dir,
                         global_side_m=self.map_global_side_m,
                         local_side_m=self.map_local_side_m,
                         render_px=self.map_render_px,
                         mask_method=self.map_mask_method,
+                        cache_dir=default_cache_dir,
                     )
                     self._map_scenes_dir = scenes_dir
                 elif scenes_dir != self._map_scenes_dir:

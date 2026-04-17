@@ -245,6 +245,23 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
                 raise ValueError("OverlapVLN memory_method=map requires use_pose_embed=false.")
             if getattr(self.args, 'use_uav_adapter', False):
                 raise ValueError("OverlapVLN memory_method=map requires use_uav_adapter=false.")
+            # Derive cache dir from DATA_PATH so eval warms the same on-disk
+            # cache as training (e.g. ver_260404/map_cache). Env var
+            # OVERLAPVLN_MAP_CACHE_DIR overrides this; "off" disables it.
+            default_map_cache_dir: Optional[str] = None
+            data_path_tmpl = getattr(self.config.DATASET, 'DATA_PATH', '') or ''
+            probe_dir = os.path.dirname(str(data_path_tmpl))
+            for _ in range(8):
+                base = os.path.basename(probe_dir.rstrip('/'))
+                if base.startswith('ver_'):
+                    default_map_cache_dir = os.path.join(
+                        os.path.abspath(probe_dir), 'map_cache'
+                    )
+                    break
+                parent = os.path.dirname(probe_dir)
+                if not parent or parent == probe_dir:
+                    break
+                probe_dir = parent
             self.map_builder = SatNavMapMemoryBuilder(
                 scenes_dir=self.config.DATASET.SCENES_DIR,
                 global_side_m=self.map_global_side_m,
@@ -254,6 +271,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
                 hfov=float(self.config.SIMULATOR.RGB_SENSOR.HFOV),
                 sensor_width=int(self.config.SIMULATOR.RGB_SENSOR.WIDTH),
                 sensor_height=int(self.config.SIMULATOR.RGB_SENSOR.HEIGHT),
+                cache_dir=default_map_cache_dir,
             )
 
         # ==========================================================================

@@ -245,6 +245,15 @@ MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
 MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
+# ---------- Map-memory render cache ----------
+# Caches rendered (global, local) PNG pairs on disk to eliminate rasterio
+# re-rendering cost across epochs. Default ("auto"): the Python layer uses
+#   {dataset_root}/map_cache
+# (i.e. co-located with ver_260404). Override with any absolute path, or set
+# to one of {off,false,none,0,disable,disabled,no} to disable caching.
+# Only has effect when MEMORY_METHOD=map.
+MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
+
 # ---------- Embedding enhancement ----------
 # Pixel coordinate embedding enhancement (Fourier + MLP)
 # - false: disable (default)
@@ -470,6 +479,15 @@ export NCCL_MAX_NCHANNELS=4
 export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
 export CUDA_VISIBLE_DEVICES=$CUDA_DEVICES
 
+# Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
+# OVERLAPVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (dataset_root
+# /map_cache); explicit paths or "off"-family sentinels are passed through.
+if [ "$MEMORY_METHOD" = "map" ]; then
+    if [ -n "$MAP_CACHE_DIR" ] && [ "$MAP_CACHE_DIR" != "auto" ]; then
+        export OVERLAPVLN_MAP_CACHE_DIR="$MAP_CACHE_DIR"
+    fi
+fi
+
 # ============================================================================
 # Print Configuration
 # ============================================================================
@@ -500,6 +518,7 @@ echo "Memory Method: $MEMORY_METHOD"
 if [ "$MEMORY_METHOD" = "map" ]; then
     echo "  Map: global=${MAP_GLOBAL_SIDE_M}m, local=${MAP_LOCAL_SIDE_M}m, render=${MAP_RENDER_PX}px, mask=${MAP_MASK_METHOD}"
     echo "  Compression: per_frame stride=$COMPRESS_STRIDE ($((COMPRESS_STRIDE * COMPRESS_STRIDE))x), method=pool"
+    echo "  Render cache: MAP_CACHE_DIR=${MAP_CACHE_DIR} (env OVERLAPVLN_MAP_CACHE_DIR=${OVERLAPVLN_MAP_CACHE_DIR:-<unset, will use dataset_root/map_cache>})"
 else
     echo "History Processor: $HISTORY_PROCESSOR_TYPE"
 fi

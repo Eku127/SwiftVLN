@@ -130,6 +130,29 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 依赖说明：
     - `map_memory.py` 运行时依赖可选 geo 包：`rasterio` 与 `pyproj`
     - 当前仓库实现已做惰性导入；若环境缺依赖，只会在 `memory_method=map` 真正执行到地图渲染时报错
+  - **On-disk render cache**（Updated: 2026-04-17）：
+    - 位置：默认 `{dataset_root}/map_cache`（例：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/map_cache`）
+      - 训练入口（`dataset.py`）从 `SatNavTrajectoryMetadataResolver.dataset_root` 推导
+      - 评测入口（`evaluator.py`）从 habitat `DATA_PATH` 回溯找第一个 `ver_*` 目录
+    - 开关（优先级从高到低）：
+      1. 环境变量 `OVERLAPVLN_MAP_CACHE_DIR=<path>` 强制指定路径
+      2. 环境变量 `OVERLAPVLN_MAP_CACHE_DIR=off|false|none|0|disable|disabled|no` 关闭缓存
+      3. 训练/评测脚本 `MAP_CACHE_DIR`（default `"auto"` → 使用代码推导值）
+      4. 都未设 → 使用推导的 `{dataset_root}/map_cache`
+    - Cache key 由 render config digest + `scene_id` + `window_start` + 全部 poses 的
+      `(x, y, altitude, heading_deg)` 保留 6 位小数的 bytes 组合而成（content-addressable）
+    - 文件布局：`<cache_dir>/<key[:2]>/<key[2:4]>/<key>_{global,local}.png`
+      - 两级 sharding 防止单目录 inode 爆炸
+      - 原子写入（`tempfile` + `os.replace`），多进程 / 多 epoch 并发安全
+    - 失效 / 清理：
+      - `map_memory._MAP_CACHE_FORMAT_VERSION` 或任一 render 配置（`global_side_m` /
+        `local_side_m` / `render_px` / `mask_method` / `hfov` / `sensor_width` /
+        `sensor_height` / `global_center_mode` / `global_shift_*`）变化
+        → key digest 自动改变 → 新旧缓存自然共存，不会读到过期结果
+      - 如需回收磁盘，直接 `rm -rf {cache_dir}` 安全（会懒加载重建）
+    - Debug：`OVERLAPVLN_DEBUG=1` 会在首 N 次 render 打印 `[MAP DEBUG][builder] cache_hit/render ... cache=miss(M/wW)` 统计
+    - 性能目标：rasterio 渲染 ~2.4s/次 → cache hit ~10ms（PNG decode），命中率稳定后
+      DataLoader 近乎零 CPU 渲染成本（首 epoch 负责 warm-up）
 - SwanLab 直连默认（Updated: 2026-04-08）：
   - `src/swiftvln/scripts/train/train_queue.sh`
   - `src/swiftvln/models/{overlapvln,streamvln,compressvln,monovln,uninavid}/script/train/*.sh`
