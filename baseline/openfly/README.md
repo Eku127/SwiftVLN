@@ -32,16 +32,16 @@ The key recipe change that broke the SR=0 deadlock:
   - `compact`: 4 text actions `stop / forward / left / right`
   - `original`: OpenFly-style action tokens over an 8D action vector
 - Supported backends:
-  - `hf`: load an existing HF OpenFly checkpoint directory
-  - `native`: initialize from a Prismatic/OpenVLA `.pt` checkpoint, then continue training in the current HF/Trainer pipeline
-- Select the backend with `OPENFLY_BACKEND=hf|native`
+  - `continue`: load an existing HF OpenFly checkpoint (`openfly-agent-7b`) and continue training
+  - `scratch`: initialize from the original OpenVLA Prismatic `.pt` checkpoint and train from scratch (w.r.t. VLN task), using HF/Trainer pipeline
+- Select the backend with `OPENFLY_BACKEND=continue|scratch`
 - Both backends support both `compact` and `original` action formats
-- Native backend defaults:
+- `scratch` backend defaults:
   - `MODEL_PATH=baseline/openfly/model/openvlaopenvla-7b-prismatic`
   - `PROCESSOR_PATH=baseline/openfly/model/openfly-agent-7b`
   - The processor/tokenizer/image preprocessor come from `PROCESSOR_PATH`
-  - The model weights come from the native Prismatic checkpoint under `MODEL_PATH`
-- Native backend output is still a normal HF checkpoint layout under `output/openfly-baseline/.../checkpoint-*`
+  - The model weights come from the OpenVLA Prismatic checkpoint under `MODEL_PATH`
+- `scratch` backend output is still a normal HF checkpoint layout under `output/openfly-baseline/.../checkpoint-*`
   so `scripts/eval_satnav.sh` keeps reusing the existing HF eval path
 - `original` SatNav templates only enable 4 legal actions:
   - `stop -> [1, 0, 0, 0, 0, 0, 0, 0]`
@@ -53,8 +53,8 @@ The key recipe change that broke the SR=0 deadlock:
   - `-actcompact`
   - `-actoriginal`
 - Experiment names also include the backend suffix:
-  - `-bkhf`
-  - `-bknative`
+  - `-bkcontinue`
+  - `-bkscratch`
 - Default train names also include the SatNav sampling tag:
   - `-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16`
 - Training defaults do not use Weights & Biases:
@@ -126,4 +126,4 @@ The key recipe change that broke the SR=0 deadlock:
 - Eval is robust to simulator out-of-bounds errors; such steps are recorded as episode failures
   rather than crashing the full evaluation run
 - This baseline does not depend on the external `OpenFly-Platform` repo at runtime.
-- Native backend writes `backend_meta.json` alongside training outputs and checkpoints so the checkpoint source stays traceable.
+- `scratch` backend writes `backend_meta.json` alongside training outputs and checkpoints so the checkpoint source stays traceable.

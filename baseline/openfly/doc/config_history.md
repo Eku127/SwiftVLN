@@ -4,7 +4,7 @@
 
 ### Train
 
-- `OPENFLY_BACKEND=hf`
+- `OPENFLY_BACKEND=continue`
 - `OPENFLY_ACTION_FORMAT=original`
 - `DATA_PATH=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data/annotations.json`
 - `IMAGE_FOLDER=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data`
@@ -40,7 +40,7 @@
 
 ### Train
 
-- `OPENFLY_BACKEND=hf`
+- `OPENFLY_BACKEND=continue`
 - `OPENFLY_ACTION_FORMAT=original`
 - same optimizer/hardware settings as v1
 
@@ -94,7 +94,7 @@ settings unless overridden via environment variables.
 
 ### Train
 
-- `OPENFLY_BACKEND=hf`
+- `OPENFLY_BACKEND=continue`
 - `OPENFLY_ACTION_FORMAT=compact`
 - `DATA_PATH=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data/annotations.json`
 - `IMAGE_FOLDER=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data`
@@ -128,8 +128,8 @@ settings unless overridden via environment variables.
 ### Prompt
 
 - `OPENFLY_ACTION_HISTORY_LIMIT=16`
-- Format: `What action should the robot take to {instruction}? Past actions: forward, left, ...`
-- Clause omitted when no actions have been taken yet (first step of each episode)
+- Format: `What action should the robot take to {instruction}? Past actions (N so far): forward, left, ...`
+- At step 0 (no prior actions), the clause reads: `Past actions: none.`
 
 ### 0404 Sample Distribution (stop_window=0)
 
@@ -138,6 +138,13 @@ settings unless overridden via environment variables.
 - `forward=2,212,744` (`57.85%`)
 - `left=730,805` (`19.10%`)
 - `right=671,062` (`17.54%`)
+
+### Backend Compatibility
+
+Both `continue` and `scratch` backends support both `compact` and `original` action formats.
+
+- `continue` default: `OPENFLY_BACKEND=continue` → loads `openfly-agent-7b` HF checkpoint
+- `scratch` default: `OPENFLY_BACKEND=scratch` → initializes from OpenVLA Prismatic `.pt` checkpoint
 
 ### Eval Results (val_seen, ver_260404, 6338 episodes)
 

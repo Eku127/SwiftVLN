@@ -194,7 +194,7 @@ def build_native_hf_model(
         )
 
     backend_meta = {
-        "backend": "native",
+        "backend": "scratch",
         "native_checkpoint_path": checkpoint_path,
         "native_run_dir": run_dir,
         "processor_source": os.path.abspath(processor_source),

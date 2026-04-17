@@ -4,8 +4,8 @@ set -euo pipefail
 SWIFTVLN_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 BASELINE_DIR="${SWIFTVLN_ROOT}/baseline/openfly"
 
-OPENFLY_BACKEND="${OPENFLY_BACKEND:-hf}"
-if [ "${OPENFLY_BACKEND}" = "native" ]; then
+OPENFLY_BACKEND="${OPENFLY_BACKEND:-continue}"
+if [ "${OPENFLY_BACKEND}" = "scratch" ]; then
     DEFAULT_MODEL_PATH="${BASELINE_DIR}/model/openvlaopenvla-7b-prismatic"
     DEFAULT_PROCESSOR_PATH="${BASELINE_DIR}/model/openfly-agent-7b"
 else

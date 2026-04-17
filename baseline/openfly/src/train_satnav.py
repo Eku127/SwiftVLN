@@ -14,7 +14,7 @@ from action_formats import (
     get_original_norm_stats,
     resolve_action_format,
 )
-from backends import HF_BACKEND, build_train_backend, patch_accelerate_optimizer_train_eval
+from backends import CONTINUE_BACKEND, build_train_backend, patch_accelerate_optimizer_train_eval
 from dataset.satnav_dataset import SatNavOpenFlyDataset
 
 
@@ -120,7 +120,7 @@ class OpenFlyTrainer(Trainer):
 @dataclass
 class ModelArguments:
     model_name_or_path: str = field(metadata={"help": "OpenFly base model dir or HF snapshot dir"})
-    backend: str = field(default=HF_BACKEND, metadata={"help": "OpenFly backend: hf or native"})
+    backend: str = field(default=CONTINUE_BACKEND, metadata={"help": "OpenFly backend: continue (from openfly-agent-7b) or scratch (from openvla prismatic checkpoint)"})
     processor_name_or_path: Optional[str] = field(
         default=None,
         metadata={"help": "Optional processor/tokenizer source dir; defaults to model_name_or_path"},

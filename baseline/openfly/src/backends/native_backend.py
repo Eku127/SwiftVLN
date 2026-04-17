@@ -61,7 +61,7 @@ def build_native_train_backend(model_args, data_args, training_args) -> TrainBac
 
     backend_meta.update(
         {
-            "backend": "native",
+            "backend": "scratch",
             "native_checkpoint_path": os.path.abspath(native_checkpoint_path),
             "native_run_dir": os.path.abspath(native_run_dir),
             "model_name_or_path": os.path.abspath(model_args.model_name_or_path),
@@ -69,7 +69,7 @@ def build_native_train_backend(model_args, data_args, training_args) -> TrainBac
         }
     )
     return TrainBackendArtifacts(
-        backend_name="native",
+        backend_name="scratch",
         processor=processor,
         model=model,
         data_collator=data_collator,

@@ -8,9 +8,13 @@ import accelerate.optimizer
 import torch
 
 
-HF_BACKEND = "hf"
-NATIVE_BACKEND = "native"
-SUPPORTED_BACKENDS = {HF_BACKEND, NATIVE_BACKEND}
+CONTINUE_BACKEND = "continue"
+SCRATCH_BACKEND = "scratch"
+SUPPORTED_BACKENDS = {CONTINUE_BACKEND, SCRATCH_BACKEND}
+
+# Legacy aliases kept for any external references
+HF_BACKEND = CONTINUE_BACKEND
+NATIVE_BACKEND = SCRATCH_BACKEND
 
 
 def resolve_backend(requested: str) -> str:

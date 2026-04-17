@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from backends.base import (
+    CONTINUE_BACKEND,
+    SCRATCH_BACKEND,
     HF_BACKEND,
     NATIVE_BACKEND,
     TrainBackendArtifacts,
@@ -13,14 +15,16 @@ from backends.native_backend import build_native_train_backend
 
 def build_train_backend(model_args, data_args, training_args) -> TrainBackendArtifacts:
     backend = resolve_backend(model_args.backend)
-    if backend == HF_BACKEND:
+    if backend == CONTINUE_BACKEND:
         return build_hf_train_backend(model_args, data_args, training_args)
-    if backend == NATIVE_BACKEND:
+    if backend == SCRATCH_BACKEND:
         return build_native_train_backend(model_args, data_args, training_args)
     raise ValueError(f"Unsupported OpenFly backend: {backend}")
 
 
 __all__ = [
+    "CONTINUE_BACKEND",
+    "SCRATCH_BACKEND",
     "HF_BACKEND",
     "NATIVE_BACKEND",
     "TrainBackendArtifacts",
