@@ -15,9 +15,16 @@ SUPPORTED_BACKENDS = {CONTINUE_BACKEND, SCRATCH_BACKEND}
 # Legacy aliases kept for any external references
 HF_BACKEND = CONTINUE_BACKEND
 NATIVE_BACKEND = SCRATCH_BACKEND
+LEGACY_BACKEND_ALIASES = {
+    "hf": CONTINUE_BACKEND,
+    "native": SCRATCH_BACKEND,
+    HF_BACKEND: CONTINUE_BACKEND,
+    NATIVE_BACKEND: SCRATCH_BACKEND,
+}
 
 
 def resolve_backend(requested: str) -> str:
+    requested = LEGACY_BACKEND_ALIASES.get(requested, requested)
     if requested not in SUPPORTED_BACKENDS:
         raise ValueError(f"Unsupported OpenFly backend: {requested}")
     return requested
