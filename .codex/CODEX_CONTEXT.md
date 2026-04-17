@@ -15,7 +15,7 @@
 SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如下：
 
 - 包根：`src/swiftvln`
-- 模型目录：`src/swiftvln/models/{streamvln,compressvln,overlapvln,monovln,uninavid}`
+- 模型目录：`src/swiftvln/model`（主线 overlapvln 唯一实现）
 - 配置目录：`src/swiftvln/configs`
 - 脚本目录：`src/swiftvln/scripts`
 
@@ -63,16 +63,33 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `gpu_health_98`
     - `gpu_health_73`
 - OverlapVLN 单机训练 GPU 选择（Updated: 2026-04-07）：
-  - `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
   - 默认不再硬编码 `0-7`，而是自动使用当前环境里**全部可见 GPU**
   - 可选覆盖：
     - `TRAIN_NUM_GPUS=<N>`：从当前可见 GPU 集合中取前 N 张
     - `TRAIN_CUDA_DEVICES=<csv>`：显式指定 GPU 列表，例如 `0,1,3,5`
     - `TRAIN_DRY_RUN=true`：仅做配置与 GPU 解析检查，不实际启动 `torchrun`
   - `src/swiftvln/scripts/train/train_queue.sh` 会把以上三个变量透传给单次训练脚本
+- OverlapVLN 训练默认值与 smoke 隔离（Updated: 2026-04-17）：
+  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - 当前仓库默认值按**正式训练**维护，不再使用 smoke 残留默认：
+    - `MAX_SAMPLES=0`（显式表示全量）
+    - `NUM_OVERLAP=0`（当前 baseline 默认）
+    - `SAVE_STEPS=1000`
+    - `SAVE_TOTAL_LIMIT=1`
+  - overlap baseline 约定：
+    - 当前 baseline 默认：`overlap=0`
+    - 历史 baseline 默认：`overlap=16`
+  - `train_queue.sh` 复制单次训练脚本时会继承这些默认值，因此若不显式覆盖，
+    串行队列将按正式训练口径启动
+  - smoke 测试必须在调用时显式覆盖：
+    - `MAX_SAMPLES=16`
+    - `SAVE_STEPS=1`
+    - `SAVE_TOTAL_LIMIT=1`
+    - 见 `.codex/skills/swiftvln-smoke-test/SKILL.md`
 - OverlapVLN no-memory 配置约定（Updated: 2026-04-17）：
-  - 训练脚本：`src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
-  - 数据集：`src/swiftvln/models/overlapvln/dataset.py`
+  - 训练脚本：`src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - 数据集：`src/swiftvln/model/dataset.py`
   - 队列展示/解析：`src/swiftvln/scripts/train/train_queue.sh`
   - 评测按名解析说明：`src/swiftvln/scripts/eval/eval_by_name.sh`
   - 当前没有独立的 `USE_MEMORY=false` 开关；如需 no-memory，使用：
@@ -84,16 +101,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - `gtc` / `segment_gtc` 不适用该 no-memory 约定，因为其历史采样逻辑不看 `NUM_HISTORY`
 - OverlapVLN `map` memory 配置约定（Updated: 2026-04-17）：
   - 共享实现：
-    - `src/swiftvln/models/overlapvln/map_memory.py`
+    - `src/swiftvln/model/map_memory.py`
   - 训练链路：
-    - 参数定义：`src/swiftvln/models/overlapvln/arguments.py`
-    - dataset 接线：`src/swiftvln/models/overlapvln/dataset.py`
-    - trainer 透传/校验：`src/swiftvln/models/overlapvln/trainer.py`
-    - template pose 兼容：`src/swiftvln/models/overlapvln/template.py`
+    - 参数定义：`src/swiftvln/model/arguments.py`
+    - dataset 接线：`src/swiftvln/model/dataset.py`
+    - trainer 透传/校验：`src/swiftvln/model/trainer.py`
+    - template pose 兼容：`src/swiftvln/model/template.py`
   - 评测链路：
-    - CLI 参数：`src/swiftvln/models/overlapvln/eval.py`
-    - evaluator window 刷新：`src/swiftvln/models/overlapvln/evaluator.py`
-    - 单次 eval 脚本：`src/swiftvln/models/overlapvln/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+    - CLI 参数：`src/swiftvln/model/eval.py`
+    - evaluator window 刷新：`src/swiftvln/model/evaluator.py`
+    - 单次 eval 脚本：`src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
     - 按名评测解析：`src/swiftvln/scripts/eval/eval_by_name.sh`
   - 队列透传：
     - `src/swiftvln/scripts/train/train_queue.sh`
@@ -155,13 +172,13 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
       DataLoader 近乎零 CPU 渲染成本（首 epoch 负责 warm-up）
 - SwanLab 直连默认（Updated: 2026-04-08）：
   - `src/swiftvln/scripts/train/train_queue.sh`
-  - `src/swiftvln/models/{overlapvln,streamvln,compressvln,monovln,uninavid}/script/train/*.sh`
+  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
   - 当 `USE_SWANLAB=true` 时，训练脚本默认会清理 `http_proxy/https_proxy/HTTP_PROXY/HTTPS_PROXY/all_proxy/ALL_PROXY`
   - 目的：避免误继承本地 `127.0.0.1:7890` 一类代理，导致 SwanLab 登录失败
   - 如需保留代理，可显式设置 `SWANLAB_DIRECT_NETWORK=false`
   - `train_queue.sh` 现在也会把全局 `QA_DATASET` 显式写入临时训练脚本，避免 `qa*` 实验回退到模型脚本内的旧默认 QA 路径
 - OverlapVLN 训练恢复支持（Updated: 2026-04-08）：
-  - `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
   - `src/swiftvln/scripts/train/train_queue.sh`
   - 单次训练脚本新增：
     - `RESUME_FROM_CHECKPOINT=<abs_path>`：传给 ms-swift 的 `--resume_from_checkpoint`
@@ -233,7 +250,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - 若**未显式传 split 参数**，默认顺序运行 `val_seen` 和 `val_unseen`
     - 若显式传 `val_seen` / `val_unseen` / `test`，则只跑该单个 split
   - 评测结果目录约定（0319 起）：
-    - SwiftVLN 主线模型（overlapvln/streamvln/compressvln/monovln/uninavid）：
+    - SwiftVLN 主线模型（overlapvln）：
       `results/eval/<arch>/<model_name>/<split>/<timestamp>/`
       例：`results/eval/overlapvln/<model>/val_seen/20260319_143025/`
     - SatNav 默认同时跑 `val_seen` + `val_unseen`（不设置 `EVAL_SPLIT`），Habitat 默认 `EVAL_SPLIT=val_unseen`
@@ -484,33 +501,38 @@ OpenFly SatNav baseline 约定：
     - 该默认值来自 73 上 8xH100 短程 benchmark；目标是无 acc-grad 前提下提高吞吐
   - OpenFly SatNav 默认采样策略（Updated: 2026-04-17）：
     - `baseline/openfly/src/dataset/satnav_dataset.py`
+    - `baseline/openfly/scripts/train_satnav.sh`
     - 现已切到统一全局参数的 `head + denser forward + tail keep + stop window` 采样与监督
       逻辑；不再按 `Boundary/LandmarkSet/Road` 分类型设置不同采样参数
     - 当前默认值：
       - `SATNAV_HEAD_KEEP=7`
       - `SATNAV_SAMPLE_STRIDE=3`
       - `SATNAV_STOP_REPEAT=2`
-      - `SATNAV_STOP_WINDOW=2`
+      - `SATNAV_STOP_WINDOW=0`
       - `SATNAV_TAIL_KEEP=5`
       - `SATNAV_STOP_HISTORY_AUG=1`
     - 语义：
       - 保留每条轨迹前 `7` 步
       - 所有 `left/right` 全保留
       - 连续 `forward` 段按 stride=`3` 更密地保留
-      - near-goal tail 始终保留，最后 `2` 个保留的 near-goal step 统一重标为 `stop`
+      - near-goal tail 始终保留，但默认不启用额外 stop window 重标
       - `stop_history_aug` 默认保持 `1`，不再靠多 terminal history 变体做 stop 增强
     - 0404 近似统计（Updated: 2026-04-17）：
       - 原始全量：`5.396M`
-      - 当前默认：约 `3.929M`
+      - 当前默认：约 `3.825M`
       - 全局动作占比约：
-        - `stop 10.7%`
-        - `forward 53.6%`
-        - `left 18.6%`
-        - `right 17.1%`
+        - `stop 5.5%`
+        - `forward 57.9%`
+        - `left 19.1%`
+        - `right 17.5%`
       - 98 上最近一次 8xH100 实测吞吐为 `33430 steps / 26032.96s`
         （约 `0.779s/step`，global batch `96`）
-      - 按此估算，当前默认配置 1 epoch 约 `8.9h`，实务上按 `9.0-9.5h`
+      - 按此估算，当前默认配置 1 epoch 约 `8.8h`，实务上按 `9.0-9.5h`
         预留更稳妥
+    - 2026-04-17 修复：
+      - `baseline/openfly/src/backends/base.py` 现兼容 `hf/native` 与
+        `continue/scratch` 两套 backend 字符串；旧环境变量值不会再导致训练初始化阶段
+        直接报 `Unsupported OpenFly backend`
     - 训练产物中的 `dataset_statistics.json` 现会额外记录 `sampling_env`
       与 `trajectory_type_counts`，便于回溯具体采样配置
   - OpenFly `original` 训练监督（Updated: 2026-04-16）：
@@ -783,7 +805,7 @@ TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train
 ### Offline Model Convention (Updated: 2026-03-17)
 
 - 后续 VLN 训练任务默认使用**离线本地模型**，不依赖在线下载（避免 DNS/外网波动导致训练失败）。
-- OverlapVLN/StreamVLN/CompressVLN 的 stage1 基座模型默认路径：
+- OverlapVLN 的 stage1 基座模型默认路径：
   `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
 - 启动训练前必须先检查该路径存在且非空；若缺失，先修复模型路径/缓存，再启动训练。
 - 若脚本默认值仍是 `Qwen/Qwen2.5-VL-3B-Instruct`（在线 ID），运行时需显式覆盖为上述本地绝对路径。
@@ -793,8 +815,8 @@ TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train
 所有长时间运行的任务（训练/评测）必须在 tmux 中启动：
 
 ```
-train_<short_desc>_<HHMMSS>   # 例: train_baseline_streamvln_143025
-eval_<short_desc>_<HHMMSS>    # 例: eval_streamvln_baseline_150200
+train_<short_desc>_<HHMMSS>   # 例: train_overlap_smoke_143025
+eval_<short_desc>_<HHMMSS>    # 例: eval_overlap_smoke_150200
 ```
 
 ## Smoke Test Convention
@@ -803,7 +825,7 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_streamvln_baseline_150200
 - 原则：小规模、可复现、不可破坏。
 - 默认范围：SatNav-only。
 - 训练 smoke 仅使用多卡多 GPU（不做单卡 smoke）。
-- smoke 覆盖模型：`streamvln baseline` 与 `overlapvln baseline`，两者都要 train+eval。
+- 主线 smoke 覆盖模型：`overlapvln`，要求 train+eval 全链路可用。
 - 必须保存并验证 checkpoint 可用于 eval。
 - smoke 完成后需清理本次测试产物（仅清理 smoke 产物，不影响历史正式结果）。
 - 必须避免：
@@ -895,15 +917,15 @@ OverlapVLN 已接入 `uav_adapter` 的 Stage-B 最小链路：
 - 在线 enhancement 模块：`src/swiftvln/common/embedding_enhancement/uav_adapter.py`
 - pipeline 工厂：`src/swiftvln/common/embedding_enhancement/__init__.py`
 - OverlapVLN 模型加载与本地/外部权重恢复：
-  `src/swiftvln/models/overlapvln/model.py`
+  `src/swiftvln/model/model.py`
 - OverlapVLN trainer 参数透传与 pipeline 重建：
-  `src/swiftvln/models/overlapvln/trainer.py`
+  `src/swiftvln/model/trainer.py`
 - OverlapVLN eval 参数透传：
-  `src/swiftvln/models/overlapvln/eval.py`
+  `src/swiftvln/model/eval.py`
 - OverlapVLN 分布式评测脚本参数透传：
-  `src/swiftvln/models/overlapvln/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+  `src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
 - 训练脚本参数透传：
-  `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+  `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
 
 Stage-B 当前参数约定：
 
@@ -928,9 +950,9 @@ Stage-B smoke / regression 测试：
 
 - Stage-B 单测：`tests/test_uav_adapter_enhancement.py`
 - Stage-B loader smoke：
-  `src/swiftvln/models/overlapvln/script/test/test_uav_adapter_strategy.py`
+  `src/swiftvln/model/script/test/test_uav_adapter_strategy.py`
 - 现有 pixel/pose loader smoke：
-  `src/swiftvln/models/overlapvln/script/test/test_pixel_embed_strategy.py`
+  `src/swiftvln/model/script/test/test_pixel_embed_strategy.py`
 - 全模型导航 eval smoke 已通过（2026-04-07）：
   - 环境：`satnav`
   - 模式：`1 GPU / max_episodes=1 / val_seen`

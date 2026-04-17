@@ -3,28 +3,12 @@
 # Unified VLN Model Evaluation Script
 # ============================================================================
 # 
-# 支持的模型架构: streamvln, monovln, compressvln, uninavid, overlapvln
+# 支持的模型架构: overlapvln
 #
 # 使用方法:
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh <model_name> [options]
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh <overlapvln_model_name> [options]
 #
 # 示例:
-#   # Habitat 评估 (默认)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh streamvln-3b-2ep-f32h8s4-bs64-lr2e-5-20260119-140611
-#   
-#   # 新格式 (自动识别 env_type 和 stage)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh streamvln-habitat-stage1-3b-1ep-f32h8s4-bs64-lr2e-5-20260129-123456
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh streamvln-satnav-stage2-3b-1ep-f32h8s4-bs64-lr2e-5-20260129-123456
-#   
-#   # SatNav 评估 (手动指定 ENV_TYPE 会覆盖模型名中解析的值)
-#   ENV_TYPE=satnav bash src/swiftvln/scripts/eval/eval_by_name.sh monovln-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611
-#   
-#   # 指定评估集
-#   EVAL_SPLIT=val_seen bash src/swiftvln/scripts/eval/eval_by_name.sh compressvln-3b-1ep-f32h8s4-stride2-bs64-lr2e-5-20260119-140611
-#
-#   # UniNaVid 评估
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh uninavid-3b-1ep-st32-sim0.985-ststride3-imgstride1.5-hstride2-bs64-lr2e-5-20260121-100838
-#
 #   # OverlapVLN 评估 (per_frame, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456
 #   
@@ -91,8 +75,7 @@ if [ $# -lt 1 ]; then
     echo "使用方法: bash $0 <model_name> [options]"
     echo ""
     echo "示例:"
-    echo "  bash $0 streamvln-3b-2ep-f32h8s4-bs64-lr2e-5-20260119-140611"
-    echo "  ENV_TYPE=satnav bash $0 monovln-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611"
+    echo "  bash $0 overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456"
     exit 1
 fi
 
@@ -114,15 +97,7 @@ fi
 parse_model_arch() {
     local name="$1"
     
-    if [[ "$name" == streamvln-* ]]; then
-        echo "streamvln"
-    elif [[ "$name" == monovln-* ]]; then
-        echo "monovln"
-    elif [[ "$name" == compressvln-* ]]; then
-        echo "compressvln"
-    elif [[ "$name" == uninavid-* ]]; then
-        echo "uninavid"
-    elif [[ "$name" == overlapvln-* ]]; then
+    if [[ "$name" == overlapvln-* ]]; then
         echo "overlapvln"
     else
         echo ""
@@ -132,7 +107,7 @@ parse_model_arch() {
 MODEL_ARCH=$(parse_model_arch "$MODEL_NAME")
 
 if [ -z "$MODEL_ARCH" ]; then
-    print_error "无法解析模型架构! 模型名称必须以 streamvln-, monovln-, compressvln-, uninavid- 或 overlapvln- 开头"
+    print_error "无法解析模型架构! 模型名称必须以 overlapvln- 开头"
     print_error "输入的模型名称: $MODEL_NAME"
     exit 1
 fi
@@ -143,26 +118,17 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # 解析模型参数 (基于EXP_NAME格式)
 # ============================================================================
 # 新格式 (带 env_type 和 stage):
-# StreamVLN:   streamvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-# CompressVLN: compressvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}-stride{compress_stride}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-# 注: qa参数(混合训练比例)不影响eval，解析时会被忽略
+# 注: qa 参数(混合训练比例)不影响 eval，解析时会被忽略
 # OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (gtc):         overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (segment_gtc): overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 #   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
-#
-# 旧格式 (兼容，默认 env_type=habitat):
-# StreamVLN:   streamvln-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}-bs{batch_size}-lr{learning_rate}-{timestamp}
-# MonoVLN:     monovln-{model_size}-{epochs}ep-h{num_history}s{num_future_steps}-spe{samples_per_episode}-stride{compress_stride}-bs{batch_size}-lr{learning_rate}-{timestamp}
-# CompressVLN: compressvln-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}-stride{compress_stride}-bs{batch_size}-lr{learning_rate}-{timestamp}
-# UniNaVid:    uninavid-{model_size}-{epochs}ep-st{short_term_frames}-sim{similarity_threshold}-ststride{compress_stride}-imgstride{image_resize_stride}-hstride{history_frame_stride}-bs{batch_size}-lr{learning_rate}-{timestamp}
 
 # ============================================================================
 # 解析环境类型 (从模型名中提取 env_type，兼容新旧格式)
 # ============================================================================
 parse_env_type() {
     local name="$1"
-    local arch="$2"
     
     # 新格式: {arch}-{env_type}-{stage}-{model_size}-...
     # 检测是否为新格式 (第二个字段是 habitat 或 satnav)
@@ -174,113 +140,6 @@ parse_env_type() {
         # 旧格式，默认 habitat
         echo "habitat"
     fi
-}
-
-parse_streamvln_params() {
-    local name="$1"
-    # 新格式: streamvln-habitat-stage1-3b-1ep-f32h8s4[-qa{ratio}]-bs64-lr2e-5-20260129-123456
-    # 旧格式: streamvln-3b-2ep-f32h8s4-bs64-lr2e-5-20260119-140611
-    # 注意: qa参数不影响eval，解析时会被忽略
-    
-    # 提取参数 - 支持新旧两种格式
-    # model_size: 匹配 -{数字}b- 或 -{数字}B- 的模式
-    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
-    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
-    local frames_history_steps=$(echo "$name" | grep -oP 'f\d+h\d+s\d+')
-    local num_frames=$(echo "$frames_history_steps" | sed -n 's/f\([0-9]*\)h.*/\1/p')
-    local num_history=$(echo "$frames_history_steps" | sed -n 's/.*h\([0-9]*\)s.*/\1/p')
-    local num_future_steps=$(echo "$frames_history_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
-    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
-    # 学习率格式: lr2e-5 需要提取 2e-5 (包含科学计数法中的负号)
-    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
-    
-    echo "MODEL_SIZE=$model_size"
-    echo "NUM_EPOCHS=$epochs"
-    echo "NUM_FRAMES=$num_frames"
-    echo "NUM_HISTORY=$num_history"
-    echo "NUM_FUTURE_STEPS=$num_future_steps"
-    echo "BATCH_SIZE=$batch_size"
-    echo "LEARNING_RATE=$learning_rate"
-}
-
-parse_monovln_params() {
-    local name="$1"
-    # 新格式: monovln-habitat-stage1-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611
-    # 旧格式: monovln-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611
-    
-    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
-    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
-    local history_steps=$(echo "$name" | grep -oP 'h\d+s\d+' | head -1)
-    local num_history=$(echo "$history_steps" | sed -n 's/h\([0-9]*\)s.*/\1/p')
-    local num_future_steps=$(echo "$history_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
-    local samples_per_episode=$(echo "$name" | sed -n 's/.*-spe\([0-9]*\)-.*$/\1/p')
-    local compress_stride=$(echo "$name" | sed -n 's/.*-stride\([0-9]*\)-.*$/\1/p')
-    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
-    # 学习率格式: lr2e-5 需要提取 2e-5 (包含科学计数法中的负号)
-    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
-    
-    echo "MODEL_SIZE=$model_size"
-    echo "NUM_EPOCHS=$epochs"
-    echo "NUM_HISTORY=$num_history"
-    echo "NUM_FUTURE_STEPS=$num_future_steps"
-    echo "SAMPLES_PER_EPISODE=$samples_per_episode"
-    echo "COMPRESS_STRIDE=$compress_stride"
-    echo "BATCH_SIZE=$batch_size"
-    echo "LEARNING_RATE=$learning_rate"
-}
-
-parse_compressvln_params() {
-    local name="$1"
-    # 新格式: compressvln-habitat-stage1-3b-1ep-f32h8s4-stride2[-qa{ratio}]-bs64-lr2e-5-20260119-140611
-    # 旧格式: compressvln-3b-1ep-f32h8s4-stride2-bs64-lr2e-5-20260119-140611
-    # 注意: qa参数不影响eval，解析时会被忽略
-    
-    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
-    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
-    local frames_history_steps=$(echo "$name" | grep -oP 'f\d+h\d+s\d+')
-    local num_frames=$(echo "$frames_history_steps" | sed -n 's/f\([0-9]*\)h.*/\1/p')
-    local num_history=$(echo "$frames_history_steps" | sed -n 's/.*h\([0-9]*\)s.*/\1/p')
-    local num_future_steps=$(echo "$frames_history_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
-    local compress_stride=$(echo "$name" | sed -n 's/.*-stride\([0-9]*\)-.*$/\1/p')
-    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
-    # 学习率格式: lr2e-5 需要提取 2e-5 (包含科学计数法中的负号)
-    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
-    
-    echo "MODEL_SIZE=$model_size"
-    echo "NUM_EPOCHS=$epochs"
-    echo "NUM_FRAMES=$num_frames"
-    echo "NUM_HISTORY=$num_history"
-    echo "NUM_FUTURE_STEPS=$num_future_steps"
-    echo "COMPRESS_STRIDE=$compress_stride"
-    echo "BATCH_SIZE=$batch_size"
-    echo "LEARNING_RATE=$learning_rate"
-}
-
-parse_uninavid_params() {
-    local name="$1"
-    # 新格式: uninavid-habitat-stage1-3b-1ep-st32-sim0.985-ststride3-imgstride1.5-hstride2-bs64-lr2e-5-20260121-100838
-    # 旧格式: uninavid-3b-1ep-st32-sim0.985-ststride3-imgstride1.5-hstride2-bs64-lr2e-5-20260121-100838
-    
-    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
-    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
-    local short_term_frames=$(echo "$name" | sed -n 's/.*-st\([0-9]*\)-.*$/\1/p')
-    local similarity_threshold=$(echo "$name" | grep -oP 'sim[0-9.]+' | sed 's/sim//')
-    local compress_stride=$(echo "$name" | sed -n 's/.*-ststride\([0-9]*\)-.*$/\1/p')
-    local image_resize_stride=$(echo "$name" | grep -oP 'imgstride[0-9.]+' | sed 's/imgstride//')
-    local history_frame_stride=$(echo "$name" | sed -n 's/.*-hstride\([0-9]*\)-.*$/\1/p')
-    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
-    # 学习率格式: lr2e-5 需要提取 2e-5 (包含科学计数法中的负号)
-    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
-    
-    echo "MODEL_SIZE=$model_size"
-    echo "NUM_EPOCHS=$epochs"
-    echo "SHORT_TERM_FRAMES=$short_term_frames"
-    echo "SIMILARITY_THRESHOLD=$similarity_threshold"
-    echo "COMPRESS_STRIDE=$compress_stride"
-    echo "IMAGE_RESIZE_STRIDE=$image_resize_stride"
-    echo "HISTORY_FRAME_STRIDE=$history_frame_stride"
-    echo "BATCH_SIZE=$batch_size"
-    echo "LEARNING_RATE=$learning_rate"
 }
 
 parse_overlapvln_params() {
@@ -412,24 +271,8 @@ parse_overlapvln_params() {
     echo "LEARNING_RATE=$learning_rate"
 }
 
-# 根据模型架构解析参数
-case "$MODEL_ARCH" in
-    streamvln)
-        eval "$(parse_streamvln_params "$MODEL_NAME")"
-        ;;
-    monovln)
-        eval "$(parse_monovln_params "$MODEL_NAME")"
-        ;;
-    compressvln)
-        eval "$(parse_compressvln_params "$MODEL_NAME")"
-        ;;
-    uninavid)
-        eval "$(parse_uninavid_params "$MODEL_NAME")"
-        ;;
-    overlapvln)
-        eval "$(parse_overlapvln_params "$MODEL_NAME")"
-        ;;
-esac
+# 解析 overlapvln 参数
+eval "$(parse_overlapvln_params "$MODEL_NAME")"
 
 # 解析环境类型 (从模型名中提取，如果用户没有指定 ENV_TYPE)
 PARSED_ENV_TYPE=$(parse_env_type "$MODEL_NAME" "$MODEL_ARCH")
@@ -455,20 +298,9 @@ echo "环境类型:       ${ENV_TYPE} (解析自模型名: ${PARSED_ENV_TYPE})"
 echo "模型大小:       ${MODEL_SIZE:-N/A}"
 echo "训练轮数:       ${NUM_EPOCHS:-N/A}"
 
-if [ "$MODEL_ARCH" == "streamvln" ] || [ "$MODEL_ARCH" == "compressvln" ] || [ "$MODEL_ARCH" == "overlapvln" ]; then
-    echo "NUM_FRAMES:     ${NUM_FRAMES:-N/A}"
-fi
-if [ "$MODEL_ARCH" != "uninavid" ]; then
-    echo "NUM_HISTORY:    ${NUM_HISTORY:-N/A}"
-    echo "NUM_FUTURE_STEPS: ${NUM_FUTURE_STEPS:-N/A}"
-fi
-
-if [ "$MODEL_ARCH" == "monovln" ]; then
-    echo "SAMPLES_PER_EPISODE: ${SAMPLES_PER_EPISODE:-N/A}"
-fi
-if [ "$MODEL_ARCH" == "monovln" ] || [ "$MODEL_ARCH" == "compressvln" ] || [ "$MODEL_ARCH" == "uninavid" ] || [ "$MODEL_ARCH" == "overlapvln" ]; then
-    echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-N/A}"
-fi
+echo "NUM_FRAMES:     ${NUM_FRAMES:-N/A}"
+echo "NUM_HISTORY:    ${NUM_HISTORY:-N/A}"
+echo "NUM_FUTURE_STEPS: ${NUM_FUTURE_STEPS:-N/A}"
 
 # OverlapVLN 特有参数
 if [ "$MODEL_ARCH" == "overlapvln" ]; then
@@ -501,14 +333,6 @@ if [ "$MODEL_ARCH" == "overlapvln" ]; then
     fi
 fi
 
-# UniNaVid 特有参数
-if [ "$MODEL_ARCH" == "uninavid" ]; then
-    echo "SHORT_TERM_FRAMES: ${SHORT_TERM_FRAMES:-N/A}"
-    echo "SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-N/A}"
-    echo "IMAGE_RESIZE_STRIDE: ${IMAGE_RESIZE_STRIDE:-N/A}"
-    echo "HISTORY_FRAME_STRIDE: ${HISTORY_FRAME_STRIDE:-N/A}"
-fi
-
 echo "BATCH_SIZE:     ${BATCH_SIZE:-N/A}"
 echo "LEARNING_RATE:  ${LEARNING_RATE:-N/A}"
 echo "=============================================="
@@ -531,7 +355,7 @@ if [ "$CHECK_ONLY" == "true" ]; then
     print_info "预期模型目录: $MODEL_DIR"
     
     # 检查eval脚本是否存在
-    EVAL_SCRIPT="${VLN_ROOT}/models/${MODEL_ARCH}/script/eval/eval_${MODEL_ARCH}_qwen2_5_vl_distributed.sh"
+    EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh"
     if [ ! -f "$EVAL_SCRIPT" ]; then
         print_error "找不到eval脚本: $EVAL_SCRIPT"
         exit 1
@@ -609,19 +433,6 @@ if [ "$CHECK_ONLY" == "true" ]; then
     if [ "$MODEL_ARCH" == "overlapvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
         echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
         echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
-    fi
-    # UniNaVid 特有参数
-    if [ -n "$SHORT_TERM_FRAMES" ]; then
-        echo "SHORT_TERM_FRAMES=${SHORT_TERM_FRAMES}"
-    fi
-    if [ -n "$SIMILARITY_THRESHOLD" ]; then
-        echo "SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD}"
-    fi
-    if [ -n "$IMAGE_RESIZE_STRIDE" ]; then
-        echo "IMAGE_RESIZE_STRIDE=${IMAGE_RESIZE_STRIDE}"
-    fi
-    if [ -n "$HISTORY_FRAME_STRIDE" ]; then
-        echo "HISTORY_FRAME_STRIDE=${HISTORY_FRAME_STRIDE}"
     fi
     echo "SAVE_VIDEO=${SAVE_VIDEO:-false}"
     if [ -n "$MAX_EPISODES" ]; then
@@ -720,7 +531,7 @@ print_success "Checkpoint完整性检查通过"
 # ============================================================================
 # 确定eval脚本路径
 # ============================================================================
-EVAL_SCRIPT="${VLN_ROOT}/models/${MODEL_ARCH}/script/eval/eval_${MODEL_ARCH}_qwen2_5_vl_distributed.sh"
+EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh"
 
 if [ ! -f "$EVAL_SCRIPT" ]; then
     print_error "找不到eval脚本: $EVAL_SCRIPT"
@@ -851,19 +662,6 @@ else
         export USE_TOME
     fi
 fi
-# UniNaVid 特有参数
-if [ -n "$SHORT_TERM_FRAMES" ]; then
-    export SHORT_TERM_FRAMES
-fi
-if [ -n "$SIMILARITY_THRESHOLD" ]; then
-    export SIMILARITY_THRESHOLD
-fi
-if [ -n "$IMAGE_RESIZE_STRIDE" ]; then
-    export IMAGE_RESIZE_STRIDE
-fi
-if [ -n "$HISTORY_FRAME_STRIDE" ]; then
-    export HISTORY_FRAME_STRIDE
-fi
 # OverlapVLN system prompt setting
 if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
     export SYSTEM_PROMPT_SETTING
@@ -924,15 +722,6 @@ if [ "$MODEL_ARCH" == "overlapvln" ]; then
     if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
         echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
     fi
-fi
-# UniNaVid 特有参数
-if [ "$MODEL_ARCH" == "uninavid" ]; then
-    echo "--- UniNaVid Parameters ---"
-    echo "SHORT_TERM_FRAMES:  ${SHORT_TERM_FRAMES:-N/A}"
-    echo "SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-N/A}"
-    echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-N/A}"
-    echo "IMAGE_RESIZE_STRIDE: ${IMAGE_RESIZE_STRIDE:-N/A}"
-    echo "HISTORY_FRAME_STRIDE: ${HISTORY_FRAME_STRIDE:-N/A}"
 fi
 echo "=============================================="
 echo ""

@@ -6,8 +6,8 @@
 
 | Baseline | Scratch 训练 | Continue 训练 | Scratch 评测 | Continue 评测 |
 | --- | --- | --- | --- | --- |
-| Seq2Seq | ➖ | ➖ | ➖ | ➖ |
-| CMA | ➖ | ➖ | ➖ | ➖ |
+| Seq2Seq | ✅ | ➖ | ✅ | ➖ |
+| CMA | ✅ | ➖ | ✅ | ➖ |
 | StreamVLN | ✅ | ✅ | ✅ | ✅ |
 | NaVILA | ✅ | ✅ | ✅ | ✅ |
 | UniNaVid | ✅ | ✅ | ✅ | ✅ |
@@ -18,21 +18,67 @@
 
 ### Train
 
-`0404`：`无`
+当前 `0404` 的 Seq2Seq baseline 训练产物如下：
+
+1. `seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/seq2seq_offline/checkpoints/seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab`
+   `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/seq2seq_offline/logs/seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab.log`
+   `训练数据`：`0404`
+   `词表 / embedding`：`0404 vocab + 0404 GloVe embedding`
+   `执行信息`：`73` 服务器，`8` 卡全量训练（scratch）
+   `状态`：已完成
+   `训练结果`：日志已完成落盘，`best.pth` 已生成
+   `best_loss`：`0.6489`
+
+`备注`：当前 Seq2Seq `0404` 仅有 scratch 训练记录，没有 continue 训练链路。
 
 ### Eval
 
-`0404`：`无`
+当前 `0404` 的 Seq2Seq baseline 评测产物如下：
+
+1. `a. scratch eval`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/seq2seq_offline/checkpoints/seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab`
+   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/seq2seq_offline/results/seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab`
+   `数据版本`：`0404`
+   `执行信息`：`73` 服务器，`8` 卡分片 eval（SatSim）
+   `状态`：已完成
+   `val_seen`：`原始 SR 1.50%`，`SPL 1.48%`，`NE 207.95`，`path_length 400.55`，`avg_steps 54.92`
+   `val_unseen`：`原始 SR 1.69%`，`SPL 1.65%`，`NE 217.80`，`path_length 436.75`，`avg_steps 58.16`
+
+`备注`：本轮评测过程中部分 episode 因 `Camera view bounds exceed image bounds` 被跳过；最终参与统计的 episode 数为 `val_seen=6086`、`val_unseen=8528`。
 
 ## CMA
 
 ### Train
 
-`0404`：`无`
+当前 `0404` 的 CMA baseline 训练产物如下：
+
+1. `cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/cma/checkpoints/cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab`
+   `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/cma/logs/cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab.log`
+   `训练数据`：`0404`
+   `词表 / embedding`：`0404 vocab + 0404 GloVe embedding`
+   `执行信息`：`73` 服务器，`8` 卡全量训练（scratch）
+   `状态`：已完成
+   `训练结果`：日志已完成落盘，`best.pth` 已生成
+   `best_loss`：`0.3799`
+
+`备注`：当前 CMA `0404` 仅有 scratch 训练记录，没有 continue 训练链路。
 
 ### Eval
 
-`0404`：`无`
+当前 `0404` 的 CMA baseline 评测产物如下：
+
+1. `a. scratch eval`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/cma/checkpoints/cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab`
+   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/cma/results/cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab`
+   `数据版本`：`0404`
+   `执行信息`：`73` 服务器，`8` 卡分片 eval（SatSim）
+   `状态`：已完成
+   `val_seen`：`原始 SR 8.90%`，`SPL 8.80%`，`NE 389.53`，`path_length 699.01`，`avg_steps 100.80`
+   `val_unseen`：`原始 SR 7.64%`，`SPL 7.46%`，`NE 359.64`，`path_length 673.56`，`avg_steps 98.22`
+
+`备注`：本轮评测过程中部分 episode 因 `Camera view bounds exceed image bounds` 被跳过；最终参与统计的 episode 数为 `val_seen=5675`、`val_unseen=8086`。当前 CMA 的 SR 明显高于 Seq2Seq，但 `NE / path_length / avg_steps` 也更高，说明其大量失败 case 会走得更远后再错误停下。
 
 # 端到端模型
 

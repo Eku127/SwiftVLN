@@ -23,11 +23,11 @@
   - history 压缩前
   - 可插入 trainable enhancement module
 - 对应代码位置：
-  - [src/swiftvln/models/overlapvln/template.py](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/models/overlapvln/template.py#L573)
-  - [src/swiftvln/models/overlapvln/template.py](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/models/overlapvln/template.py#L582)
-  - [src/swiftvln/models/overlapvln/trainer.py](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/models/overlapvln/trainer.py#L99)
+  - [src/swiftvln/model/template.py](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/model/template.py#L573)
+  - [src/swiftvln/model/template.py](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/model/template.py#L582)
+  - [src/swiftvln/model/trainer.py](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/model/trainer.py#L99)
 - 当前 OverlapVLN 训练默认并**没有 freeze ViT**：
-  - [src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh#L168)
+  - [src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh#L168)
 
 ### 2.2 这直接带来的实现判断
 
@@ -211,7 +211,7 @@ V1 不解决：
 - `s2r` 更短，后续实现和调用都更干净
 - 比单独叫 `adapter` 更清楚，不容易和模型内部 LoRA / MLP adapter / token adapter 混淆
 - `s2r` 对应 sim-to-real，语义足够明确，也能覆盖后续真实无人机迁移目标
-- 这是一个跨任务模块，不应直接塞进 `models/overlapvln/`
+- 这是一个跨任务模块，不应直接塞进 `model/`
 - 后续如果 StreamVLN / MonoVLN / 其他真机模块复用，也更干净
 - 与 `src/swiftvln/common/embedding_enhancement/` 的关系也清晰：
   - `s2r/` 负责训练与评估
@@ -239,9 +239,9 @@ V1 不解决：
 
 - `src/swiftvln/common/embedding_enhancement/__init__.py`
 - `src/swiftvln/common/embedding_enhancement/pipeline.py`
-- `src/swiftvln/models/overlapvln/arguments.py`
-- `src/swiftvln/models/overlapvln/trainer.py`
-- `src/swiftvln/models/overlapvln/model.py`
+- `src/swiftvln/model/arguments.py`
+- `src/swiftvln/model/trainer.py`
+- `src/swiftvln/model/model.py`
 
 ---
 
@@ -401,7 +401,7 @@ V1 通过标准定义为：
 
 当前接入点已经存在：
 
-- [src/swiftvln/models/overlapvln/template.py](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/models/overlapvln/template.py#L578)
+- [src/swiftvln/model/template.py](/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/model/template.py#L578)
 
 因此 `uav_adapter` 应实现为一个新的 enhancement module，接口形态与 `pixel_embed` / `pose_embed` 一致：
 

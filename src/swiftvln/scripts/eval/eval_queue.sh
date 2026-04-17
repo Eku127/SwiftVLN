@@ -35,8 +35,7 @@
 #   TODO_POLL_INTERVAL - 空队列轮询间隔秒数 (default: 60)
 #
 # 注意: ENV_TYPE 现在自动从模型名中解析 (habitat/satnav)
-#       新格式: streamvln-habitat-stage1-3b-1ep-...
-#       旧格式: streamvln-3b-1ep-... (默认 habitat)
+#       当前主线仅支持 overlapvln-* 模型名
 #
 # ============================================================================
 
@@ -365,8 +364,7 @@ interactive_setup() {
         echo "格式: 多个模型名用分号(;)分隔"
         echo ""
         echo "示例:"
-        echo "  streamvln-3b-2ep-f32h8s4-bs64-lr2e-5-20260119-140611"
-        echo "  streamvln-3b-2ep-f32h8s4-bs64-lr2e-5-20260119-140611;monovln-3b-1ep-h8s4-spe5-stride2-bs128-lr2e-5-20260119-140611"
+        echo "  overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-20260417-210520"
         echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456  # per_frame, no embed"
         echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-20260204-123456  # initial + pose"
         echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-20260204-123456  # pixel+pose"
@@ -599,15 +597,7 @@ run_evaluation() {
     
     # 解析模型架构
     local model_arch=""
-    if [[ "$model" == streamvln-* ]]; then
-        model_arch="streamvln"
-    elif [[ "$model" == monovln-* ]]; then
-        model_arch="monovln"
-    elif [[ "$model" == compressvln-* ]]; then
-        model_arch="compressvln"
-    elif [[ "$model" == uninavid-* ]]; then
-        model_arch="uninavid"
-    elif [[ "$model" == overlapvln-* ]]; then
+    if [[ "$model" == overlapvln-* ]]; then
         model_arch="overlapvln"
     fi
 

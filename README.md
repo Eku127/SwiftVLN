@@ -4,11 +4,13 @@ SwiftVLN 是从 `ms-swift/examples/vln` 迁移出来的独立仓库，当前代�
 
 ## 目录结构
 
-- `src/swiftvln/models/`: 模型实现（streamvln / compressvln / overlapvln / monovln / uninavid）
+- `src/swiftvln/model/`: 主线 OverlapVLN 模型实现
 - `src/swiftvln/common/`: 通用训练与评估基础组件
 - `src/swiftvln/configs/`: Habitat/SatNav 配置
 - `src/swiftvln/scripts/`: 训练/评测队列与数据处理脚本
 - `src/swiftvln/cli.py`: 统一 CLI 入口
+
+说明：当前主线仓库只保留 `overlapvln`；其他历史模型实现已移除。基线实现仍保留在 `baseline/` 下。
 
 ## 安装
 
@@ -21,7 +23,7 @@ pip install -e .
 
 ```bash
 # 训练
-swiftvln train --model streamvln -- --model_type streamvln_qwen2_5_vl ...
+swiftvln train --model overlapvln -- --model_type overlapvln_qwen2_5_vl ...
 
 # 评测
 swiftvln eval --model overlapvln -- --model_path /path/to/checkpoint --env-type habitat ...

@@ -13,7 +13,7 @@
 # 使用方法:
 #   bash src/swiftvln/scripts/train/train_queue.sh
 #
-# 支持的模型: streamvln, compressvln, overlapvln
+# 支持的模型: overlapvln
 #
 # ============================================================================
 
@@ -83,8 +83,6 @@ QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/data/qa_sw
 
 # Stage2 默认基础模型路径
 declare -A STAGE2_DEFAULT_MODELS=(
-    [streamvln]="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/streamvln/streamvln-3b-1ep-f32h8s4-bs64-lr2e-5-20260126-214851/v0-20260126-214921/checkpoint-1480"
-    [compressvln]="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/compressvln/compressvln-3b-1ep-f32h8s4-stride2-bs64-lr2e-5-20260127-101351/v0-20260127-101426/checkpoint-1480"
     [overlapvln]="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239"
 )
 
@@ -348,36 +346,6 @@ get_default_config() {
     local model="$1"
     
     case "$model" in
-        streamvln)
-            cat << 'EOF'
-# StreamVLN 可配置参数 (代号=默认值)
-a) NUM_FRAMES=32           # 视频帧数
-b) NUM_HISTORY=8           # 历史帧数
-c) NUM_FUTURE_STEPS=4      # 预测动作步数
-d) NUM_EPOCHS=1            # 训练轮数
-e) LEARNING_RATE=2e-5      # 学习率
-f) BATCH_SIZE=8            # 批量大小
-g) FREEZE_VIT=false        # 冻结ViT
-h) FREEZE_LLM=false        # 冻结LLM
-i) FREEZE_ALIGNER=false    # 冻结Aligner
-EOF
-            ;;
-        compressvln)
-            cat << 'EOF'
-# CompressVLN 可配置参数 (代号=默认值)
-a) NUM_FRAMES=32           # 视频帧数
-b) NUM_HISTORY=8           # 历史帧数
-c) NUM_FUTURE_STEPS=4      # 预测动作步数
-d) COMPRESS_STRIDE=2       # 压缩步长 (2=4x, 3=9x)
-e) NUM_EPOCHS=1            # 训练轮数
-f) LEARNING_RATE=2e-5      # 学习率
-g) BATCH_SIZE=8            # 批量大小
-h) FREEZE_VIT=false        # 冻结ViT (预计算模式下自动=true)
-i) FREEZE_LLM=false        # 冻结LLM
-j) FREEZE_ALIGNER=false    # 冻结Aligner
-k) USE_PRECOMPUTED_FEATURES=false  # 使用预计算ViT特征 (自动设置FREEZE_VIT=true)
-EOF
-            ;;
         overlapvln)
             cat << 'EOF'
 # OverlapVLN 可配置参数 (代号=默认值) - 滑动窗口重叠压缩
@@ -423,12 +391,6 @@ expand_shortcodes() {
     # 定义映射
     declare -A mapping
     case "$model" in
-        streamvln)
-            mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="NUM_EPOCHS" [e]="LEARNING_RATE" [f]="BATCH_SIZE" [g]="FREEZE_VIT" [h]="FREEZE_LLM" [i]="FREEZE_ALIGNER")
-            ;;
-        compressvln)
-            mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="COMPRESS_STRIDE" [e]="NUM_EPOCHS" [f]="LEARNING_RATE" [g]="BATCH_SIZE" [h]="FREEZE_VIT" [i]="FREEZE_LLM" [j]="FREEZE_ALIGNER" [k]="USE_PRECOMPUTED_FEATURES")
-            ;;
         overlapvln)
             mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="COMPRESS_STRIDE" [e]="NUM_OVERLAP" [f]="NUM_EPOCHS" [g]="LEARNING_RATE" [h]="BATCH_SIZE" [i]="FREEZE_VIT" [j]="FREEZE_LLM" [k]="FREEZE_ALIGNER" [l]="USE_TOME" [m]="HISTORY_PROCESSOR_TYPE" [n]="GTC_OUTPUT_TOKENS" [o]="LOG_BASE" [p]="SYSTEM_PROMPT_SETTING" [q]="USE_PIXEL_EMBED" [r]="USE_POSE_EMBED" [s]="POSE_FUSION_METHOD")
             ;;
@@ -684,13 +646,11 @@ interactive_setup() {
     # 2. 选择模型
     print_header "🤖 Step 2: 选择训练模型"
     echo "可选模型:"
-    echo "  a) streamvln"
-    echo "  b) compressvln"
-    echo "  c) overlapvln"
+    echo "  a) overlapvln"
     echo ""
-    echo "示例: a,b 或 c 或 a,b,c"
-    read -p "请选择模型 (逗号分隔) [c]: " models_input
-    models_input=${models_input:-c}
+    echo "示例: a 或 overlapvln"
+    read -p "请选择模型 [a]: " models_input
+    models_input=${models_input:-a}
     
     if [[ -z "$models_input" ]]; then
         print_error "未选择任何模型!"
@@ -698,14 +658,14 @@ interactive_setup() {
     fi
     
     # 展开模型代号
-    declare -A model_mapping=([a]="streamvln" [b]="compressvln" [c]="overlapvln")
+    declare -A model_mapping=([a]="overlapvln")
     SELECTED_MODELS=()
     IFS=',' read -ra model_codes <<< "$models_input"
     for code in "${model_codes[@]}"; do
         code=$(echo "$code" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
         if [[ -n "${model_mapping[$code]}" ]]; then
             SELECTED_MODELS+=("${model_mapping[$code]}")
-        elif [[ "$code" =~ ^(streamvln|compressvln|overlapvln)$ ]]; then
+        elif [[ "$code" =~ ^(overlapvln)$ ]]; then
             # 也支持直接输入模型名
             SELECTED_MODELS+=("$code")
         else
@@ -1250,6 +1210,11 @@ run_experiment() {
     local ds_paths=$6
     local stage2_path=$7
     local qa_ratio=$8
+
+    if [[ "$model" != "overlapvln" ]]; then
+        print_error "当前主线 train_queue 仅支持 overlapvln，收到不受支持的模型: $model"
+        return 1
+    fi
     
     print_header "🚀 实验 $exp_idx: $model ($TRAIN_STAGE)"
     if [[ "$TRAIN_STAGE" == "stage2" && -n "$stage2_path" ]]; then
@@ -1274,12 +1239,7 @@ run_experiment() {
     echo ""
     
     # 获取训练脚本路径
-    local train_script="${VLN_ROOT}/models/${model}/script/train/train_${model}_qwen2_5_vl.sh"
-    
-    # StreamVLN 使用不同的脚本名
-    if [[ "$model" == "streamvln" ]]; then
-        train_script="${VLN_ROOT}/models/${model}/script/train/train_${model}_qwen2_5_vl_single_node.sh"
-    fi
+    local train_script="${VLN_ROOT}/model/script/train/train_overlapvln_qwen2_5_vl.sh"
     
     if [[ ! -f "$train_script" ]]; then
         print_error "找不到训练脚本: $train_script"
@@ -1414,8 +1374,8 @@ run_experiment() {
     sed -i "s|^SWIFTVLN_ROOT=.*|SWIFTVLN_ROOT=\"${SWIFTVLN_ROOT}\"|g" "$temp_script"
     
     # 将相对路径改为绝对路径
-    sed -i "s|src/swiftvln/models/${model}/trainer.py|${SWIFTVLN_ROOT}/src/swiftvln/models/${model}/trainer.py|g" "$temp_script"
-    sed -i "s|--custom_register_path src/swiftvln/models/${model}|--custom_register_path ${SWIFTVLN_ROOT}/src/swiftvln/models/${model}|g" "$temp_script"
+    sed -i "s|src/swiftvln/model/trainer.py|${SWIFTVLN_ROOT}/src/swiftvln/model/trainer.py|g" "$temp_script"
+    sed -i "s|--custom_register_path src/swiftvln/model|--custom_register_path ${SWIFTVLN_ROOT}/src/swiftvln/model|g" "$temp_script"
 
     local attempt=1
     local max_attempts=$((MAX_AUTO_FIX_RETRIES + 1))

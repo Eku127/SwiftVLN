@@ -11,6 +11,15 @@ Related skills:
 - **`overlapvln-eval`**: run eval after training completes (triggered manually or by user).
 - **`server-train-eval-monitor`**: cluster-wide status overview.
 
+## Current Baseline Defaults
+
+- 主训练脚本当前 baseline 默认值：
+  - `MAX_SAMPLES=0`（显式全量）
+  - `NUM_OVERLAP=0`
+  - `SAVE_STEPS=1000`
+  - `SAVE_TOTAL_LIMIT=1`
+- 历史 baseline 默认曾使用 `NUM_OVERLAP=16`；如果用户没有特别说明，当前应按 `overlap=0` 理解 baseline。
+
 ## No-Memory Convention (OverlapVLN)
 
 - OverlapVLN 没有单独的 `USE_MEMORY=false` 开关。
@@ -74,7 +83,7 @@ Before starting, confirm with the user:
 
 1. Read current scripts:
    - `src/swiftvln/scripts/train/train_queue.sh`
-   - `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+   - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
 2. Produce **run checklist**: model set, stage, environment, data version, offline model path, launch mode, expected output naming.
    For `stage1`, confirm the resolved path is the absolute local cache path above, not `Qwen/Qwen2.5-VL-3B-Instruct`.
    If `MEMORY_METHOD=map`, checklist 里必须额外确认：
@@ -249,7 +258,7 @@ Auto-cleanup: watchdog cleans dirs older than 7 days at startup.
 |---|---|
 | Training queue | `src/swiftvln/scripts/train/train_queue.sh` |
 | **Train watchdog** | `src/swiftvln/scripts/train/train_watchdog.sh` |
-| OverlapVLN single run | `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh` |
+| OverlapVLN single run | `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh` |
 | Eval todo queue | `runtime/eval_queue/eval_todo.txt` |
 | Eval enqueue helper | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
 

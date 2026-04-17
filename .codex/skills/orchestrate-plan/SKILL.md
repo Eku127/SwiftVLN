@@ -49,7 +49,7 @@ model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
 
 1. Read the plan file specified by the user (e.g. `runtime/plans/my_plan.md`).
 2. Extract the following from natural language:
-   - **Model**: `overlapvln` / `streamvln` / `compressvln` (default: `overlapvln`)
+   - **Model**: `overlapvln` (default: `overlapvln`)
    - **Stage**: `stage1` or `stage2` (default: `stage1`)
    - **Env**: `satnav` or `habitat` (default: `satnav`)
    - **Data version**: e.g. `ver_260317` (default: latest in `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_*`)

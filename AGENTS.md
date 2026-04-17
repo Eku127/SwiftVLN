@@ -21,7 +21,7 @@
   - `.codex/skills/satnav-data/SKILL.md`
 - If user asks to merge two SatNav dataset versions, analyze overlap/complementarity, remap conflicting episode IDs, or create a new merged version like 0327 + 0403 -> 0404, use:
   - `.codex/skills/merge-satnav-data/SKILL.md`
-- If task matches VLN training (OverlapVLN / StreamVLN / CompressVLN), use:
+- If task matches mainline VLN training (OverlapVLN), use:
   - `.codex/skills/overlapvln-train/SKILL.md`
 - If task matches VLN evaluation (eval by name, eval queue, eval monitoring), use:
   - `.codex/skills/overlapvln-eval/SKILL.md`
@@ -31,7 +31,7 @@
   - `.codex/skills/server-train-eval-monitor/SKILL.md`
 - If user asks to periodically check GPU health across 98/73/17, 定时巡检显卡, 持续检查掉卡, or monitor three-server GPU-only status, use:
   - `.codex/skills/gpu-health-monitor/SKILL.md`
-- If task is smoke test / 冒烟测试 for train+eval validation, use:
+- If task is mainline smoke test / 冒烟测试 for OverlapVLN train+eval validation, use:
   - `.codex/skills/swiftvln-smoke-test/SKILL.md`
 - If task is any baseline smoke test (streamvln / navila / uninavid — 冒烟测试、smoke test、baseline train+eval quick validation), use:
   - `.codex/skills/baseline-smoke-test/SKILL.md`

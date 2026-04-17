@@ -39,7 +39,7 @@ def f2(v: Any) -> str:
 
 
 def parse_model_type(model_name: str) -> str:
-    for t in ("overlapvln", "streamvln", "compressvln", "navila", "monovln", "uninavid"):
+    for t in ("overlapvln", "streamvln", "navila", "uninavid", "openfly"):
         if model_name.startswith(f"{t}-"):
             return t
     return "unknown"
@@ -90,13 +90,8 @@ def infer_plan(model_name: str, model_type: str) -> str:
             base += f" + qa{m_qa.group(1)}"
         return base
 
-    if model_type in ("streamvln", "navila"):
+    if model_type in ("streamvln", "navila", "uninavid", "openfly"):
         return f"{model_type} baseline"
-    if model_type == "compressvln":
-        m = re.search(r"-stride(\d+)-", model_name)
-        return f"compress stride{m.group(1)}" if m else "compress baseline"
-    if model_type == "uninavid":
-        return "uninavid baseline"
     return f"{model_type} run"
 
 
@@ -118,14 +113,11 @@ def plan_rank(plan: str) -> int:
         "baseline + sgtc-k256": 65,
         "baseline + sgtc-k512": 70,
         "baseline + sgtc": 72,
-        # other model types
+        # other model types (baselines)
         "streamvln baseline": 80,
-        "compress baseline": 85,
-        "compress stride2": 86,
-        "compress stride3": 87,
-        "compress stride4": 88,
-        "navila baseline": 90,
-        "uninavid baseline": 95,
+        "navila baseline": 85,
+        "uninavid baseline": 90,
+        "openfly baseline": 95,
     }
     return order.get(plan, 999)
 
