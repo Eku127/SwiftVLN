@@ -11,6 +11,17 @@ Related skills:
 - **`overlapvln-eval`**: run eval after training completes (triggered manually or by user).
 - **`server-train-eval-monitor`**: cluster-wide status overview.
 
+## No-Memory Convention (OverlapVLN)
+
+- OverlapVLN 没有单独的 `USE_MEMORY=false` 开关。
+- 当前仓库约定的 **effective no-memory** 配置是：
+  - `HISTORY_PROCESSOR_TYPE=per_frame`
+  - `NUM_HISTORY=0`
+- 该配置下 dataset 会采样 `0` 张历史帧，system prompt 不会插入 `<history_memory>`。
+- `per_frame` 的实验名会显式带上 `pf-h0-nomem-...`，便于和普通 `pf-h8/...` 区分。
+- `log_base` / `use_random` 仍可保留在配置中，但在 `NUM_HISTORY=0` 时不会实际影响采样。
+- `gtc` / `segment_gtc` 不适用这套 no-memory 约定；它们的历史采样逻辑不依赖 `NUM_HISTORY`。
+
 ---
 
 ## Shared Workspace Mount

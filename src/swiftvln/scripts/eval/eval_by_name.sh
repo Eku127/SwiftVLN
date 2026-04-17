@@ -146,7 +146,7 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # StreamVLN:   streamvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # CompressVLN: compressvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}h{num_history}s{num_future_steps}-stride{compress_stride}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # 注: qa参数(混合训练比例)不影响eval，解析时会被忽略
-# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (gtc):         overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (segment_gtc): overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 #   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
@@ -286,6 +286,7 @@ parse_uninavid_params() {
 parse_overlapvln_params() {
     local name="$1"
     # 新格式 (per_frame):   overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # no-memory 示例:       overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # 新格式 (gtc):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # 新格式 (segment_gtc): overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm

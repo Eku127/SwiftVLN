@@ -68,6 +68,18 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `TRAIN_CUDA_DEVICES=<csv>`：显式指定 GPU 列表，例如 `0,1,3,5`
     - `TRAIN_DRY_RUN=true`：仅做配置与 GPU 解析检查，不实际启动 `torchrun`
   - `src/swiftvln/scripts/train/train_queue.sh` 会把以上三个变量透传给单次训练脚本
+- OverlapVLN no-memory 配置约定（Updated: 2026-04-17）：
+  - 训练脚本：`src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - 数据集：`src/swiftvln/models/overlapvln/dataset.py`
+  - 队列展示/解析：`src/swiftvln/scripts/train/train_queue.sh`
+  - 评测按名解析说明：`src/swiftvln/scripts/eval/eval_by_name.sh`
+  - 当前没有独立的 `USE_MEMORY=false` 开关；如需 no-memory，使用：
+    - `HISTORY_PROCESSOR_TYPE=per_frame`
+    - `NUM_HISTORY=0`
+  - 该配置会让 dataset 采样 `0` 张历史帧，并且 system prompt 不插入 `<history_memory>`
+  - 统一实验名约定：`pf-h0-nomem-b{log_base}-{method}-s{stride}`
+  - `log_base` / `use_random` 在 `NUM_HISTORY=0` 时保留为配置元数据，但不会实际影响采样
+  - `gtc` / `segment_gtc` 不适用该 no-memory 约定，因为其历史采样逻辑不看 `NUM_HISTORY`
 - SwanLab 直连默认（Updated: 2026-04-08）：
   - `src/swiftvln/scripts/train/train_queue.sh`
   - `src/swiftvln/models/{overlapvln,streamvln,compressvln,monovln,uninavid}/script/train/*.sh`

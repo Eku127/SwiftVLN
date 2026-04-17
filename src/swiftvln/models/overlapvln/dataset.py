@@ -256,6 +256,7 @@ class OverlapVLNDataset(StreamVLNDataset):
             
         Sampling strategies:
         - per_frame: Sample num_history frames using power transformation
+          - num_history=0: Disable history sampling entirely (effective no-memory mode)
           - log_base=1.0: Uniform/linear sampling
           - log_base>1.0: Logarithmic sampling (more recent frames)
         - gtc: Sample with num_future_steps interval (denser, for cross-frame clustering)
@@ -279,6 +280,9 @@ class OverlapVLNDataset(StreamVLNDataset):
             num_samples = min(self.num_history, num_frames)
             
             if num_samples == 0:
+                # per_frame + NUM_HISTORY=0 is the supported no-memory path:
+                # no history frames are returned, so downstream prompt/template logic
+                # will skip inserting <history_memory>.
                 return np.array([], dtype=np.int32)
             
             if self.use_random:
@@ -493,7 +497,9 @@ class OverlapVLNDataset(StreamVLNDataset):
                 " This is your initial observation at the starting point of this journey: <image>."
             )
         
-        # Add history description with unified memory token
+        # Add history description with unified memory token.
+        # If num_history_images == 0 (e.g. per_frame + NUM_HISTORY=0), the prompt
+        # stays memory-free and no <history_memory> block is inserted.
         num_history_images = len(history_frame_paths)
         if has_history:
             # Use unified <history_memory> token in vision wrapper

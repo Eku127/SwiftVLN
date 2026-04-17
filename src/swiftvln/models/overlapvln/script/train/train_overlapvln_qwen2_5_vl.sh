@@ -311,13 +311,19 @@ EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM_STEPS * GPUS_PER_NODE))
 WINDOW_STRIDE=$((NUM_FRAMES - NUM_OVERLAP))
 
 # Build experiment name based on history processor type
-# Format: pf-h{history}-b{log_base}-{method}-s{stride}
+# Format: pf-h{history}[-nomem]-b{log_base}-{method}-s{stride}
 HISTORY_SUFFIX=""
 if [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
-    # Per-frame: include history count, log_base, method, stride
+    # Per-frame: include history count, log_base, method, stride.
+    # NUM_HISTORY=0 is the supported no-memory configuration:
+    # the dataset will sample zero history frames and omit <history_memory>.
     COMPRESS_METHOD="pool"
     [ "$USE_TOME" = true ] && COMPRESS_METHOD="tome"
-    HISTORY_SUFFIX="pf-h${NUM_HISTORY}-b${LOG_BASE}-${COMPRESS_METHOD}-s${COMPRESS_STRIDE}"
+    NO_MEMORY_SUFFIX=""
+    if [ "$NUM_HISTORY" = "0" ]; then
+        NO_MEMORY_SUFFIX="-nomem"
+    fi
+    HISTORY_SUFFIX="pf-h${NUM_HISTORY}${NO_MEMORY_SUFFIX}-b${LOG_BASE}-${COMPRESS_METHOD}-s${COMPRESS_STRIDE}"
 elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
     # GTC: include output tokens
     HISTORY_SUFFIX="gtc-k${GTC_OUTPUT_TOKENS}"
@@ -448,10 +454,15 @@ echo "History Processor: $HISTORY_PROCESSOR_TYPE"
 if [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
     COMPRESS_METHOD="pool"
     [ "$USE_TOME" = true ] && COMPRESS_METHOD="tome"
-    SAMPLING_TYPE="uniform"
-    [ "$LOG_BASE" != "1.0" ] && [ "$LOG_BASE" != "1" ] && SAMPLING_TYPE="logarithmic (b=$LOG_BASE)"
-    echo "  Sampling: $SAMPLING_TYPE, ${NUM_HISTORY} frames"
-    echo "  Compression: stride=$COMPRESS_STRIDE ($((COMPRESS_STRIDE * COMPRESS_STRIDE))x), method=$COMPRESS_METHOD"
+    if [ "$NUM_HISTORY" = "0" ]; then
+        echo "  Sampling: disabled (no-memory, NUM_HISTORY=0; log_base/use_random ignored)"
+        echo "  Compression: stride=$COMPRESS_STRIDE ($((COMPRESS_STRIDE * COMPRESS_STRIDE))x), method=$COMPRESS_METHOD [unused while no-memory is active]"
+    else
+        SAMPLING_TYPE="uniform"
+        [ "$LOG_BASE" != "1.0" ] && [ "$LOG_BASE" != "1" ] && SAMPLING_TYPE="logarithmic (b=$LOG_BASE)"
+        echo "  Sampling: $SAMPLING_TYPE, ${NUM_HISTORY} frames"
+        echo "  Compression: stride=$COMPRESS_STRIDE ($((COMPRESS_STRIDE * COMPRESS_STRIDE))x), method=$COMPRESS_METHOD"
+    fi
 elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
     echo "  Sampling: every ${NUM_FUTURE_STEPS} frames from history"
     echo "  GTC: output_tokens=$GTC_OUTPUT_TOKENS, temperature=$GTC_TEMPERATURE, iterations=$GTC_NUM_ITERATIONS"
@@ -544,7 +555,8 @@ fi
 # History processor arguments
 HISTORY_ARGS="--history_processor_type $HISTORY_PROCESSOR_TYPE"
 if [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
-    # Per-frame: pass log_base for sampling distribution
+    # Per-frame: pass log_base for sampling distribution.
+    # When NUM_HISTORY=0 this becomes an effective no-memory run, so log_base is inert.
     HISTORY_ARGS="$HISTORY_ARGS --log_base $LOG_BASE"
 elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
     HISTORY_ARGS="$HISTORY_ARGS --gtc_output_tokens $GTC_OUTPUT_TOKENS --gtc_temperature $GTC_TEMPERATURE --gtc_num_iterations $GTC_NUM_ITERATIONS"

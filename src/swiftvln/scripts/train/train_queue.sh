@@ -390,11 +390,13 @@ k) FREEZE_ALIGNER=false    # 冻结Aligner
 l) USE_TOME=false          # 使用GridToMe压缩 (per_frame模式: true=ToMe, false=AvgPool)
 m) HISTORY_PROCESSOR_TYPE=per_frame  # 历史处理方式: per_frame(默认), gtc 或 sgtc(segment_gtc)
 n) GTC_OUTPUT_TOKENS=512   # GTC/SegmentGTC输出tokens数 (gtc/segment_gtc模式有效)
-o) LOG_BASE=1.0            # 历史采样分布 (per_frame: 1.0=均匀, >1.0=对数/更多近帧)
+o) LOG_BASE=1.0            # 历史采样分布 (per_frame: 1.0=均匀, >1.0=对数/更多近帧; NUM_HISTORY=0时忽略)
 p) SYSTEM_PROMPT_SETTING=vanilla  # System prompt策略: vanilla(默认) 或 initial
 q) USE_PIXEL_EMBED=false      # 像素坐标增强: true(开启) 或 false(关闭)
 r) USE_POSE_EMBED=false       # Pose增强: true(开启) 或 false(关闭)
 s) POSE_FUSION_METHOD=additive  # Pose融合方式: additive(默认) 或 film
+# 说明: OverlapVLN 没有单独的 USE_MEMORY 开关；如需 no-memory，请用
+#       HISTORY_PROCESSOR_TYPE=per_frame + NUM_HISTORY=0
 EOF
             ;;
     esac
@@ -476,6 +478,7 @@ parse_stage1_config() {
     
     # 新格式: f{frames}s{steps} (不含 h)
     # 示例: f32s4-overlap16-pf-h8-b1.0-pool-s2
+    # no-memory 示例: f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2
     local frames=$(echo "$model_name" | grep -oP 'f\d+s' | sed 's/f//' | sed 's/s//')
     local steps=$(echo "$model_name" | grep -oP 'f\d+s\d+' | grep -oP 's\d+' | sed 's/s//')
     
@@ -490,6 +493,7 @@ parse_stage1_config() {
     
     # 解析 history_processor_type 和相关参数
     # 新格式: pf-h8-b1.0-pool-s2 或 pf-h8-b2.0-tome-s2
+    # no-memory: pf-h0-nomem-b1.0-pool-s2
     # GTC格式: gtc-k512, sgtc-k512
     local history_processor_type="per_frame"
     local history="8"
@@ -586,6 +590,9 @@ format_config_display() {
         config_str+="-gtc-k${gtc_output_tokens:-512}"
     else
         config_str+="-pf-h${history:-8}"
+        if [[ "${history:-8}" == "0" ]]; then
+            config_str+="-nomem"
+        fi
         config_str+="-b${log_base}"
         if [[ "$use_tome" == "true" ]]; then
             config_str+="-tome"
