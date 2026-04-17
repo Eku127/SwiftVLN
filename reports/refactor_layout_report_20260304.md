@@ -1,5 +1,7 @@
 # SwiftVLN 重构实施报告（2026-03-04）
 
+> 注：本报告记录的是 2026-03-04 的首轮包化重构。当前主线结构已进一步收敛为 `src/swiftvln/model/` 单模型布局，本文后续提到的多模型目录均为历史状态。
+
 ## 1. 本次实施范围
 
 按既定计划实现以下内容：
@@ -15,7 +17,7 @@
 
 新结构：
 - `src/swiftvln/common`
-- `src/swiftvln/models/{streamvln,compressvln,overlapvln,monovln,uninavid}`
+- 当时的多模型目录（历史）：`streamvln / compressvln / overlapvln / monovln / uninavid`
 - `src/swiftvln/configs`
 - `src/swiftvln/scripts`
 - `src/swiftvln/runners`
@@ -50,7 +52,7 @@
 - 所有脚本路径切换到 `src/swiftvln/...`。
 - 含 `SWIFTVLN_ROOT` 的 shell 脚本统一注入：
   - `export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"`
-- 修复 `train_queue.sh` 内临时脚本替换路径，指向 `src/swiftvln/models/${model}`。
+- 修复 `train_queue.sh` 内临时脚本替换路径，指向当时的主线模型目录。
 
 ## 4. 验证结果
 
@@ -65,7 +67,7 @@
 
 ### 4.3 运行验证（真实 smoke）
 - 在 `swift-vln-eval` 环境下，以新入口执行并成功完成：
-  - `python -m swiftvln.models.streamvln.eval ... --habitat_config_path configs/vln_r2r_smoke.yaml --max_episodes 1`
+  - 当时的 `streamvln` 新包入口 smoke eval（历史）
 - 结果输出：
   - `results/refactor_smoke/streamvln_habitat/evaluation_summary.json`
   - 日志：`logs/refactor_smoke/eval_streamvln_habitat.log`

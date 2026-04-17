@@ -3,7 +3,7 @@
 ## Core Scripts
 
 - Queue mode: `src/swiftvln/scripts/train/train_queue.sh`
-- OverlapVLN single run: `src/swiftvln/models/overlapvln/script/train/train_overlapvln_qwen2_5_vl.sh`
+- OverlapVLN single run: `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
 
 ## Important Variables in `train_overlapvln_qwen2_5_vl.sh`
 
@@ -16,6 +16,6 @@
 
 ## Queue Script Capability
 
-- Supported models: `streamvln`, `compressvln`, `overlapvln`
+- Supported models: `overlapvln`
 - Can patch per-run params into temporary scripts and run serially
 - Writes logs under `logs/` and summary files under `logs/train_queue_results/`
