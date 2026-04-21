@@ -153,6 +153,7 @@ def main() -> None:
     action_format = resolve_action_format(data_args.action_format)
     data_args.action_format = action_format
 
+    print("[OpenFly train] Building SatNavOpenFlyDataset...", flush=True)
     train_dataset = SatNavOpenFlyDataset(
         data_path=data_args.data_path,
         image_folder=data_args.image_folder,
@@ -160,7 +161,10 @@ def main() -> None:
         max_episodes=data_args.max_episodes,
         max_samples=data_args.max_samples,
     )
+    print(f"[OpenFly train] Dataset ready: samples={len(train_dataset)}", flush=True)
+    print("[OpenFly train] Building training backend...", flush=True)
     backend_artifacts = build_train_backend(model_args, data_args, training_args)
+    print(f"[OpenFly train] Backend ready: backend={backend_artifacts.backend_name}", flush=True)
 
     os.makedirs(training_args.output_dir, exist_ok=True)
     if action_format == ORIGINAL:

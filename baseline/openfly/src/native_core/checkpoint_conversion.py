@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import os
 import re
+import shutil
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -16,12 +19,48 @@ from openfly_core import OpenVLAForActionPrediction, register_openfly_auto_class
 
 
 _STEP_RE = re.compile(r"step-(\d+)")
+_CACHE_COMPLETE_SENTINEL = ".cache_complete"
+_DEFAULT_NATIVE_HF_CACHE_ROOT = "/mnt/data4/jiangjiajun/openfly_native_hf_cache"
+_CACHE_DISABLE_VALUES = {"", "0", "off", "false", "none", "disable", "disabled", "no"}
 
 
 def _sort_key(path: Path) -> tuple[int, str]:
     match = _STEP_RE.search(path.name)
     step = int(match.group(1)) if match else -1
     return step, path.name
+
+
+def _resolve_native_hf_cache_root() -> Path | None:
+    env_value = os.getenv("OPENFLY_NATIVE_HF_CACHE_DIR", _DEFAULT_NATIVE_HF_CACHE_ROOT).strip()
+    if env_value.lower() in _CACHE_DISABLE_VALUES:
+        return None
+    return Path(env_value).expanduser().resolve()
+
+
+def _build_native_hf_cache_key(
+    *,
+    checkpoint_path: str,
+    processor_source: str,
+    grid_size: int,
+    unnorm_key: str,
+) -> str:
+    checkpoint_stat = os.stat(checkpoint_path)
+    payload = {
+        "checkpoint_path": os.path.abspath(checkpoint_path),
+        "checkpoint_size": checkpoint_stat.st_size,
+        "checkpoint_mtime_ns": checkpoint_stat.st_mtime_ns,
+        "processor_source": os.path.abspath(processor_source),
+        "grid_size": int(grid_size),
+        "unnorm_key": str(unnorm_key),
+    }
+    digest = hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
+def _build_cached_dir_name(checkpoint_path: str, run_dir: str, cache_key: str) -> str:
+    run_name = Path(run_dir).name
+    checkpoint_name = Path(checkpoint_path).stem.replace("%3D", "=")
+    return f"{run_name}_{checkpoint_name}_{cache_key}"
 
 
 def resolve_native_checkpoint_path(model_name_or_path: str) -> tuple[str, str]:
@@ -151,18 +190,16 @@ def _temporary_default_dtype(dtype: torch.dtype | None):
         torch.set_default_dtype(previous_dtype)
 
 
-def build_native_hf_model(
+def _load_native_model_into_memory(
     *,
-    model_name_or_path: str,
+    checkpoint_path: str,
     processor_source: str,
     cache_dir: str | None,
     grid_size: int,
-    unnorm_key: str = ORIGINAL_UNNORM_KEY,
-    use_flash_attention_2: bool = False,
-    torch_dtype: torch.dtype | None = None,
-) -> tuple[OpenVLAForActionPrediction, Any, dict[str, Any]]:
-    register_openfly_auto_classes()
-    checkpoint_path, run_dir = resolve_native_checkpoint_path(model_name_or_path)
+    unnorm_key: str,
+    use_flash_attention_2: bool,
+    torch_dtype: torch.dtype | None,
+) -> tuple[OpenVLAForActionPrediction, Any]:
     processor = AutoProcessor.from_pretrained(processor_source, cache_dir=cache_dir)
 
     config = copy.deepcopy(AutoConfig.from_pretrained(processor_source, cache_dir=cache_dir))
@@ -192,12 +229,135 @@ def build_native_hf_model(
             f"missing_keys={missing_keys}\n"
             f"unexpected_keys={unexpected_keys}"
         )
+    return model, processor
+
+
+def _ensure_cached_native_hf_checkpoint(
+    *,
+    checkpoint_path: str,
+    run_dir: str,
+    processor_source: str,
+    cache_dir: str | None,
+    grid_size: int,
+    unnorm_key: str,
+    use_flash_attention_2: bool,
+    torch_dtype: torch.dtype | None,
+) -> str | None:
+    cache_root = _resolve_native_hf_cache_root()
+    if cache_root is None:
+        return None
+
+    cache_root.mkdir(parents=True, exist_ok=True)
+    cache_key = _build_native_hf_cache_key(
+        checkpoint_path=checkpoint_path,
+        processor_source=processor_source,
+        grid_size=grid_size,
+        unnorm_key=unnorm_key,
+    )
+    cache_dir_path = cache_root / _build_cached_dir_name(checkpoint_path, run_dir, cache_key)
+    sentinel_path = cache_dir_path / _CACHE_COMPLETE_SENTINEL
+    if sentinel_path.exists():
+        print(f"[OpenFly scratch] Using cached HF checkpoint: {cache_dir_path}", flush=True)
+        return str(cache_dir_path)
+
+    lock_path = cache_root / f".{cache_dir_path.name}.lock"
+    with open(lock_path, "w", encoding="utf-8") as lock_file:
+        import fcntl
+
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            if sentinel_path.exists():
+                print(f"[OpenFly scratch] Using cached HF checkpoint: {cache_dir_path}", flush=True)
+                return str(cache_dir_path)
+
+            if cache_dir_path.exists():
+                shutil.rmtree(cache_dir_path)
+            cache_dir_path.mkdir(parents=True, exist_ok=True)
+
+            print(
+                "[OpenFly scratch] Building shared HF cache from native checkpoint "
+                f"{checkpoint_path} -> {cache_dir_path}",
+                flush=True,
+            )
+            model, processor = _load_native_model_into_memory(
+                checkpoint_path=checkpoint_path,
+                processor_source=processor_source,
+                cache_dir=cache_dir,
+                grid_size=grid_size,
+                unnorm_key=unnorm_key,
+                use_flash_attention_2=use_flash_attention_2,
+                torch_dtype=torch_dtype,
+            )
+            model.save_pretrained(cache_dir_path, safe_serialization=True, max_shard_size="5GB")
+            with open(sentinel_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "checkpoint_path": os.path.abspath(checkpoint_path),
+                        "processor_source": os.path.abspath(processor_source),
+                        "grid_size": int(grid_size),
+                        "unnorm_key": unnorm_key,
+                    },
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            print(f"[OpenFly scratch] Shared HF cache ready: {cache_dir_path}", flush=True)
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+    return str(cache_dir_path)
+
+
+def build_native_hf_model(
+    *,
+    model_name_or_path: str,
+    processor_source: str,
+    cache_dir: str | None,
+    grid_size: int,
+    unnorm_key: str = ORIGINAL_UNNORM_KEY,
+    use_flash_attention_2: bool = False,
+    torch_dtype: torch.dtype | None = None,
+) -> tuple[OpenVLAForActionPrediction, Any, dict[str, Any]]:
+    register_openfly_auto_classes()
+    checkpoint_path, run_dir = resolve_native_checkpoint_path(model_name_or_path)
+    cached_hf_dir = _ensure_cached_native_hf_checkpoint(
+        checkpoint_path=checkpoint_path,
+        run_dir=run_dir,
+        processor_source=processor_source,
+        cache_dir=cache_dir,
+        grid_size=grid_size,
+        unnorm_key=unnorm_key,
+        use_flash_attention_2=use_flash_attention_2,
+        torch_dtype=torch_dtype,
+    )
+    processor = AutoProcessor.from_pretrained(processor_source, cache_dir=cache_dir)
+    if cached_hf_dir is not None:
+        load_kwargs: dict[str, Any] = {
+            "cache_dir": cache_dir,
+            "low_cpu_mem_usage": True,
+        }
+        if torch_dtype is not None:
+            load_kwargs["torch_dtype"] = torch_dtype
+        if use_flash_attention_2:
+            load_kwargs["attn_implementation"] = "flash_attention_2"
+        model = OpenVLAForActionPrediction.from_pretrained(cached_hf_dir, **load_kwargs)
+    else:
+        model, processor = _load_native_model_into_memory(
+            checkpoint_path=checkpoint_path,
+            processor_source=processor_source,
+            cache_dir=cache_dir,
+            grid_size=grid_size,
+            unnorm_key=unnorm_key,
+            use_flash_attention_2=use_flash_attention_2,
+            torch_dtype=torch_dtype,
+        )
 
     backend_meta = {
         "backend": "scratch",
         "native_checkpoint_path": checkpoint_path,
         "native_run_dir": run_dir,
         "processor_source": os.path.abspath(processor_source),
+        "hf_cache_dir": os.path.abspath(cached_hf_dir) if cached_hf_dir is not None else "",
         "action_format": ORIGINAL,
         "satnav_unnorm_key": unnorm_key,
         "grid_size": int(grid_size),
