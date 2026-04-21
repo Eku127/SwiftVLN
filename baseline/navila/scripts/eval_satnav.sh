@@ -12,7 +12,7 @@
 #      - If [split] is omitted, SatNav runs both val_seen and val_unseen
 #
 # Environment variables:
-#   SATNAV_VERSION   Override dataset version (e.g. ver_260306)
+#   SATNAV_VERSION   Override dataset version (e.g. ver_260418)
 #   MODEL_BASE       Base model path for adapter-only checkpoints
 #   SATNAV_ACTION_FORMAT  sentence|compact (default compact)
 #   LOCAL_CACHE_DIR  Local disk dir to cache checkpoint (avoids NFS D-state).
@@ -107,12 +107,8 @@ else
 fi
 
 if [ -z "${SATNAV_VERSION}" ]; then
-    SATNAV_VERSION=$(ls -d "${SATNAV_DATA_ROOT}"/ver_* 2>/dev/null | sort | tail -1 | xargs basename || true)
-    if [ -z "${SATNAV_VERSION}" ]; then
-        print_error "No SatNav data versions found in ${SATNAV_DATA_ROOT}"
-        exit 1
-    fi
-    print_info "Auto-detected SatNav version: ${SATNAV_VERSION}"
+    SATNAV_VERSION="ver_260418"
+    print_info "Using default SatNav version: ${SATNAV_VERSION}"
 else
     print_info "Using SatNav version: ${SATNAV_VERSION}"
 fi

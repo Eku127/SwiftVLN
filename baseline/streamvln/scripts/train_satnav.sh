@@ -10,10 +10,10 @@
 #   scratch             — start from LLaVA-Video-7B-Qwen2 base model
 #
 # Environment variables (all optional):
-#   SATNAV_VERSION   — Data version dir name, e.g. ver_260306 (default: latest)
+#   SATNAV_VERSION   — Data version dir name, e.g. ver_260418 (default: ver_260418)
 #   NUM_EPOCHS       — Training epochs (default: 1)
 #   LEARNING_RATE    — Learning rate (default: 2e-5)
-#   BATCH_SIZE       — Per-device batch size (default: 2)
+#   BATCH_SIZE       — Per-device batch size (default: 3)
 #   GRAD_ACCUM       — Gradient accumulation steps (default: 2)
 #   GPUS_PER_NODE    — Number of GPUs (default: 8)
 #   USE_SWANLAB      — Enable SwanLab reporting (default: false)
@@ -51,18 +51,8 @@ DEEPSPEED_CFG="${BASELINE_DIR}/configs/zero2.json"
 
 # ---- SatNav Data Version ----
 SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
-SATNAV_VERSION="${SATNAV_VERSION:-}"
-
-if [ -z "$SATNAV_VERSION" ]; then
-    SATNAV_VERSION=$(ls -d "${SATNAV_DATA_ROOT}"/ver_* 2>/dev/null | sort | tail -1 | xargs basename)
-    if [ -z "$SATNAV_VERSION" ]; then
-        echo "[ERROR] No SatNav data versions found in ${SATNAV_DATA_ROOT}"
-        exit 1
-    fi
-    echo "[INFO] Auto-detected SatNav version: ${SATNAV_VERSION}"
-else
-    echo "[INFO] Using specified SatNav version: ${SATNAV_VERSION}"
-fi
+SATNAV_VERSION="${SATNAV_VERSION:-ver_260418}"
+echo "[INFO] Using SatNav version: ${SATNAV_VERSION}"
 
 SATNAV_DATA_DIR="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/trajectory_data"
 if [ ! -d "$SATNAV_DATA_DIR" ]; then
@@ -70,7 +60,7 @@ if [ ! -d "$SATNAV_DATA_DIR" ]; then
     exit 1
 fi
 
-VERSION_NUM=$(echo "$SATNAV_VERSION" | grep -oP '\d+')
+VERSION_TAG="$(echo "$SATNAV_VERSION" | sed -E 's/^ver_//')"
 
 # ---- Vision model (local copy to avoid network download) ----
 VISION_MODEL_VERSION="${BASELINE_DIR}/model/siglip-so400m-patch14-384"
@@ -78,7 +68,7 @@ VISION_MODEL_VERSION="${BASELINE_DIR}/model/siglip-so400m-patch14-384"
 # ---- Training hyperparameters ----
 NUM_EPOCHS="${NUM_EPOCHS:-1}"
 LEARNING_RATE="${LEARNING_RATE:-2e-5}"
-BATCH_SIZE="${BATCH_SIZE:-2}"
+BATCH_SIZE="${BATCH_SIZE:-3}"
 GRAD_ACCUM="${GRAD_ACCUM:-2}"
 GPUS_PER_NODE="${GPUS_PER_NODE:-8}"
 SAVE_STRATEGY="${SAVE_STRATEGY:-epoch}"
@@ -121,7 +111,7 @@ fi
 # ---- Build EXP_NAME ----
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM * GPUS_PER_NODE))
-EXP_NAME="streamvln-baseline-${MODE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}h${NUM_HISTORY}s${NUM_FUTURE_STEPS}-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+EXP_NAME="streamvln-baseline-${MODE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}h${NUM_HISTORY}s${NUM_FUTURE_STEPS}-data${VERSION_TAG}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 MODEL_OUTPUT_ROOT="${REPO_ROOT}/output/streamvln-baseline"
 if [ "${SMOKE_TEST}" = "true" ]; then
     OUTPUT_DIR="${MODEL_OUTPUT_ROOT}/smoketest/${EXP_NAME}"

@@ -59,9 +59,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--data_path", type=str,
-                        default="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data/annotations.json")
+                        default="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data/annotations.json")
     parser.add_argument("--image_folder", type=str,
-                        default="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data")
+                        default="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data")
     parser.add_argument("--num_samples", type=int, default=20)
     parser.add_argument("--eval_dtype", type=str, default="auto")
     parser.add_argument(
