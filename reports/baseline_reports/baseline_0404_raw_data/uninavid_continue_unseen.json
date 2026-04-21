@@ -1,0 +1,41 @@
+{
+  "eval_split": "val_unseen",
+  "model_type": "uninavid",
+  "model_variant": "continue",
+  "model_name": "uninavid-baseline-continue-1ep-data260404-bs168-lr1e-5-h73-20260405-081606",
+  "keep_list_preset": "data260404_road345",
+  "n_total_in_result": 8756,
+  "n_missing_keep": 0,
+  "success_rate": 0.397099,
+  "mean_spl": 0.391371,
+  "oracle_success": 0.598447,
+  "navigation_error": 127.2784,
+  "avg_steps": 63.98,
+  "total_episodes": 8756,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.28781,
+      "mean_spl": 0.282119,
+      "oracle_success": 0.669577,
+      "navigation_error": 35.8298,
+      "avg_steps": 67.8,
+      "total_episodes": 2863
+    },
+    "LandmarkSet": {
+      "success_rate": 0.48851,
+      "mean_spl": 0.477994,
+      "oracle_success": 0.593315,
+      "navigation_error": 231.539,
+      "avg_steps": 66.91,
+      "total_episodes": 2872
+    },
+    "Road": {
+      "success_rate": 0.41377,
+      "mean_spl": 0.412558,
+      "oracle_success": 0.535915,
+      "navigation_error": 114.826,
+      "avg_steps": 57.56,
+      "total_episodes": 3021
+    }
+  }
+}

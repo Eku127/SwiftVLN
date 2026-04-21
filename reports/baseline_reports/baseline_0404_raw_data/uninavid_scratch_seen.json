@@ -1,0 +1,41 @@
+{
+  "eval_split": "val_seen",
+  "model_type": "uninavid",
+  "model_variant": "scratch",
+  "model_name": "uninavid-baseline-scratch-1ep-data260404-bs168-lr1e-5-h73-20260405-081606",
+  "keep_list_preset": "data260404_road345",
+  "n_total_in_result": 4844,
+  "n_missing_keep": 0,
+  "success_rate": 0.227291,
+  "mean_spl": 0.22499,
+  "oracle_success": 0.528902,
+  "navigation_error": 224.7992,
+  "avg_steps": 78.24,
+  "total_episodes": 4844,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.114899,
+      "mean_spl": 0.110914,
+      "oracle_success": 0.754419,
+      "navigation_error": 75.6375,
+      "avg_steps": 89.78,
+      "total_episodes": 1584
+    },
+    "LandmarkSet": {
+      "success_rate": 0.123977,
+      "mean_spl": 0.121625,
+      "oracle_success": 0.286344,
+      "navigation_error": 492.0911,
+      "avg_steps": 88.45,
+      "total_episodes": 1589
+    },
+    "Road": {
+      "success_rate": 0.432077,
+      "mean_spl": 0.43142,
+      "oracle_success": 0.545781,
+      "navigation_error": 112.0196,
+      "avg_steps": 57.58,
+      "total_episodes": 1671
+    }
+  }
+}

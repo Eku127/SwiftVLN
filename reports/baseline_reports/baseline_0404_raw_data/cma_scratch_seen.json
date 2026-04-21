@@ -1,0 +1,42 @@
+{
+  "eval_split": "val_seen",
+  "model_type": "cma",
+  "model_variant": "scratch",
+  "model_name": "cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab",
+  "keep_list_preset": "data260404_road345",
+  "n_total_in_diag": 4430,
+  "n_missing_keep": 414,
+  "success_rate": 0.094582,
+  "mean_spl": 0.093352,
+  "oracle_success": 0.448758,
+  "navigation_error": 323.2472,
+  "avg_steps": 94.85,
+  "total_episodes": 4430,
+  "avg_path_length": 639.7556,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.123705,
+      "mean_spl": 0.120508,
+      "oracle_success": 0.923575,
+      "navigation_error": 63.5432,
+      "avg_steps": 80.05,
+      "total_episodes": 1544
+    },
+    "LandmarkSet": {
+      "success_rate": 0.0,
+      "mean_spl": 0.0,
+      "oracle_success": 0.028939,
+      "navigation_error": 789.6146,
+      "avg_steps": 159.76,
+      "total_episodes": 1244
+    },
+    "Road": {
+      "success_rate": 0.138855,
+      "mean_spl": 0.138543,
+      "oracle_success": 0.320341,
+      "navigation_error": 214.1255,
+      "avg_steps": 59.58,
+      "total_episodes": 1642
+    }
+  }
+}
