@@ -18,7 +18,35 @@ Related skills:
   - `NUM_OVERLAP=0`
   - `SAVE_STEPS=1000`
   - `SAVE_TOTAL_LIMIT=1`
+  - SatNav 默认训练数据：`ver_260418`
+  - QA 默认路径：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl`
+  - 当前 0418 默认 eval split 口径：
+    - `val_seen = 4574`
+    - `val_unseen = 8756`
+    - `2026-04-20` 已从 `val_seen` 中移除 `27` 个与 train 路线重复的 episodes
+    - `val_seen_update` 已不再作为当前默认 eval 目录存在
 - 历史 baseline 默认曾使用 `NUM_OVERLAP=16`；如果用户没有特别说明，当前应按 `overlap=0` 理解 baseline。
+- 主训练脚本默认 base model 仍是本地 `3B`：
+  - `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
+- 如需训练 `7B`，现在可以直接通过环境变量覆盖，而不必改脚本默认值：
+  - `STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct`
+  - 关键训练超参也支持 env 覆盖，如：
+    - `BATCH_SIZE`
+    - `LEARNING_RATE`
+    - `NUM_EPOCHS`
+    - `GRAD_ACCUM_STEPS`
+    - `NUM_HISTORY`
+    - `HISTORY_PROCESSOR_TYPE`
+    - `NUM_OVERLAP`
+- 已在 `17` 上做过 `Qwen2.5-VL-7B` baseline 实测：
+  - `8卡`
+  - `per_frame + history + overlap=0`
+  - `bsz=12` 可稳定训练
+- 若在 `17` 上用 `7B` 正式长跑遇到 `pin_memory` 线程里的
+  `torch.AcceleratorError: CUDA error: invalid argument`，
+  当前推荐直接覆盖：
+  - `DATALOADER_PIN_MEMORY=false`
+  - 并优先使用更保守的 `BATCH_SIZE=10`
 
 ## No-Memory Convention (OverlapVLN)
 

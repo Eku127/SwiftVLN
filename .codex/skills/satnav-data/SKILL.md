@@ -104,7 +104,7 @@ The script handles:
 After Step 3 is successful, synchronize latest SatNav dataset paths in project configs:
 
 1. Update `src/swiftvln/configs/satnav_task.yaml`:
-- `DATASET.DATA_PATH` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/episodes/eval/all_episodes.json`
+- `DATASET.DATA_PATH` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/episodes/eval/{split}/all_episodes.json`
 2. Update `src/swiftvln/scripts/train/train_queue.sh`:
 - `QA_DATASET` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/data/qa_swift.jsonl`
 - `default_satnav_path` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/trajectory_data`
