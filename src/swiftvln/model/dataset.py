@@ -27,6 +27,7 @@ from swiftvln.common.constants import (
     HISTORY_MEMORY_TOKEN,
 )
 from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
+from swiftvln.common.history_processors.per_frame import sample_per_frame_history_indices
 from swiftvln.model.map_memory import (
     SatNavMapMemoryBuilder,
     SatNavTrajectoryMetadataResolver,
@@ -84,7 +85,7 @@ class OverlapVLNDataset(Dataset):
         memory_method: str = "history",
         map_global_side_m: float = 1000.0,
         map_local_side_m: float = 400.0,
-        map_render_px: int = 384,
+        map_render_px: int = 448,
         map_mask_method: str = "dilate20",
     ):
         # Store num_overlap before calling super().__init__ 
@@ -356,15 +357,12 @@ class OverlapVLNDataset(Dataset):
         Sampling strategies:
         - per_frame: Sample num_history frames using power transformation
           - num_history=0: Disable history sampling entirely (effective no-memory mode)
+          - use_random=True: Uniform random sampling without replacement
           - log_base=1.0: Uniform/linear sampling
           - log_base>1.0: Logarithmic sampling (more recent frames)
         - gtc: Sample with num_future_steps interval (denser, for cross-frame clustering)
         """
-        import math
-        
-        available_history_indices = np.arange(0, current_start_abs)
-        
-        if len(available_history_indices) == 0:
+        if current_start_abs <= 0:
             return np.array([], dtype=np.int32)
         
         if self.history_processor_type in ('gtc', 'segment_gtc'):
@@ -384,61 +382,29 @@ class OverlapVLNDataset(Dataset):
                 # will skip inserting <history_memory>.
                 return np.array([], dtype=np.int32)
             
-            if self.use_random:
-                history_step_ids = np.random.choice(
-                    available_history_indices,
-                    size=num_samples,
-                    replace=False
-                )
-                history_step_ids = np.sort(history_step_ids)
-            else:
-                # Use power transformation for flexible sampling
-                # log_base=1.0: t_frame = t_sample (linear/uniform)
-                # log_base>1.0: more samples at recent end
-                indices = []
-                for i in range(num_samples):
-                    if num_samples == 1:
-                        t_sample = 1.0  # Most recent
-                    else:
-                        t_sample = i / (num_samples - 1)
-                    
-                    # Power transformation: t_frame = 1 - (1 - t_sample)^log_base
-                    t_frame = 1.0 - math.pow(1.0 - t_sample, self.log_base)
-                    
-                    # Map to frame index
-                    frame_idx = int(round(t_frame * (num_frames - 1)))
-                    frame_idx = max(0, min(num_frames - 1, frame_idx))
-                    
-                    if frame_idx not in indices:
-                        indices.append(frame_idx)
-                
-                # Sort and ensure we have num_samples frames
-                indices.sort()
-                
-                # Fill missing slots if duplicates removed
-                while len(indices) < num_samples:
-                    for k in range(num_frames):
-                        if k not in indices:
-                            indices.append(k)
-                            indices.sort()
-                            break
-                    else:
-                        break  # No more frames available
-                
-                history_step_ids = np.array(indices[:num_samples], dtype=np.int32)
-                
-                # Debug output (only for first few samples)
-                if os.environ.get('OVERLAPVLN_DEBUG') and not hasattr(self, '_debug_sample_count'):
-                    self._debug_sample_count = 0
-                if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_sample_count < 3:
-                    print(f"  [DEBUG SAMPLE {self._debug_sample_count}] History sampling:")
-                    print(f"    -> Available frames: 0-{num_frames-1} ({num_frames} total)")
-                    print(f"    -> Sampling {num_samples} frames with log_base={self.log_base}")
-                    print(f"    -> Sampled indices: {list(history_step_ids)}")
-                    self._debug_sample_count += 1
-            
+            history_step_ids = np.array(
+                sample_per_frame_history_indices(
+                    num_frames=num_frames,
+                    num_samples=self.num_history,
+                    log_base=self.log_base,
+                    use_random=self.use_random,
+                ),
+                dtype=np.int32,
+            )
+
+            # Debug output (only for first few samples)
+            if os.environ.get('OVERLAPVLN_DEBUG') and not hasattr(self, '_debug_sample_count'):
+                self._debug_sample_count = 0
+            if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_sample_count < 3:
+                sampling_mode = "random" if self.use_random else f"log_base={self.log_base}"
+                print(f"  [DEBUG SAMPLE {self._debug_sample_count}] History sampling:")
+                print(f"    -> Available frames: 0-{num_frames-1} ({num_frames} total)")
+                print(f"    -> Sampling {num_samples} frames with {sampling_mode}")
+                print(f"    -> Sampled indices: {list(history_step_ids)}")
+                self._debug_sample_count += 1
+
             history_step_ids = np.clip(history_step_ids, 0, num_video_frames - 1)
-        
+
         return history_step_ids
 
     def _build_map_memory_images(

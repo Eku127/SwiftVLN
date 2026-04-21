@@ -607,9 +607,10 @@ evaluator.py  → 核心：VIT 缓存、overlap_context 管理、embedding 构�
 
 ```
 Per-Frame:
-  overlapvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-pf-h{history}-b{log_base}-{method}-s{stride}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
+  overlapvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-pf-h{history}[-nomem][-random]-b{log_base}-{method}-s{stride}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
   
   示例: overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-bs64-lr2e-5-20260204-123456
+  随机采样示例: overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456
 
 GTC:
   overlapvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-gtc-k{tokens}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}

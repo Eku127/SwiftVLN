@@ -155,7 +155,7 @@ class OverlapVLNTrainArguments(BaseVLNTrainArguments):
     )
 
     map_render_px: int = field(
-        default=384,
+        default=448,
         metadata={
             "help": "[map] Render resolution for each map image."
         }

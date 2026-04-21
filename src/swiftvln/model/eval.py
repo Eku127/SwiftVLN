@@ -67,7 +67,7 @@ class OverlapVLNEval(BaseVLNEval):
                             help="[map] Global explored-map side length in meters")
         parser.add_argument("--map_local_side_m", type=float, default=400.0,
                             help="[map] Local explored-map side length in meters")
-        parser.add_argument("--map_render_px", type=int, default=384,
+        parser.add_argument("--map_render_px", type=int, default=448,
                             help="[map] Render resolution for each map image")
         parser.add_argument("--map_mask_method", type=str, default="dilate20",
                             help="[map] Explored-area mask rule, e.g. strict or dilate20")
@@ -80,6 +80,8 @@ class OverlapVLNEval(BaseVLNEval):
         # Per-frame specific arguments
         parser.add_argument("--log_base", type=float, default=1.0,
                             help="[Per-frame] Sampling distribution: 1.0=uniform, >1.0=logarithmic (more recent frames)")
+        parser.add_argument("--use_random", action="store_true",
+                            help="[Per-frame] Use random history sampling without replacement (must match training)")
         
         # GTC-specific arguments
         parser.add_argument("--gtc_output_tokens", type=int, default=512,
@@ -120,7 +122,7 @@ class OverlapVLNEval(BaseVLNEval):
         if getattr(self.args, 'memory_method', 'history') == 'map':
             extras['map_global_side_m'] = getattr(self.args, 'map_global_side_m', 1000.0)
             extras['map_local_side_m'] = getattr(self.args, 'map_local_side_m', 400.0)
-            extras['map_render_px'] = getattr(self.args, 'map_render_px', 384)
+            extras['map_render_px'] = getattr(self.args, 'map_render_px', 448)
             extras['map_mask_method'] = getattr(self.args, 'map_mask_method', 'dilate20')
         if hasattr(self.args, 'use_pixel_embed'):
             extras['use_pixel_embed'] = self.args.use_pixel_embed
@@ -151,6 +153,8 @@ class OverlapVLNEval(BaseVLNEval):
             # per_frame
             if hasattr(self.args, 'log_base'):
                 extras['log_base'] = self.args.log_base
+            if hasattr(self.args, 'use_random'):
+                extras['use_random'] = self.args.use_random
             if hasattr(self.args, 'use_tome'):
                 extras['use_tome'] = self.args.use_tome
         return extras

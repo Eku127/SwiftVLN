@@ -6,6 +6,7 @@ Compresses each frame independently, then concatenates results.
 Supports both average pooling and Grid-based ToMe.
 
 Sampling Strategy:
+- Supports random sampling without replacement for train/eval alignment
 - Uses power transformation for flexible frame sampling
 - log_base=1.0: Uniform sampling (default, linear distribution)
 - log_base>1.0: Logarithmic sampling (more recent frames preserved)
@@ -16,10 +17,68 @@ Formula: t_frame = 1 - (1 - t_sample)^log_base
 """
 
 import math
+import numpy as np
 import torch
 from typing import List, Tuple, Literal
 
 from .base import HistoryProcessor
+
+
+def sample_per_frame_history_indices(
+    num_frames: int,
+    num_samples: int,
+    log_base: float = 1.0,
+    use_random: bool = False,
+) -> List[int]:
+    """
+    Sample sorted indices from the history prefix [0, num_frames).
+
+    This helper intentionally mirrors the OverlapVLN train/eval per-frame
+    sampling logic so both sides stay behaviorally aligned.
+    """
+    num_frames = int(num_frames)
+    num_samples = int(num_samples)
+
+    if num_frames <= 0 or num_samples <= 0:
+        return []
+
+    num_samples = min(num_samples, num_frames)
+    if num_samples == num_frames:
+        return list(range(num_frames))
+
+    if use_random:
+        sampled = np.random.choice(num_frames, size=num_samples, replace=False)
+        sampled.sort()
+        return sampled.astype(int).tolist()
+
+    indices: List[int] = []
+    for i in range(num_samples):
+        if num_samples == 1:
+            t_sample = 1.0
+        else:
+            t_sample = i / (num_samples - 1)
+
+        t_frame = 1.0 - math.pow(1.0 - t_sample, log_base)
+        frame_idx = int(round(t_frame * (num_frames - 1)))
+        frame_idx = max(0, min(num_frames - 1, frame_idx))
+
+        if frame_idx not in indices:
+            indices.append(frame_idx)
+
+    indices.sort()
+
+    # Match the current train/eval fallback: if rounding produced duplicate
+    # indices, backfill the earliest unused frames in ascending order.
+    while len(indices) < num_samples:
+        for k in range(num_frames):
+            if k not in indices:
+                indices.append(k)
+                indices.sort()
+                break
+        else:
+            break
+
+    return indices[:num_samples]
 
 
 class PerFrameCompressor(HistoryProcessor):

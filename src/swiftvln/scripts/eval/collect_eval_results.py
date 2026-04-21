@@ -64,23 +64,24 @@ def infer_plan(model_name: str, model_type: str) -> str:
         elif "-gtc-k" in model_name:
             m = re.search(r"-gtc-k(\d+)", model_name)
             base = f"baseline + gtc-k{m.group(1)}" if m else "baseline + gtc"
-        elif re.search(r"-tome-s\d+", model_name):
-            # per_frame + GridToMe compression
-            base = "baseline + tome"
         else:
-            # per_frame + avg pool (default path)
-            # Naming format: -pf-h{H}-b{B}-pool-s{S}-
+            # per_frame naming format: -pf-h{H}[-random]-b{B}-(pool|tome)-s{S}-
             m_log = re.search(r"-b([0-9]+\.[0-9]+)-", model_name)
             log_base = m_log.group(1) if m_log else "1.0"
             m_stride = re.search(r"-(?:pool|tome)-s(\d+)", model_name)
             stride = m_stride.group(1) if m_stride else "2"
-
+            modifiers: List[str] = []
+            if "-random-" in model_name:
+                modifiers.append("random")
+            if re.search(r"-tome-s\d+", model_name):
+                modifiers.append("tome")
             if log_base not in ("1.0", "1"):
-                base = f"baseline + log{log_base}"
-            elif stride != "2":
-                base = f"baseline + s{stride}"
-            else:
-                base = "baseline"
+                modifiers.append(f"log{log_base}")
+            if stride != "2":
+                modifiers.append(f"s{stride}")
+            base = "baseline"
+            if modifiers:
+                base += " + " + " + ".join(modifiers)
 
         # Additive modifiers stacked on top of the base method
         if "-initial-" in model_name:
@@ -99,6 +100,7 @@ def plan_rank(plan: str) -> int:
     order = {
         # overlapvln variants (ascending complexity)
         "baseline": 10,
+        "baseline + random": 15,
         "baseline + tome": 20,
         "baseline + s3": 25,
         "baseline + s4": 27,
@@ -139,6 +141,8 @@ def overlap_variant_rank(model_name: str) -> int:
         return 40
     if re.search(r"-tome-s\d+", model_name):
         return 30
+    if "-random-" in model_name:
+        return 25
     # Non-default log_base (e.g. -b2.0-)
     m_log = re.search(r"-b([0-9]+\.[0-9]+)-", model_name)
     if m_log and m_log.group(1) not in ("1.0", "1"):

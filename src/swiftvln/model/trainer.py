@@ -91,7 +91,7 @@ class OverlapVLNSft(BaseVLNSft):
             self.template.memory_method = getattr(self.args, 'memory_method', 'history')
             self.template.map_global_side_m = getattr(self.args, 'map_global_side_m', 1000.0)
             self.template.map_local_side_m = getattr(self.args, 'map_local_side_m', 400.0)
-            self.template.map_render_px = getattr(self.args, 'map_render_px', 384)
+            self.template.map_render_px = getattr(self.args, 'map_render_px', 448)
             self.template.map_mask_method = getattr(self.args, 'map_mask_method', 'dilate20')
 
             self.template.history_processor = create_history_processor(

@@ -73,13 +73,13 @@ OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR_OVERRIDE:-}"
 MEMORY_METHOD="${MEMORY_METHOD:-history}"
 MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
 MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
-MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
+MAP_RENDER_PX="${MAP_RENDER_PX:-448}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
 # QA 混合训练配置
 USE_QA_MIXED_TRAINING=false
 QA_RATIO=0.15
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/data/qa_swift.jsonl"
+QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl"
 
 # Stage2 默认基础模型路径
 declare -A STAGE2_DEFAULT_MODELS=(
@@ -445,6 +445,7 @@ parse_stage1_config() {
     
     # 新格式: f{frames}s{steps} (不含 h)
     # 示例: f32s4-overlap16-pf-h8-b1.0-pool-s2
+    # random 示例: f32s4-overlap0-pf-h8-random-b1.0-pool-s2
     # no-memory 示例: f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2
     local frames=$(echo "$model_name" | grep -oP 'f\d+s' | sed 's/f//' | sed 's/s//')
     local steps=$(echo "$model_name" | grep -oP 'f\d+s\d+' | grep -oP 's\d+' | sed 's/s//')
@@ -459,12 +460,13 @@ parse_stage1_config() {
     fi
     
     # 解析 history_processor_type 和相关参数
-    # 新格式: pf-h8-b1.0-pool-s2 或 pf-h8-b2.0-tome-s2
+    # 新格式: pf-h8-b1.0-pool-s2 或 pf-h8-random-b1.0-pool-s2 或 pf-h8-b2.0-tome-s2
     # no-memory: pf-h0-nomem-b1.0-pool-s2
     # GTC格式: gtc-k512, sgtc-k512
     local history_processor_type="per_frame"
     local history="8"
     local log_base="1.0"
+    local use_random="false"
     local stride=""
     local gtc_output_tokens=""
     local use_tome="false"
@@ -479,14 +481,23 @@ parse_stage1_config() {
         history_processor_type="gtc"
         gtc_output_tokens=$(echo "$model_name" | grep -oP 'gtc-k\d+' | sed 's/gtc-k//')
     elif [[ "$model_name" == *"-pf-h"* ]]; then
-        # 新格式 per_frame: pf-h8-b1.0-pool-s2 或 pf-h8-b2.0-tome-s2
+        # 新格式 per_frame: pf-h8-b1.0-pool-s2 / pf-h8-random-b1.0-pool-s2 / pf-h8-b2.0-tome-s2
         history_processor_type="per_frame"
         
         # 提取 num_history: pf-h{X}-
         history=$(echo "$model_name" | grep -oP 'pf-h\d+' | sed 's/pf-h//')
+
+        # 检查是否为 random 采样
+        if [[ "$model_name" == *"-random-"* ]]; then
+            use_random="true"
+        fi
         
         # 提取 log_base: -b{X.Y}-
-        log_base=$(echo "$model_name" | grep -oP '\-b[0-9.]+\-' | sed 's/-b//' | sed 's/-//')
+        local parsed_log_base=""
+        parsed_log_base=$(echo "$model_name" | grep -oP '\-b[0-9.]+\-' | sed 's/-b//' | sed 's/-//' || true)
+        if [[ -n "$parsed_log_base" ]]; then
+            log_base="$parsed_log_base"
+        fi
         
         # 提取 compress_stride: -{method}-s{X}
         stride=$(echo "$model_name" | grep -oP '\-(pool|tome)\-s\d+' | grep -oP 's\d+' | sed 's/s//')
@@ -523,8 +534,9 @@ parse_stage1_config() {
         use_pixel_embed="false"
     fi
     
-    # 返回解析结果 (格式: frames|history|steps|stride|overlap|use_tome|history_processor_type|gtc_output_tokens|log_base|system_prompt_setting|use_pixel_embed|use_pose_embed|pose_fusion_method)
-    echo "${frames}|${history}|${steps}|${stride}|${overlap}|${use_tome}|${history_processor_type}|${gtc_output_tokens}|${log_base}|${system_prompt_setting}|${use_pixel_embed}|${use_pose_embed}|${pose_fusion_method}"
+    # 返回解析结果
+    # 格式: frames|history|steps|stride|overlap|use_tome|history_processor_type|gtc_output_tokens|log_base|use_random|system_prompt_setting|use_pixel_embed|use_pose_embed|pose_fusion_method
+    echo "${frames}|${history}|${steps}|${stride}|${overlap}|${use_tome}|${history_processor_type}|${gtc_output_tokens}|${log_base}|${use_random}|${system_prompt_setting}|${use_pixel_embed}|${use_pose_embed}|${pose_fusion_method}"
 }
 
 # ============================================================================
@@ -540,10 +552,11 @@ format_config_display() {
     local history_processor_type="${7:-per_frame}"
     local gtc_output_tokens="$8"
     local log_base="${9:-1.0}"
-    local system_prompt_setting="${10:-vanilla}"
-    local use_pixel_embed="${11:-false}"
-    local use_pose_embed="${12:-false}"
-    local pose_fusion_method="${13:-additive}"
+    local use_random="${10:-false}"
+    local system_prompt_setting="${11:-vanilla}"
+    local use_pixel_embed="${12:-false}"
+    local use_pose_embed="${13:-false}"
+    local pose_fusion_method="${14:-additive}"
     
     local config_str=""
     [[ -n "$frames" ]] && config_str+="f${frames}"
@@ -559,6 +572,8 @@ format_config_display() {
         config_str+="-pf-h${history:-8}"
         if [[ "${history:-8}" == "0" ]]; then
             config_str+="-nomem"
+        elif [[ "${use_random:-false}" == "true" ]]; then
+            config_str+="-random"
         fi
         config_str+="-b${log_base}"
         if [[ "$use_tome" == "true" ]]; then
@@ -817,7 +832,7 @@ interactive_setup() {
         fi
     else
         # SatNav 环境
-        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data"
+        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data"
         echo "默认 SatNav 数据路径:"
         echo "  $default_satnav_path"
         echo ""
@@ -1063,7 +1078,7 @@ interactive_setup() {
             for base_path in "${base_model_paths[@]}"; do
                 # 解析配置
                 local parsed_config=$(parse_stage1_config "$base_path")
-                IFS='|' read -r frames history steps stride overlap use_tome history_processor_type gtc_output_tokens log_base system_prompt_setting use_pixel_embed use_pose_embed pose_fusion_method <<< "$parsed_config"
+                IFS='|' read -r frames history steps stride overlap use_tome history_processor_type gtc_output_tokens log_base use_random system_prompt_setting use_pixel_embed use_pose_embed pose_fusion_method <<< "$parsed_config"
                 
                 # 构建继承的配置字符串
                 local inherited_config=""
@@ -1076,6 +1091,7 @@ interactive_setup() {
                 [[ -n "$history_processor_type" ]] && inherited_config+="HISTORY_PROCESSOR_TYPE=$history_processor_type,"
                 [[ -n "$gtc_output_tokens" ]] && inherited_config+="GTC_OUTPUT_TOKENS=$gtc_output_tokens,"
                 [[ -n "$log_base" ]] && inherited_config+="LOG_BASE=$log_base,"
+                [[ "$use_random" == "true" ]] && inherited_config+="USE_RANDOM=true,"
                 [[ -n "$system_prompt_setting" ]] && inherited_config+="SYSTEM_PROMPT_SETTING=$system_prompt_setting,"
                 [[ -n "$use_pixel_embed" ]] && inherited_config+="USE_PIXEL_EMBED=$use_pixel_embed,"
                 [[ -n "$use_pose_embed" ]] && inherited_config+="USE_POSE_EMBED=$use_pose_embed,"
@@ -1083,7 +1099,7 @@ interactive_setup() {
                 inherited_config="${inherited_config%,}"  # 去掉末尾逗号
                 
                 local model_display=$(basename "$(dirname "$(dirname "$base_path")")")
-                local config_display=$(format_config_display "$frames" "$history" "$steps" "$stride" "$overlap" "$use_tome" "$history_processor_type" "$gtc_output_tokens" "$log_base" "$system_prompt_setting" "$use_pixel_embed" "$use_pose_embed" "$pose_fusion_method")
+                local config_display=$(format_config_display "$frames" "$history" "$steps" "$stride" "$overlap" "$use_tome" "$history_processor_type" "$gtc_output_tokens" "$log_base" "$use_random" "$system_prompt_setting" "$use_pixel_embed" "$use_pose_embed" "$pose_fusion_method")
                 print_success "添加: $model_display"
                 echo "  解析参数:"
                 [[ -n "$frames" ]] && echo "    NUM_FRAMES=$frames"
@@ -1092,6 +1108,7 @@ interactive_setup() {
                 [[ -n "$stride" ]] && echo "    COMPRESS_STRIDE=$stride"
                 [[ -n "$overlap" ]] && echo "    NUM_OVERLAP=$overlap"
                 [[ "$use_tome" == "true" ]] && echo "    USE_TOME=true"
+                [[ "$use_random" == "true" ]] && echo "    USE_RANDOM=true"
                 [[ -n "$history_processor_type" ]] && echo "    HISTORY_PROCESSOR_TYPE=$history_processor_type"
                 [[ -n "$gtc_output_tokens" ]] && echo "    GTC_OUTPUT_TOKENS=$gtc_output_tokens"
                 [[ -n "$log_base" && "$log_base" != "1.0" ]] && echo "    LOG_BASE=$log_base"
@@ -1610,8 +1627,8 @@ show_final_results() {
                         shown_base_models+=("$base_model_name")
                         # 解析并显示配置
                         local parsed=$(parse_stage1_config "$base_model")
-                        IFS='|' read -r frames history steps stride overlap use_tome history_processor_type gtc_output_tokens log_base system_prompt_setting use_pixel_embed use_pose_embed pose_fusion_method <<< "$parsed"
-                        local config_display=$(format_config_display "$frames" "$history" "$steps" "$stride" "$overlap" "$use_tome" "$history_processor_type" "$gtc_output_tokens" "$log_base" "$system_prompt_setting" "$use_pixel_embed" "$use_pose_embed" "$pose_fusion_method")
+                        IFS='|' read -r frames history steps stride overlap use_tome history_processor_type gtc_output_tokens log_base use_random system_prompt_setting use_pixel_embed use_pose_embed pose_fusion_method <<< "$parsed"
+                        local config_display=$(format_config_display "$frames" "$history" "$steps" "$stride" "$overlap" "$use_tome" "$history_processor_type" "$gtc_output_tokens" "$log_base" "$use_random" "$system_prompt_setting" "$use_pixel_embed" "$use_pose_embed" "$pose_fusion_method")
                         echo "  • $base_model_name"
                         echo "    └─ 配置: $config_display"
                         echo "    └─ 路径: $base_model"

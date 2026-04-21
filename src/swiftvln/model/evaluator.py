@@ -56,6 +56,7 @@ try:
         GlobalTokenClustering,
         PerFrameCompressor,
     )
+    from swiftvln.common.history_processors.per_frame import sample_per_frame_history_indices
     from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
     from swiftvln.model.map_memory import SatNavMapMemoryBuilder
 except ImportError:
@@ -77,6 +78,7 @@ except ImportError:
         GlobalTokenClustering,
         PerFrameCompressor,
     )
+    from ..common.history_processors.per_frame import sample_per_frame_history_indices
     from ..common.embedding_enhancement import reconstruct_pose_from_actions
     from .map_memory import SatNavMapMemoryBuilder
 
@@ -177,6 +179,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         self.compress_stride = getattr(self.args, 'compress_stride', 2)
         self.use_tome = getattr(self.args, 'use_tome', False)
         self.log_base = getattr(self.args, 'log_base', 1.0)
+        self.use_random = getattr(self.args, 'use_random', False)
         
         # GTC specific parameters
         self.gtc_output_tokens = getattr(self.args, 'gtc_output_tokens', 512)
@@ -224,7 +227,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         self.memory_method = getattr(self.args, 'memory_method', 'history').lower()
         self.map_global_side_m = float(getattr(self.args, 'map_global_side_m', 1000.0))
         self.map_local_side_m = float(getattr(self.args, 'map_local_side_m', 400.0))
-        self.map_render_px = int(getattr(self.args, 'map_render_px', 384))
+        self.map_render_px = int(getattr(self.args, 'map_render_px', 448))
         self.map_mask_method = str(getattr(self.args, 'map_mask_method', 'dilate20')).lower()
         self.map_builder: Optional[SatNavMapMemoryBuilder] = None
         if self.memory_method not in ('history', 'map'):
@@ -309,7 +312,10 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         if self.history_processor_type in ('gtc', 'segment_gtc'):
             print(f"    Sampling: every {self.num_future_steps} frames (same as training)")
         else:
-            sampling_type = "uniform" if self.log_base == 1.0 else f"logarithmic (b={self.log_base})"
+            if self.use_random:
+                sampling_type = "random"
+            else:
+                sampling_type = "uniform" if self.log_base == 1.0 else f"logarithmic (b={self.log_base})"
             print(f"    Sampling: {sampling_type}, {self.num_history} frames")
         print(f"  System Prompt: {self.system_prompt_setting}")
         if self.system_prompt_setting == "initial":
@@ -577,7 +583,8 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         Compute history features based on history_processor_type.
         
         For per_frame:
-            - Sample num_history frames using power transformation
+            - Sample num_history frames using the shared train/eval helper
+            - use_random=True: Uniform random sampling without replacement
             - log_base=1.0: Uniform sampling
             - log_base>1.0: Logarithmic sampling (more recent frames)
             - Compress each frame independently
@@ -668,53 +675,26 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         Compute history cache using per-frame compression.
         
         Sampling strategy (aligned with training in dataset.py):
-            Uses power transformation for flexible sampling:
+            Uses the same helper as training:
+            - use_random=True: uniform random sampling without replacement
             - log_base=1.0: Uniform/linear sampling
             - log_base>1.0: Logarithmic sampling (more recent frames)
-            
-        Formula: t_frame = 1 - (1 - t_sample)^log_base
-        
+
         Each frame is compressed independently using pooling or ToMe.
         """
-        import math
-        
-        num_frames = window_start
-        num_samples = min(self.num_history, num_frames)
-        
-        if num_samples <= 0:
+        available_history_frames = min(window_start, len(rgb_list))
+
+        if self.num_history <= 0 or available_history_frames <= 0:
             self.history_cache = []
             return
-        
-        # Compute sample indices using power transformation
-        history_indices = []
-        for i in range(num_samples):
-            if num_samples == 1:
-                t_sample = 1.0  # Most recent
-            else:
-                t_sample = i / (num_samples - 1)
-            
-            # Power transformation: log_base=1.0 gives linear, >1.0 gives logarithmic
-            t_frame = 1.0 - math.pow(1.0 - t_sample, self.log_base)
-            
-            frame_idx = int(round(t_frame * (num_frames - 1)))
-            frame_idx = max(0, min(num_frames - 1, frame_idx))
-            
-            if frame_idx not in history_indices:
-                history_indices.append(frame_idx)
-        
-        # Sort and fill missing slots if needed
-        history_indices.sort()
-        while len(history_indices) < num_samples:
-            for k in range(num_frames):
-                if k not in history_indices:
-                    history_indices.append(k)
-                    history_indices.sort()
-                    break
-            else:
-                break
-        
-        history_indices = history_indices[:num_samples]
-        
+
+        history_indices = sample_per_frame_history_indices(
+            num_frames=available_history_frames,
+            num_samples=self.num_history,
+            log_base=self.log_base,
+            use_random=self.use_random,
+        )
+
         if not history_indices:
             self.history_cache = []
             return

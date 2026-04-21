@@ -85,6 +85,7 @@ HISTORY_PROCESSOR_TYPE="${HISTORY_PROCESSOR_TYPE:-per_frame}"  # "per_frame", "g
 COMPRESS_STRIDE="${COMPRESS_STRIDE:-2}"  # Should match training
 USE_TOME="${USE_TOME:-false}"  # Use GridToMe compression (must match training)
 LOG_BASE="${LOG_BASE:-1.0}"  # Sampling distribution: 1.0 = uniform, >1.0 = logarithmic
+USE_RANDOM="${USE_RANDOM:-false}"  # Use random history sampling (must match training)
 
 # ---------- GTC/SegmentGTC parameters (used when HISTORY_PROCESSOR_TYPE="gtc" or "segment_gtc") ----------
 GTC_OUTPUT_TOKENS="${GTC_OUTPUT_TOKENS:-512}"
@@ -101,7 +102,7 @@ SYSTEM_PROMPT_SETTING="${SYSTEM_PROMPT_SETTING:-vanilla}"
 MEMORY_METHOD="${MEMORY_METHOD:-history}"
 MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
 MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
-MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
+MAP_RENDER_PX="${MAP_RENDER_PX:-448}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
 # Map-memory render cache.
@@ -205,9 +206,14 @@ fi
 if [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
     COMPRESS_METHOD="pool"
     [ "$USE_TOME" = "true" ] && COMPRESS_METHOD="tome"
-    SAMPLING_TYPE="uniform"
-    [ "$LOG_BASE" != "1.0" ] && [ "$LOG_BASE" != "1" ] && SAMPLING_TYPE="logarithmic (b=$LOG_BASE)"
+    if [ "$USE_RANDOM" = "true" ]; then
+        SAMPLING_TYPE="random (log_base ignored)"
+    else
+        SAMPLING_TYPE="uniform"
+        [ "$LOG_BASE" != "1.0" ] && [ "$LOG_BASE" != "1" ] && SAMPLING_TYPE="logarithmic (b=$LOG_BASE)"
+    fi
     echo "  Sampling: $SAMPLING_TYPE, ${NUM_HISTORY} frames"
+    echo "  Use Random: $USE_RANDOM"
     echo "  Compression: stride=$COMPRESS_STRIDE, method=$COMPRESS_METHOD"
 elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
     echo "  GTC Output Tokens: ${GTC_OUTPUT_TOKENS}"
@@ -307,6 +313,7 @@ fi
 HISTORY_PROCESSOR_ARGS="--history_processor_type ${HISTORY_PROCESSOR_TYPE}"
 if [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
     HISTORY_PROCESSOR_ARGS="${HISTORY_PROCESSOR_ARGS} --compress_stride ${COMPRESS_STRIDE} --log_base ${LOG_BASE}"
+    [ "$USE_RANDOM" = "true" ] && HISTORY_PROCESSOR_ARGS="${HISTORY_PROCESSOR_ARGS} --use_random"
     [ "$USE_TOME" = "true" ] && HISTORY_PROCESSOR_ARGS="${HISTORY_PROCESSOR_ARGS} --use_tome"
 elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
     HISTORY_PROCESSOR_ARGS="${HISTORY_PROCESSOR_ARGS} --gtc_output_tokens ${GTC_OUTPUT_TOKENS}"
