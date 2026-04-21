@@ -1108,6 +1108,43 @@ Stage-A 当前验证状态（2026-04-03）：
   - 一次已验证产物目录：
     `output/s2r/smoke-large-multisrc-20260403-152012`
 
+## Local Deployment (Updated: 2026-04-21)
+
+- CLI 入口：`python -m swiftvln deploy --model overlapvln --model-name <EXP_NAME>`
+- CLI 接线：`src/swiftvln/cli.py`
+- runner：`src/swiftvln/runners/deploy.py`
+- 部署包：`src/swiftvln/deployment/`
+  - `model_resolver.py`：解析 overlapvln baseline 实验名并查找最新 checkpoint
+  - `gpu.py`：默认自动选择本机一张空闲 H100；若已设置 `CUDA_VISIBLE_DEVICES`，则沿用现有可见卡
+  - `loader.py`：加载 overlapvln checkpoint
+  - `policy.py`：baseline-only 的 window/history/overlap 推理逻辑
+  - `session.py`：单会话状态机、图片落盘、events/summary 记录
+  - `server.py`：JSONL stdin/stdout 协议入口
+- README：`src/swiftvln/deployment/README.md`
+- 启动 wrapper：`src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh`
+- 单次 session wrapper：`src/swiftvln/scripts/deploy/run_deploy_session.sh`
+- smoke 脚本：`src/swiftvln/scripts/deploy/deploy_smoke.sh`
+- 单测：`tests/test_overlapvln_deployment.py`
+
+当前部署产品定义：
+
+- 只支持 `overlapvln` baseline `per_frame + pool + noembed`
+- 当前只适配名字里的 `NUM_OVERLAP`、`NUM_HISTORY`、`LOG_BASE`、`USE_RANDOM`
+- 明确不支持：`map` / `gtc` / `segment_gtc` / `tome` / `initial` / embedding enhancement
+- 协议是**单进程、单会话** JSONL CLI，不提供 HTTP
+- 输入命令：
+  - `{"type":"start","instruction":"...","session_id":"optional"}`
+  - `{"type":"image","image_path":"/abs/path/to/image.jpg"}`
+  - `{"type":"end","reason":"optional"}`
+- 状态机：`waiting_start -> waiting_image -> waiting_feedback -> closed`
+- 会话目录默认写到：`runtime/deploy/sessions/<session_id>/`
+  - 固定产物：`session_meta.json` / `events.jsonl` / `session_summary.json` / `images/`
+- 行为与 eval baseline 对齐：
+  - 第一张图必定触发一次推理
+  - 之后每张图表示刚完成一个动作
+  - 若动作队列在这张反馈图上耗尽，则立刻用该图再次推理
+  - 若模型输出无法解析动作，fallback 为 `[STOP]`
+
 ## Commit Style
 
 - 使用 conventional commit：`feat/fix/refactor/docs/test/perf/chore`
