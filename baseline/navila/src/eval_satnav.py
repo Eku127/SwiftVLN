@@ -53,10 +53,6 @@ from llava.mm_utils import (
 )
 from llava.model.builder import load_pretrained_model
 from action_formats import build_prompt, normalize_action_format, parse_action_text
-from swiftvln.common.eval.reporting import (
-    compute_weighted_trajectory_type_metrics,
-    load_satnav_reference_distribution,
-)
 
 from satnav.core.env import Env as SatNavEnv
 from satnav.dataset.satnav_dataset import SatNavDataset
@@ -494,22 +490,6 @@ def save_summary(results: list, output_path: str, args) -> None:
                 "avg_steps": float(np.mean(stats["steps"])),
                 "count": len(stats["sucs"]),
             }
-        reference_distribution = load_satnav_reference_distribution(args.satnav_config_path)
-        if reference_distribution:
-            weighted = compute_weighted_trajectory_type_metrics(
-                summary["by_trajectory_type"],
-                reference_distribution,
-                metric_keys={
-                    "SR": "SR",
-                    "SPL": "SPL",
-                    "OS": "OS",
-                    "NE": "NE",
-                    "avg_steps": "avg_steps",
-                },
-            )
-            if weighted:
-                summary["weighted_by_seen_unseen_distribution"] = weighted
-
     print("\n" + "=" * 60)
     print(f"NaVILA SatNav Evaluation Summary ({args.eval_split})")
     print("=" * 60)
@@ -527,14 +507,6 @@ def save_summary(results: list, output_path: str, args) -> None:
                 f"OS: {stats['OS']:.2%}, NE: {stats['NE']:.2f}m, "
                 f"Steps: {stats['avg_steps']:.2f}, N: {stats['count']}"
             )
-    if "weighted_by_seen_unseen_distribution" in summary:
-        ws = summary["weighted_by_seen_unseen_distribution"]
-        print("\n--- Weighted (val_seen+val_unseen) ---")
-        print(
-            f"  SR: {ws['SR']:.2%}, SPL: {ws['SPL']:.4f}, "
-            f"OS: {ws['OS']:.2%}, NE: {ws['NE']:.2f}m, "
-            f"Steps: {ws['avg_steps']:.2f}"
-        )
     print("=" * 60)
 
     with open(os.path.join(output_path, "evaluation_summary.json"), "w", encoding="utf-8") as f:
