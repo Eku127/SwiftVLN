@@ -165,6 +165,20 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `eval_by_name.sh` 解析出的 `USE_RANDOM=true` 不再只是命名元数据，而会真实影响 eval 的 history sampling
   - `log_base` / `use_random` 在 `NUM_HISTORY=0` 时保留为配置元数据，但不会实际影响采样
   - `gtc` / `segment_gtc` 不适用该 no-memory 约定，因为其历史采样逻辑不看 `NUM_HISTORY`
+- OverlapVLN 本地 deploy 默认模型（Updated: 2026-04-21）：
+  - CLI：`src/swiftvln/cli.py`
+  - 解析常量：`src/swiftvln/deployment/model_resolver.py`
+  - wrapper：
+    - `src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh`
+    - `src/swiftvln/scripts/deploy/run_deploy_session.sh`
+  - 当前若 deploy 未显式传 `--model-name` / `model_name`，默认使用：
+    - `output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050`
+  - `start_overlapvln_deploy.sh` 现支持：
+    - `bash .../start_overlapvln_deploy.sh`
+    - `bash .../start_overlapvln_deploy.sh <model_name> [session_root]`
+  - `run_deploy_session.sh` 现支持：
+    - `bash .../run_deploy_session.sh <requests_jsonl>`
+    - `bash .../run_deploy_session.sh <requests_jsonl> [model_name] [session_root]`
 - OverlapVLN `map` memory 配置约定（Updated: 2026-04-17）：
   - 共享实现：
     - `src/swiftvln/model/map_memory.py`
@@ -714,12 +728,14 @@ nohup bash src/swiftvln/scripts/eval/eval_watchdog.sh \
   --cleanup-days 7 &
 ```
 
-### Train Watchdog 异步回调机制（Updated: 2026-03-18）
+### Train Watchdog 异步回调机制（Updated: 2026-04-21）
 
 训练同样使用 **tmux + watchdog** 事件驱动模式，支持多服务器并行启动：
 
 - 训练在 tmux session 中运行（命名：`train_<short_desc>_<HHMMSS>`）
 - `train_watchdog.sh` 后台监控，通过 `train_events.log` 消费实验事件
+- 2026-04-21 修复：`cleanup_old_runs()` 里的计数从 `((count++))` 改为 `((count += 1))`
+  旧写法在 `set -e` 下清理到首个旧 run 目录时会直接退出，表现为 watchdog 启动后立刻静默结束
 - 事件驱动回调（非轮询）：
   - 实验失败 → `codex exec resume` 让 Codex 分析修复
   - 全部完成 → `codex exec`（新 session）按 eval skill 启动评测
@@ -750,6 +766,7 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 - `val_seen_update/` 已不再作为当前 0418 默认 eval 目录使用；如果历史脚本仍引用它，需要先改回 `val_seen`
 - QA JSONL:
   `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl`
+  （2026-04-26 已重写，JSONL 内图片绝对路径均指向 `ver_260418`，不再指向 `ver_260404`）
 - Trajectory data:
   - train 主集：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data`
   - val_seen standalone 子集：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data_val_seen`
@@ -757,7 +774,7 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - active: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
   - backup(old): `/mnt/data3/jiangjiajun/dataset/satnav_datasets/old_scenes`
 
-### SatNav ver_260418 Snapshot (Updated: 2026-04-19)
+### SatNav ver_260418 Snapshot (Updated: 2026-04-26)
 
 - 当前主线 `OverlapVLN` 与 `baseline/*` 默认训练 / eval 版本已统一切到 `ver_260418`
 - 默认路径已同步到：
@@ -775,6 +792,8 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - `val_seen`: `4574` episodes, `56` scenes
     - `2026-04-20` 额外移除了 `27` 个与 train 路线重复的 episodes（9 条唯一轨迹）
   - `val_unseen`: `8756` episodes
+    - `2026-04-26` 已基于 `val_unseen/all_episodes.json` 重建类型拆分文件：
+      `boundary=2863`、`landmark=2872`、`road=3021`，三者 union 与 all 严格一致
   - `trajectory_data_val_seen`: 历史 standalone 子集仍为 `4601` trajectories；本次仅修正 `episodes/eval/val_seen/*` 与相关 baseline `val_seen` 结果
   - train after cleanup: `105164` episodes
   - main `trajectory_data`: `105164` trajectories
@@ -784,6 +803,10 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 - 2026-04-19 当前评测口径补充：
   - 0418 实际默认 eval split 只有 `val_seen` 与 `val_unseen`
   - `val_seen_update` 不再作为当前默认目录存在；若要复现实验历史，需要显式提供对应文件而不是继续假定默认脚本可直接找到
+- 2026-04-26 数据一致性修复：
+  - `data/qa_swift.jsonl` 已重新生成，共 `273120` 行，图片路径版本计数为 `ver_260418: 273120`，缺图数为 `0`
+  - `episodes/eval/val_unseen/{boundary,landmark,road}_episodes.json` 已从当前 `all_episodes.json` 定点重建
+  - 注意：`merge_manifest.json` 仍是原始 merge 产物记录，不代表后续 0418 split 清理 / QA 路径修复后的当前状态
 
 ### SatNav ver_260403 Snapshot (Updated: 2026-04-03)
 
@@ -909,10 +932,11 @@ TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train
 - `TRAIN_STAGE`（`stage1` 或 `stage2`）
 - `ENV_TYPE`（`satnav` 或 `habitat`）
 
-`train_queue.sh` 的 SwanLab 约定（Updated: 2026-03-20）：
-- 交互式与非交互式均**强制启用** SwanLab
+`train_queue.sh` 的 SwanLab 约定（Updated: 2026-04-21）：
+- 交互式默认启用 SwanLab
+- 非交互模式默认仍为 `USE_SWANLAB=true`
+- 非交互配置文件现在可显式写 `USE_SWANLAB=false` 关闭 SwanLab；`train_queue.sh` 不再强制改回 `true`
 - 默认 `SWANLAB_PROJECT=SatNav`
-- 非交互配置文件里若写 `USE_SWANLAB=false` 会被忽略；如需自定义只改 `SWANLAB_PROJECT`
 
 由 `orchestrate-plan` skill 在运行时通过 Write tool 生成，放在 `runtime/plans/generated/` 下。
 
