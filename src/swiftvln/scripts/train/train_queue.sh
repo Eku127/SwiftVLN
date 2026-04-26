@@ -633,10 +633,7 @@ interactive_setup() {
         print_info "非交互模式：从文件加载实验配置 → $TRAIN_EXPERIMENTS_FILE"
         # shellcheck source=/dev/null
         source "$TRAIN_EXPERIMENTS_FILE"
-        if [[ "${USE_SWANLAB:-true}" != "true" ]]; then
-            print_warning "TRAIN_EXPERIMENTS_FILE 中的 USE_SWANLAB=${USE_SWANLAB} 将被忽略，train_queue 现统一强制启用 SwanLab"
-        fi
-        USE_SWANLAB=true
+        USE_SWANLAB="${USE_SWANLAB:-true}"
         SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
         if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
             print_error "TRAIN_EXPERIMENTS_FILE 加载后 EXPERIMENTS 数组为空，请检查文件内容"
