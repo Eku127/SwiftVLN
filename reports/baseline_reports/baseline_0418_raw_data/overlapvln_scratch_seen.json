@@ -1,0 +1,42 @@
+{
+  "eval_split": "val_seen",
+  "model_type": "overlapvln",
+  "model_variant": "scratch",
+  "model_name": "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260421-125912",
+  "eval_protocol": "default_satnav_val_seen_val_unseen",
+  "result_dir": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/eval/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260421-125912",
+  "source_summary_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/eval/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260421-125912/val_seen/20260423_071309/evaluation_summary.json",
+  "success_rate": 0.6200262308120728,
+  "mean_spl": 0.615132212638855,
+  "oracle_success": 0.7074770927429199,
+  "navigation_error": 43.659786224365234,
+  "avg_steps": 47.47,
+  "total_episodes": 4574,
+  "by_trajectory_type": {
+    "Road": {
+      "success_rate": 0.5375240538806928,
+      "mean_spl": 0.537134018370545,
+      "oracle_success": 0.603592046183451,
+      "navigation_error": 55.123180867445626,
+      "avg_steps": 43.45,
+      "total_episodes": 1559
+    },
+    "Boundary": {
+      "success_rate": 0.6646746347941567,
+      "mean_spl": 0.6549596133141793,
+      "oracle_success": 0.8014608233731739,
+      "navigation_error": 14.969297909632902,
+      "avg_steps": 56.55,
+      "total_episodes": 1506
+    },
+    "LandmarkSet": {
+      "success_rate": 0.660702451954937,
+      "mean_spl": 0.6559664882452344,
+      "oracle_success": 0.7210072895957588,
+      "navigation_error": 60.573290150247146,
+      "avg_steps": 42.58,
+      "total_episodes": 1509
+    }
+  },
+  "model_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260421-125912/v0-20260421-125931/checkpoint-3518"
+}

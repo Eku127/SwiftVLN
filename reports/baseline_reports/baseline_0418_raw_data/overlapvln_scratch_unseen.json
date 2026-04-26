@@ -1,0 +1,42 @@
+{
+  "eval_split": "val_unseen",
+  "model_type": "overlapvln",
+  "model_variant": "scratch",
+  "model_name": "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260421-125912",
+  "eval_protocol": "default_satnav_val_seen_val_unseen",
+  "result_dir": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/eval/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260421-125912",
+  "source_summary_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/eval/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260421-125912/val_unseen/20260423_080647/evaluation_summary.json",
+  "success_rate": 0.492576539516449,
+  "mean_spl": 0.48702096939086914,
+  "oracle_success": 0.5837140679359436,
+  "navigation_error": 78.1720962524414,
+  "avg_steps": 54.78,
+  "total_episodes": 8756,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.6136919315403423,
+      "mean_spl": 0.600320670472037,
+      "oracle_success": 0.7509605309116312,
+      "navigation_error": 17.7215177357626,
+      "avg_steps": 61.8,
+      "total_episodes": 2863
+    },
+    "LandmarkSet": {
+      "success_rate": 0.4676183844011142,
+      "mean_spl": 0.4646725352411209,
+      "oracle_success": 0.5184540389972145,
+      "navigation_error": 102.73461415075953,
+      "avg_steps": 49.41,
+      "total_episodes": 2872
+    },
+    "Road": {
+      "success_rate": 0.40152267461105595,
+      "mean_spl": 0.400892933726111,
+      "oracle_success": 0.48725587553790134,
+      "navigation_error": 112.53271860202409,
+      "avg_steps": 53.23,
+      "total_episodes": 3021
+    }
+  },
+  "model_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260421-125912/v0-20260421-125931/checkpoint-3518"
+}

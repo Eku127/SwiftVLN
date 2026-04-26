@@ -1,0 +1,47 @@
+{
+  "eval_split": "val_unseen",
+  "model_type": "seq2seq",
+  "model_variant": "scratch",
+  "model_name": "seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab",
+  "eval_protocol": "default_satnav_val_seen_val_unseen",
+  "result_dir": "/mnt/data1/home/jiangjiajun/workspace/SatNav/output/seq2seq_cross_eval_0418_from_260404/results/by-path/seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab",
+  "source_summary_path": "/mnt/data1/home/jiangjiajun/workspace/SatNav/output/seq2seq_cross_eval_0418_from_260404/results/by-path/seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab/val_unseen/eval_ckpt_0_val_unseen.json",
+  "training_data_version": "0404",
+  "eval_data_version": "0418",
+  "vocab_embedding_version": "0404",
+  "success_rate": 0.015769,
+  "mean_spl": 0.015379,
+  "oracle_success": 0.29638,
+  "navigation_error": 219.1691,
+  "avg_steps": 58.49,
+  "total_episodes": 8371,
+  "expected_total_episodes": 8756,
+  "missing_eval_episodes": 385,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.019711,
+      "mean_spl": 0.019199,
+      "oracle_success": 0.728265,
+      "navigation_error": 76.076,
+      "avg_steps": 49.3,
+      "total_episodes": 2841
+    },
+    "LandmarkSet": {
+      "success_rate": 0.002176,
+      "mean_spl": 0.002083,
+      "oracle_success": 0.003264,
+      "navigation_error": 276.3688,
+      "avg_steps": 61.46,
+      "total_episodes": 2757
+    },
+    "Road": {
+      "success_rate": 0.025243,
+      "mean_spl": 0.024685,
+      "oracle_success": 0.14533,
+      "navigation_error": 308.9016,
+      "avg_steps": 64.97,
+      "total_episodes": 2773
+    }
+  },
+  "model_path": "/mnt/data1/home/jiangjiajun/workspace/SatNav/output/seq2seq_offline/checkpoints/seq2seq-offline-ddp-g8-bs64-lr3e-4-20260412-234752-260404vocab/best.pth"
+}
