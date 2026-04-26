@@ -13,6 +13,38 @@ Recommended environment:
 conda activate swift-vln-eval
 ```
 
+## Default Model
+
+If you do not pass `--model-name` or `model_name`, deployment defaults to:
+
+```text
+output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050
+```
+
+This is the current baseline deploy default.
+
+## Shortest Start
+
+Long-running server:
+
+```bash
+conda activate swift-vln-eval
+bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh
+```
+
+One-shot session:
+
+```bash
+conda activate swift-vln-eval
+bash src/swiftvln/scripts/deploy/run_deploy_session.sh /abs/path/to/requests.jsonl
+```
+
+Override the default model only when needed:
+
+```bash
+bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh <EXP_NAME>
+```
+
 ### One-Shot Session
 
 If you just want to verify one session end to end, prepare a JSONL request file and run the wrapper script.
@@ -29,8 +61,15 @@ Run it:
 
 ```bash
 bash src/swiftvln/scripts/deploy/run_deploy_session.sh \
-  <EXP_NAME> \
   /abs/path/to/requests.jsonl
+```
+
+If you want to override the default model:
+
+```bash
+bash src/swiftvln/scripts/deploy/run_deploy_session.sh \
+  /abs/path/to/requests.jsonl \
+  <EXP_NAME>
 ```
 
 This is the simplest way to smoke or manually validate the deployment pipeline.
@@ -38,6 +77,12 @@ This is the simplest way to smoke or manually validate the deployment pipeline.
 ### Long-Running Server
 
 Start the deploy server:
+
+```bash
+bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh
+```
+
+If you want to override the default model:
 
 ```bash
 bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh \
@@ -50,11 +95,18 @@ After the process prints a `ready` JSON line, keep the process alive and continu
 
 ```bash
 python -m swiftvln deploy \
-  --model overlapvln \
-  --model-name overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456
+  --model overlapvln
 ```
 
 Optional session root:
+
+```bash
+python -m swiftvln deploy \
+  --model overlapvln \
+  --session-root runtime/deploy/sessions
+```
+
+Optional explicit model:
 
 ```bash
 python -m swiftvln deploy \
@@ -98,7 +150,7 @@ Behavior:
 Minimal raw example:
 
 ```bash
-python -m swiftvln deploy --model overlapvln --model-name <EXP_NAME> <<'EOF'
+python -m swiftvln deploy --model overlapvln <<'EOF'
 {"type":"start","instruction":"Drive to the bank.","session_id":"demo"}
 {"type":"image","image_path":"/abs/path/to/frame_0001.jpg"}
 {"type":"image","image_path":"/abs/path/to/frame_0002.jpg"}
@@ -135,8 +187,8 @@ Input images are copied into `images/` with numbered names, for example:
 ## Helper Scripts
 
 - `src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh`
-  - Long-running deploy server wrapper.
+  - Long-running deploy server wrapper. Defaults to the baseline model above when `model_name` is omitted.
 - `src/swiftvln/scripts/deploy/run_deploy_session.sh`
-  - One-shot wrapper that reads a JSONL request file and runs a full session.
+  - One-shot wrapper that reads a JSONL request file and runs a full session. Defaults to the baseline model above when `model_name` is omitted.
 - `src/swiftvln/scripts/deploy/deploy_smoke.sh`
   - Smoke helper for `start -> image -> end`.

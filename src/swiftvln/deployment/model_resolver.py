@@ -10,6 +10,12 @@ class DeploymentModelSpecError(ValueError):
     """Raised when a model name cannot be used for deployment."""
 
 
+DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME = (
+    "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-"
+    "pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050"
+)
+
+
 _BASELINE_PATTERN = re.compile(
     r"^overlapvln-"
     r"(?:(?P<env_type>habitat|satnav)-)?"

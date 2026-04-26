@@ -17,6 +17,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from swiftvln.deployment.gpu import GPUInfo, mark_busy_gpus, select_idle_h100
 from swiftvln.deployment.model_resolver import (
+    DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME,
     DeploymentModelSpecError,
     OverlapVLNDeploySpec,
     resolve_overlapvln_deploy_spec,
@@ -138,6 +139,13 @@ class FakeModelForPolicy:
 
 
 class OverlapVLNDeploymentResolverTest(unittest.TestCase):
+    def test_default_deploy_model_name_is_baseline(self):
+        self.assertEqual(
+            DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME,
+            "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-"
+            "pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050",
+        )
+
     def test_resolve_supported_baseline_name(self):
         model_name = (
             "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-"

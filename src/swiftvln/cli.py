@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from swiftvln.common.registry import MODEL_CHOICES
+from swiftvln.deployment import DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME
 from swiftvln.runners.train import run_train
 from swiftvln.runners.eval import run_eval
 from swiftvln.runners.deploy import run_deploy
@@ -21,7 +22,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_deploy = subparsers.add_parser("deploy", help="Run local deployment server")
     p_deploy.add_argument("--model", required=True, choices=list(MODEL_CHOICES))
-    p_deploy.add_argument("--model-name", required=True, help="Trained model experiment name")
+    p_deploy.add_argument(
+        "--model-name",
+        default=DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME,
+        help=(
+            "Trained model experiment name. "
+            f"Default: {DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME}"
+        ),
+    )
     p_deploy.add_argument(
         "--session-root",
         default="runtime/deploy/sessions",
