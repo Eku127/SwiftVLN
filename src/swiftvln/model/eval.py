@@ -46,7 +46,7 @@ class OverlapVLNEval(BaseVLNEval):
     
     def add_model_specific_args(self, parser):
         """Add OverlapVLN-specific arguments."""
-        parser.add_argument("--num_overlap", type=int, default=16,
+        parser.add_argument("--num_overlap", type=int, default=0,
                             help="Number of overlapping actions between windows")
         parser.add_argument("--use_tome", action="store_true",
                             help="Use GridToMe compression instead of average pooling (per_frame mode)")

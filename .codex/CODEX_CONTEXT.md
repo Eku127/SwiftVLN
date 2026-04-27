@@ -105,6 +105,22 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `SAVE_STEPS=1`
     - `SAVE_TOTAL_LIMIT=1`
     - 见 `.codex/skills/swiftvln-smoke-test/SKILL.md`
+- OverlapVLN 评测窗口默认与 `overlap=0` 修复（Updated: 2026-04-27）：
+  - 相关文件：
+    - `src/swiftvln/scripts/eval/eval_by_name.sh`
+    - `src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+    - `src/swiftvln/model/eval.py`
+    - `src/swiftvln/model/evaluator.py`
+  - `eval_by_name.sh` 会从实验名中的 `f{num_frames}s{num_future_steps}` 与
+    `overlap{num_overlap}` 解析并透传：
+    - `NUM_FRAMES`
+    - `NUM_FUTURE_STEPS`
+    - `NUM_OVERLAP`
+  - 底层 eval 默认 `NUM_OVERLAP` 已与当前 baseline 对齐为 `0`；
+    直接调用 distributed eval 或 Python eval 时，不再回落到历史 `16`
+  - `evaluator._prepare_overlap_context()` 已修复 `NUM_OVERLAP=0` 时
+    `self.window_turns[-0:]` 等价于整窗复用的问题；当前 `overlap_turns <= 0`
+    会明确禁用上一窗口 context
 - OverlapVLN `7B` 启动约定（Updated: 2026-04-18）：
   - 主训练脚本默认 base model **仍是 3B**：
     - `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`

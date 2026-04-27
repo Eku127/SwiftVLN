@@ -74,7 +74,7 @@ NUM_FUTURE_STEPS="${NUM_FUTURE_STEPS:-4}"
 # ============================================================================
 # OverlapVLN-Specific Parameters
 # ============================================================================
-NUM_OVERLAP="${NUM_OVERLAP:-16}"  # Number of overlapping actions between windows
+NUM_OVERLAP="${NUM_OVERLAP:-0}"  # Number of overlapping actions between windows
 
 # ============================================================================
 # History Processor Configuration

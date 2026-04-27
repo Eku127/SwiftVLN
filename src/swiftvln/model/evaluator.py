@@ -17,12 +17,12 @@ This design ensures:
 
 Key Components:
 - history_cache: Compressed VIT features for global history frames (unified block)
-- overlap_context: Cached input_ids + image embeddings from last 4 turns
+- overlap_context: Cached input_ids + image embeddings from configured overlap turns
 
 Window Sliding Strategy:
-- Window size: num_frames (32 actions = 8 turns)
-- Overlap: num_overlap (16 actions = 4 turns)
-- Stride: num_frames - num_overlap (16 actions)
+- Window size: num_frames (default 32 actions = 8 turns)
+- Overlap: num_overlap (default 0 for current baseline)
+- Stride: num_frames - num_overlap
 """
 
 import os
@@ -147,12 +147,12 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
     
     Key Features:
     - VIT feature caching: Avoid recomputing features for cached frames
-    - Overlap context: Reuse last 4 turns from previous window
+    - Overlap context: Reuse configured overlap turns from previous window
     - Manual embedding construction: Bypass template for efficient inference
     
     Cache Architecture:
     - history_cache: List[Tensor] - Compressed features for NUM_HISTORY global frames
-    - overlap_context: OverlapContext - Cached context from last window's last 4 turns
+    - overlap_context: OverlapContext - Cached context from last window's overlap turns
     """
     
     def __init__(self, *args, **kwargs):
@@ -162,13 +162,13 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         # Window parameters (shared by all history processor types)
         # ==========================================================================
         self.num_frames = getattr(self.args, 'num_frames', 32)
-        self.num_overlap = getattr(self.args, 'num_overlap', 16)
+        self.num_overlap = getattr(self.args, 'num_overlap', 0)
         
         # Calculate derived window parameters
-        self.stride = self.num_frames - self.num_overlap  # 16
-        self.turns_per_window = self.num_frames // self.num_future_steps  # 8
-        self.overlap_turns = self.num_overlap // self.num_future_steps  # 4
-        self.new_turns_per_window = self.turns_per_window - self.overlap_turns  # 4
+        self.stride = self.num_frames - self.num_overlap
+        self.turns_per_window = self.num_frames // self.num_future_steps
+        self.overlap_turns = self.num_overlap // self.num_future_steps
+        self.new_turns_per_window = self.turns_per_window - self.overlap_turns
         
         # ==========================================================================
         # History processor configuration
@@ -1006,7 +1006,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         
         embeds_parts = [system_embeds]
         
-        # 4. Add overlap context (from previous window's last 4 turns)
+        # 4. Add overlap context from the previous window
         if self.overlap_context is not None and self.overlap_context.input_ids is not None:
             overlap_embeds = self._get_text_embeddings(self.overlap_context.input_ids)
             
@@ -1127,6 +1127,10 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         
         This will be used as context for the next window.
         """
+        if self.overlap_turns <= 0:
+            self.overlap_context = None
+            return
+
         if len(self.window_turns) < self.overlap_turns:
             self.overlap_context = None
             return
