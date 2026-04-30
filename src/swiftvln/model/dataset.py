@@ -11,6 +11,8 @@ Key features:
 - When num_overlap > 0, stride = num_frames - num_overlap
 - For samples where start_idx > 0, first (num_overlap / num_future_steps) turns 
   have loss=0.0 (masked), acting as pure context
+- overlap_tail_window_adjust: Legacy option to move short tail windows backward.
+  Defaults to False so overlap windows stay aligned with eval-time stride.
 """
 
 import os
@@ -53,6 +55,18 @@ def _preview_text(text: str, limit: int = 220) -> str:
     return text[:limit] + '...'
 
 
+def _coerce_bool(value: Any, name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ('1', 'true', 'yes', 'y', 'on'):
+            return True
+        if normalized in ('0', 'false', 'no', 'n', 'off'):
+            return False
+    raise ValueError(f"{name} must be a boolean value, got {value!r}")
+
+
 class OverlapVLNDataset(Dataset):
     """
     OverlapVLN Dataset with sliding window overlap and loss masking.
@@ -66,6 +80,8 @@ class OverlapVLNDataset(Dataset):
         num_overlap: Number of overlapping actions between windows (default: 16)
                     When > 0, stride = num_frames - num_overlap
                     Set to 0 to disable overlap (original behavior)
+        overlap_tail_window_adjust: When True, keep legacy tail-window adjustment
+                    for overlap training. When False, keep stride-aligned starts.
         env_type: Environment type - 'habitat' (forward=0.25m) or 'satnav' (forward=10m)
     """
     
@@ -78,6 +94,7 @@ class OverlapVLNDataset(Dataset):
         use_random: bool = False,
         max_samples: Optional[int] = None,
         num_overlap: int = 16,  # New parameter for overlap
+        overlap_tail_window_adjust: bool = False,
         env_type: str = "habitat",  # New parameter for environment type
         history_processor_type: str = "per_frame",  # History sampling strategy
         log_base: float = 1.0,  # Sampling distribution (1.0=uniform, >1.0=logarithmic)
@@ -91,6 +108,10 @@ class OverlapVLNDataset(Dataset):
         # Store num_overlap before calling super().__init__ 
         # because we need to override the data indexing logic
         self.num_overlap = num_overlap
+        self.overlap_tail_window_adjust = _coerce_bool(
+            overlap_tail_window_adjust,
+            "overlap_tail_window_adjust",
+        )
         
         # Don't call parent __init__ directly, replicate the logic with our modifications
         # This is necessary because parent builds data_list in __init__
@@ -191,8 +212,9 @@ class OverlapVLNDataset(Dataset):
         # Build data index with sliding window overlap
         # Format: (episode_id, instruction_id, start_frame)
         self.data_list = []
-        skipped_samples = 0
         adjusted_samples = 0
+        skipped_redundant_samples = 0
+        skipped_no_new_samples = 0
         
         for ep_id, item in enumerate(self.nav_data):
             instructions = item.get('instructions', [])
@@ -221,21 +243,27 @@ class OverlapVLNDataset(Dataset):
                     
                     actual_start_idx = start_idx
                     
-                    # If effective actions too few, adjust start_idx to cover more
-                    # This ensures end-of-episode data (including STOP) is trained
+                    # If effective actions too few, legacy mode adjusts start_idx to cover more.
+                    # For overlap training, strict mode keeps eval-aligned window starts and
+                    # allows a short final supervised turn instead of moving the window back.
                     if effective_actions < self.num_future_steps:
-                        # Adjust start_idx: from end backwards by num_frames
-                        adjusted_start = max(0, actions_len - self.num_frames)
-                        
-                        # Check if previous sample already covers this range
-                        if i > 0 and adjusted_start <= all_start_indices[i - 1]:
-                            # Previous sample already covers the end, skip this one
-                            skipped_samples += 1
-                            continue
-                        
-                        # Use adjusted start_idx
-                        actual_start_idx = adjusted_start
-                        adjusted_samples += 1
+                        if self.num_overlap > 0 and not self.overlap_tail_window_adjust:
+                            if effective_actions <= 0:
+                                skipped_no_new_samples += 1
+                                continue
+                        else:
+                            # Adjust start_idx: from end backwards by num_frames
+                            adjusted_start = max(0, actions_len - self.num_frames)
+
+                            # Check if previous sample already covers this range
+                            if i > 0 and adjusted_start <= all_start_indices[i - 1]:
+                                # Previous sample already covers the end, skip this one
+                                skipped_redundant_samples += 1
+                                continue
+
+                            # Use adjusted start_idx
+                            actual_start_idx = adjusted_start
+                            adjusted_samples += 1
                     
                     self.data_list.append((ep_id, ins_id, actual_start_idx))
         
@@ -245,12 +273,16 @@ class OverlapVLNDataset(Dataset):
                   f"num_overlap={num_overlap}, stride={self.stride}")
             print(f"[OverlapVLN] Loss masking: first {num_overlap // num_future_steps} turns "
                   f"will have loss=0.0 for samples with start_idx > 0")
+            print(f"[OverlapVLN] Tail window adjustment: {self.overlap_tail_window_adjust}")
             if adjusted_samples > 0:
                 print(f"[OverlapVLN] Adjusted {adjusted_samples} end-of-episode samples "
                       f"to ensure STOP data is trained")
-            if skipped_samples > 0:
-                print(f"[OverlapVLN] Skipped {skipped_samples} redundant samples "
+            if skipped_redundant_samples > 0:
+                print(f"[OverlapVLN] Skipped {skipped_redundant_samples} redundant samples "
                       f"(already covered by previous sample)")
+            if skipped_no_new_samples > 0:
+                print(f"[OverlapVLN] Skipped {skipped_no_new_samples} samples "
+                      f"with no new trainable actions after overlap")
         else:
             print(f"[OverlapVLN] No overlap (stride={self.stride})")
         

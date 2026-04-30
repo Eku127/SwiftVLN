@@ -48,6 +48,11 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 因此 `address already in use` 这类错误现在可以稳定进入 auto-fix 重试链路
   - 2026-04-17 起脚本末尾显式 `exit $?`，避免长跑队列执行期间若脚本文件被原地改写，
     在收尾阶段继续解释被修改后的尾部内容，导致异常“重入”重跑
+- 链式启动脚本进程检测修复（Updated: 2026-04-29）：
+  - `runtime/train_queue/launchers/launch_overlap0418_notail_after_navila.sh`
+  - `runtime/tmp/navila0418_eval_after_98_and_17.sh`
+  - NaVILA train/eval 等待逻辑中的 `pgrep -f` 现使用 bracketed regex，避免匹配到
+    `pgrep` 自身命令行后误判训练仍在运行，导致后续 overlap 队列或 98 eval 无法启动。
 - 训练 watchdog：`src/swiftvln/scripts/train/train_watchdog.sh`
 - StreamVLN baseline 训练版本标签命名（Updated: 2026-04-20）：
   - 脚本：`baseline/streamvln/scripts/train_satnav.sh`
@@ -105,6 +110,20 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `SAVE_STEPS=1`
     - `SAVE_TOTAL_LIMIT=1`
     - 见 `.codex/skills/swiftvln-smoke-test/SKILL.md`
+- OverlapVLN overlap 训练尾窗默认（Updated: 2026-04-30）：
+  - `OVERLAP_TAIL_WINDOW_ADJUST` 已固定进默认训练流程，默认 `false`
+  - 仅在 `NUM_OVERLAP>0` 时影响 VLN dataset 索引：
+    - `false`：保持严格 `stride = num_frames - num_overlap` 的窗口起点，短尾窗不再向后回挪
+    - `true`：保留历史 legacy 行为，尾窗有效监督不足 `num_future_steps` 时向后回挪以覆盖结尾/STOP
+  - `NUM_OVERLAP=0` 保持原有尾窗调整逻辑不变，避免影响当前 baseline
+  - 当 `NUM_OVERLAP>0` 且 `OVERLAP_TAIL_WINDOW_ADJUST=false` 时，训练实验名额外包含
+    `-notailadj`；`true` 保持历史实验名格式不变
+  - `-notailadj` 只是训练命名标记，评测脚本不解析该字段
+  - `src/swiftvln/scripts/train/train_queue.sh` 的默认配置已包含
+    `OVERLAP_TAIL_WINDOW_ADJUST=false`；因此后续只设置 `NUM_OVERLAP>0`
+    就默认进入 no-tail-adjust 流程
+  - 如需复现实验历史 legacy 行为，必须显式设置
+    `OVERLAP_TAIL_WINDOW_ADJUST=true`
 - OverlapVLN 评测窗口默认与 `overlap=0` 修复（Updated: 2026-04-27）：
   - 相关文件：
     - `src/swiftvln/scripts/eval/eval_by_name.sh`

@@ -16,6 +16,7 @@ Related skills:
 - 主训练脚本当前 baseline 默认值：
   - `MAX_SAMPLES=0`（显式全量）
   - `NUM_OVERLAP=0`
+  - `OVERLAP_TAIL_WINDOW_ADJUST=false`（只要设置 `NUM_OVERLAP>0`，默认就是 no-tail-adjust；legacy tail 回挪必须显式设为 `true`）
   - `SAVE_STEPS=1000`
   - `SAVE_TOTAL_LIMIT=1`
   - SatNav 默认训练数据：`ver_260418`
@@ -38,6 +39,7 @@ Related skills:
     - `NUM_HISTORY`
     - `HISTORY_PROCESSOR_TYPE`
     - `NUM_OVERLAP`
+    - `OVERLAP_TAIL_WINDOW_ADJUST`
 - 已在 `17` 上做过 `Qwen2.5-VL-7B` baseline 实测：
   - `8卡`
   - `per_frame + history + overlap=0`

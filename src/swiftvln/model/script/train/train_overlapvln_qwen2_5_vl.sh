@@ -235,6 +235,10 @@ GTC_NUM_ITERATIONS="${GTC_NUM_ITERATIONS:-1}"
 # When num_overlap > 0, stride = num_frames - num_overlap
 # First (num_overlap / num_future_steps) turns in non-first samples have loss masked
 NUM_OVERLAP="${NUM_OVERLAP:-0}"
+# Legacy tail window adjustment for overlap training.
+# false: keep strict stride-aligned overlap windows (current default for overlap > 0)
+# true: move short tail windows backward to cover end-of-episode/STOP data
+OVERLAP_TAIL_WINDOW_ADJUST="${OVERLAP_TAIL_WINDOW_ADJUST:-false}"
 
 # ---------- System prompt setting ----------
 # System prompt strategy: "vanilla" (default, no initial view) or "initial"
@@ -446,7 +450,20 @@ if [ "$VLN_ENV_TYPE" = "satnav" ]; then
     fi
 fi
 
-EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+_OVERLAP_TAIL_WINDOW_ADJUST_NORMALIZED="$(echo "$OVERLAP_TAIL_WINDOW_ADJUST" | tr '[:upper:]' '[:lower:]')"
+_OVERLAP_TAIL_WINDOW_ADJUST_ENABLED=false
+case "$_OVERLAP_TAIL_WINDOW_ADJUST_NORMALIZED" in
+    true|1|yes|y|on)
+        _OVERLAP_TAIL_WINDOW_ADJUST_ENABLED=true
+        ;;
+esac
+
+TAIL_WINDOW_SUFFIX=""
+if [ "$NUM_OVERLAP" -gt 0 ] && [ "$_OVERLAP_TAIL_WINDOW_ADJUST_ENABLED" != "true" ]; then
+    TAIL_WINDOW_SUFFIX="-notailadj"
+fi
+
+EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${TAIL_WINDOW_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 OUTPUT_DIR="output/overlapvln/${EXP_NAME}"
 if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
     OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
@@ -562,6 +579,7 @@ elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc
 fi
 echo "Overlap: num_overlap=$NUM_OVERLAP, window_stride=$WINDOW_STRIDE"
 echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with start_idx > 0"
+echo "  Tail window adjust: $OVERLAP_TAIL_WINDOW_ADJUST"
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
 echo "Pixel Embed: $USE_PIXEL_EMBED"
 echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
@@ -725,6 +743,7 @@ torchrun \
     --vln_env_type $VLN_ENV_TYPE \
     --compress_stride $COMPRESS_STRIDE \
     --num_overlap $NUM_OVERLAP \
+    --overlap_tail_window_adjust $OVERLAP_TAIL_WINDOW_ADJUST \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
     $MEMORY_ARGS \
     --use_pixel_embed $USE_PIXEL_EMBED \

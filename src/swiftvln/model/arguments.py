@@ -117,6 +117,15 @@ class OverlapVLNTrainArguments(BaseVLNTrainArguments):
                     "Set to 0 to disable overlap (original behavior)."
         }
     )
+
+    overlap_tail_window_adjust: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use legacy end-of-episode tail window adjustment when "
+                    "num_overlap > 0. False keeps strict stride-aligned overlap windows; "
+                    "True moves short tail windows backward to cover STOP data."
+        }
+    )
     
     # ==========================================================================
     # System prompt setting
