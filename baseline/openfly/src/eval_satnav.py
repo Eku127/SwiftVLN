@@ -52,9 +52,6 @@ from satnav.core.env import Env as SatNavEnv
 from satnav.dataset.satnav_dataset import SatNavDataset
 
 
-compute_weighted_trajectory_type_metrics = _reporting.compute_weighted_trajectory_type_metrics
-load_satnav_reference_distribution = _reporting.load_satnav_reference_distribution
-
 
 ERROR_NE_PENALTY = 500.0
 
@@ -222,22 +219,6 @@ def save_summary(results: list[dict[str, Any]], output_path: str, args) -> None:
                     "avg_steps": float(np.mean(stats["steps"])),
                     "count": len(stats["sucs"]),
                 }
-
-            reference_distribution = load_satnav_reference_distribution(args.satnav_config_path)
-            if reference_distribution:
-                weighted = compute_weighted_trajectory_type_metrics(
-                    summary["by_trajectory_type"],
-                    reference_distribution,
-                    metric_keys={
-                        "SR": "SR",
-                        "SPL": "SPL",
-                        "OS": "OS",
-                        "NE": "NE",
-                        "avg_steps": "avg_steps",
-                    },
-                )
-                if weighted:
-                    summary["weighted_by_seen_unseen_distribution"] = weighted
 
     with open(os.path.join(output_path, "evaluation_summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)

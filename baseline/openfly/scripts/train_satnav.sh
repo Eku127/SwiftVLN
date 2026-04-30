@@ -15,8 +15,8 @@ fi
 
 MODEL_PATH="${MODEL_PATH:-${DEFAULT_MODEL_PATH}}"
 PROCESSOR_PATH="${PROCESSOR_PATH:-${DEFAULT_PROCESSOR_PATH}}"
-DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data/annotations.json}"
-IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data}"
+DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data/annotations.json}"
+IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data}"
 NUM_GPUS="${NUM_GPUS:-1}"
 TRAIN_BSZ="${TRAIN_BSZ:-12}"
 GRAD_ACCUM="${GRAD_ACCUM:-1}"
@@ -24,6 +24,7 @@ NUM_EPOCHS="${NUM_EPOCHS:-1}"
 LEARNING_RATE="${LEARNING_RATE:-2e-5}"
 MAX_STEPS="${MAX_STEPS:-}"
 SAVE_STEPS="${SAVE_STEPS:-10000}"
+SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-1}"
 LOGGING_STEPS="${LOGGING_STEPS:-20}"
 MASTER_PORT="${MASTER_PORT:-29500}"
 MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
@@ -118,6 +119,7 @@ ARGS=(
     --lr_scheduler_type "${LR_SCHEDULER_TYPE}"
     --max_grad_norm "${MAX_GRAD_NORM}"
     --save_steps "${SAVE_STEPS}"
+    --save_total_limit "${SAVE_TOTAL_LIMIT}"
     --logging_steps "${LOGGING_STEPS}"
     --save_strategy steps
     --evaluation_strategy no

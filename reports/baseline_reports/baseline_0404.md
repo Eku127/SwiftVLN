@@ -2,6 +2,8 @@
 
 本文档用于整理当前使用 `0404` 数据训练的 baseline 模型及其评测情况。下面先给出状态矩阵（基于当前仓库现有记录）：
 
+`说明`：本文档中的 baseline 评测结果已按 `runtime/analysis/satnav_keep_lists/data260404_road345/` 的 keep list 回填。`val_seen / val_unseen` 指标均为各自 keep 子集上的直接平均；`overall` / `ALL` 指标为两个 split 的所有匹配 keep episodes 合并后的直接平均。
+
 `✅` 已完成，`⏳` 进行中，`➖` 暂无记录 / 不适用
 
 | Baseline | Scratch 训练 | Continue 训练 | Scratch 评测 | Continue 评测 |
@@ -42,10 +44,11 @@
    `数据版本`：`0404`
    `执行信息`：`73` 服务器，`8` 卡分片 eval（SatSim）
    `状态`：已完成
-   `val_seen`：`原始 SR 1.50%`，`SPL 1.48%`，`NE 207.95`，`path_length 400.55`，`avg_steps 54.92`
-   `val_unseen`：`原始 SR 1.69%`，`SPL 1.65%`，`NE 217.80`，`path_length 436.75`，`avg_steps 58.16`
+   `val_seen`：`keep直均 SR 1.44%`，`SPL 1.43%`，`NE 203.97`，`path_length 394.60`，`avg_steps 56.08`，`episodes 4643 / 4844 keep`
+   `val_unseen`：`keep直均 SR 1.58%`，`SPL 1.54%`，`NE 219.17`，`path_length 438.85`，`avg_steps 58.49`，`episodes 8371 / 8756 keep`
+   `overall`：`SR 1.53%`，`SPL 1.50%`，`NE 213.75`，`path_length 423.06`，`avg_steps 57.63`，`episodes 13014`
 
-`备注`：本轮评测过程中部分 episode 因 `Camera view bounds exceed image bounds` 被跳过；最终参与统计的 episode 数为 `val_seen=6086`、`val_unseen=8528`。
+`备注`：本轮评测过程中部分 episode 因 `Camera view bounds exceed image bounds` 被跳过；原始参与统计 episode 数为 `val_seen=6086`、`val_unseen=8528`。按 keep list 过滤后，实际命中的 keep episode 数为 `val_seen=4643 / 4844`、`val_unseen=8371 / 8756`。
 
 ## CMA
 
@@ -75,10 +78,11 @@
    `数据版本`：`0404`
    `执行信息`：`73` 服务器，`8` 卡分片 eval（SatSim）
    `状态`：已完成
-   `val_seen`：`原始 SR 8.90%`，`SPL 8.80%`，`NE 389.53`，`path_length 699.01`，`avg_steps 100.80`
-   `val_unseen`：`原始 SR 7.64%`，`SPL 7.46%`，`NE 359.64`，`path_length 673.56`，`avg_steps 98.22`
+   `val_seen`：`keep直均 SR 9.46%`，`SPL 9.34%`，`NE 323.25`，`path_length 639.76`，`avg_steps 94.85`，`episodes 4430 / 4844 keep`
+   `val_unseen`：`keep直均 SR 7.35%`，`SPL 7.16%`，`NE 363.59`，`path_length 679.84`，`avg_steps 99.31`，`episodes 7934 / 8756 keep`
+   `overall`：`SR 8.10%`，`SPL 7.94%`，`NE 349.14`，`path_length 665.48`，`avg_steps 97.71`，`episodes 12364`
 
-`备注`：本轮评测过程中部分 episode 因 `Camera view bounds exceed image bounds` 被跳过；最终参与统计的 episode 数为 `val_seen=5675`、`val_unseen=8086`。当前 CMA 的 SR 明显高于 Seq2Seq，但 `NE / path_length / avg_steps` 也更高，说明其大量失败 case 会走得更远后再错误停下。
+`备注`：本轮评测过程中部分 episode 因 `Camera view bounds exceed image bounds` 被跳过；原始参与统计 episode 数为 `val_seen=5675`、`val_unseen=8086`。按 keep list 过滤后，实际命中的 keep episode 数为 `val_seen=4430 / 4844`、`val_unseen=7934 / 8756`。当前 CMA 的 keep 子集 SR 仍明显高于 Seq2Seq，但 `NE / path_length / avg_steps` 也更高，说明其大量失败 case 会走得更远后再错误停下。
 
 # 端到端模型
 
@@ -116,9 +120,9 @@
    `数据版本`：`0404`
    `执行信息`：`98` 服务器，`8` 卡 eval
    `状态`：已完成
-   `val_seen`：`原始 SR 64.50%`，`SPL 63.49%`，`OS 72.31%`，`NE 107.72`，`重加权 SR 65.14%`
-   `val_unseen`：`原始 SR 57.77%`，`SPL 56.89%`，`OS 70.09%`，`NE 118.01`，`重加权 SR 57.42%`
-   `overall`：`SR 60.56%`
+   `val_seen`：`SR 57.99%`，`SPL 56.90%`，`OS 67.16%`，`NE 121.53`，`avg_steps 66.96`，`episodes 4844`
+   `val_unseen`：`SR 57.14%`，`SPL 56.25%`，`OS 69.61%`，`NE 119.72`，`avg_steps 63.46`，`episodes 8756`
+   `overall`：`SR 57.44%`，`SPL 56.48%`，`OS 68.74%`，`NE 120.36`，`avg_steps 64.71`，`episodes 13600`
 
 2. `b. continue eval`
    `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/streamvln-baseline/streamvln-baseline-continue-1ep-f32h8s4-data260404-bs32-lr2e-5-20260405-150737`
@@ -126,11 +130,11 @@
    `数据版本`：`0404`
    `执行信息`：`98` 服务器，`8` 卡 eval
    `状态`：已完成
-   `val_seen`：`原始 SR 68.67%`，`SPL 67.72%`，`OS 77.17%`，`NE 93.22`，`重加权 SR 69.42%`
-   `val_unseen`：`原始 SR 62.90%`，`SPL 61.96%`，`OS 75.00%`，`NE 101.04`，`重加权 SR 62.57%`
-   `overall`：`SR 65.30%`
+   `val_seen`：`SR 62.61%`，`SPL 61.64%`，`OS 72.75%`，`NE 105.20`，`avg_steps 66.94`，`episodes 4844`
+   `val_unseen`：`SR 62.36%`，`SPL 61.41%`，`OS 74.59%`，`NE 102.53`，`avg_steps 63.82`，`episodes 8756`
+   `overall`：`SR 62.45%`，`SPL 61.49%`，`OS 73.93%`，`NE 103.48`，`avg_steps 64.93`，`episodes 13600`
 
-`备注`：重加权 SR 使用 `seen + unseen` 合并后的任务类型分布作为统一权重：`Boundary 29.18%`、`LandmarkSet 37.01%`、`Road 33.81%`。该口径用于削弱 `seen/unseen` 任务类型配比差异对总 SR 的影响。
+`备注`：当前 StreamVLN 指标已切到 keep 子集直接平均口径，不再使用 `seen + unseen` 合并分布的重加权 SR。
 
 ## NaVILA
 
@@ -172,8 +176,9 @@
    `数据版本`：`0404`
    `执行信息`：`17` 服务器，`8` 卡 eval
    `状态`：已完成
-   `val_seen`：`原始 SR 13.21%`，`SPL 13.18%`，`OS 20.53%`，`NE 120.76`，`重加权 SR 14.21%`
-   `val_unseen`：`原始 SR 13.74%`，`SPL 13.70%`，`OS 24.39%`，`NE 127.47`，`重加权 SR 13.06%`
+   `val_seen`：`SR 12.39%`，`SPL 12.37%`，`OS 21.55%`，`NE 122.98`，`avg_steps 48.02`，`episodes 4844`
+   `val_unseen`：`SR 13.00%`，`SPL 12.96%`，`OS 23.66%`，`NE 128.88`，`avg_steps 53.71`，`episodes 8756`
+   `overall`：`SR 12.78%`，`SPL 12.75%`，`OS 22.91%`，`NE 126.78`，`avg_steps 51.69`，`episodes 13600`
 
 2. `b. continue eval`
    `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue0404-r1-20260409-134207-sample-hk7-fs7-stopx4`
@@ -181,10 +186,11 @@
    `数据版本`：`0404`
    `执行信息`：`17` 服务器，`8` 卡 eval
    `状态`：已完成
-   `val_seen`：`原始 SR 17.73%`，`SPL 17.66%`，`OS 26.70%`，`NE 119.39`，`重加权 SR 19.14%`
-   `val_unseen`：`原始 SR 19.10%`，`SPL 18.92%`，`OS 32.42%`，`NE 123.49`，`重加权 SR 18.09%`
+   `val_seen`：`SR 17.46%`，`SPL 17.38%`，`OS 28.76%`，`NE 118.31`，`avg_steps 56.83`，`episodes 4844`
+   `val_unseen`：`SR 18.34%`，`SPL 18.16%`，`OS 31.72%`，`NE 124.96`，`avg_steps 61.88`，`episodes 8756`
+   `overall`：`SR 18.03%`，`SPL 17.88%`，`OS 30.66%`，`NE 122.59`，`avg_steps 60.08`，`episodes 13600`
 
-`备注`：重加权 SR 使用 `seen + unseen` 合并后的任务类型分布作为统一权重：`Boundary 29.18%`、`LandmarkSet 37.01%`、`Road 33.81%`。该口径用于削弱 `seen/unseen` 任务类型配比差异对总 SR 的影响。
+`备注`：当前 NaVILA 指标已切到 keep 子集直接平均口径，不再使用 `seen + unseen` 合并分布的重加权 SR。
 
 ## UniNaVid
 
@@ -223,8 +229,9 @@
    `评测数据`：`0404`
    `执行信息`：`73` 服务器，当前 `7` 张可见 GPU，因此以 `7` 卡评测（scratch）
    `状态`：已完成
-   `val_seen`：`原始 SR 29.71%`，`SPL 29.34%`，`OS 57.79%`，`NE 218.15`，`avg_steps 72.92`，`重加权 SR 29.72%`
-   `val_unseen`：`原始 SR 23.37%`，`SPL 22.99%`，`OS 53.86%`，`NE 231.33`，`avg_steps 75.45`，`重加权 SR 23.34%`
+   `val_seen`：`SR 22.73%`，`SPL 22.50%`，`OS 52.89%`，`NE 224.80`，`avg_steps 78.24`，`episodes 4844`
+   `val_unseen`：`SR 22.52%`，`SPL 22.14%`，`OS 53.27%`，`NE 235.02`，`avg_steps 76.22`，`episodes 8756`
+   `overall`：`SR 22.60%`，`SPL 22.27%`，`OS 53.13%`，`NE 231.38`，`avg_steps 76.94`，`episodes 13600`
 
 2. `b. uninavid-baseline-continue-1ep-data260404-bs168-lr1e-5-h73-20260405-081606`
    `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/uninavid-baseline-continue-1ep-data260404-bs168-lr1e-5-h73-20260405-081606`
@@ -233,7 +240,8 @@
    `评测数据`：`0404`
    `执行信息`：`73` 服务器，当前 `7` 张可见 GPU，因此以 `7` 卡评测（continue）
    `状态`：已完成
-   `val_seen`：`原始 SR 50.30%`，`SPL 49.62%`，`OS 65.59%`，`NE 119.14`，`avg_steps 62.63`，`重加权 SR 49.75%`
-   `val_unseen`：`原始 SR 40.45%`，`SPL 39.89%`，`OS 60.40%`，`NE 125.33`，`avg_steps 63.40`，`重加权 SR 41.15%`
+   `val_seen`：`SR 41.45%`，`SPL 40.93%`，`OS 59.60%`，`NE 131.99`，`avg_steps 67.90`，`episodes 4844`
+   `val_unseen`：`SR 39.71%`，`SPL 39.14%`，`OS 59.84%`，`NE 127.28`，`avg_steps 63.98`，`episodes 8756`
+   `overall`：`SR 40.33%`，`SPL 39.77%`，`OS 59.76%`，`NE 128.96`，`avg_steps 65.37`，`episodes 13600`
 
-`备注`：73 上以 `scratch -> continue` 串行链方式完成评测；`SATNAV_VERSION=ver_260404` 已固定，使用的是 `0404` 数据。由于第一次启动未稳定进入 tmux，本轮评测做过一次干净重启，旧 partial 结果已归档到 `runtime/trash/`。重加权 SR 使用 `seen + unseen` 合并后的任务类型分布作为统一权重：`Boundary 29.18%`、`LandmarkSet 37.01%`、`Road 33.81%`。
+`备注`：73 上以 `scratch -> continue` 串行链方式完成评测；`SATNAV_VERSION=ver_260404` 已固定，使用的是 `0404` 数据。由于第一次启动未稳定进入 tmux，本轮评测做过一次干净重启，旧 partial 结果已归档到 `runtime/trash/`。当前 UniNaVid 指标已切到 keep 子集直接平均口径，不再使用 `seen + unseen` 合并分布的重加权 SR。

@@ -11,7 +11,7 @@
 #   If [split] is explicitly provided, only that split is evaluated.
 #
 # Env (optional):
-#   SATNAV_VERSION   Data version, e.g. ver_260306 (default: latest via train/eval scripts)
+#   SATNAV_VERSION   Data version, e.g. ver_260418 (default: ver_260418 via train/eval scripts)
 #   TRAIN_GPUS       GPU count for training (default: 8)
 #   EVAL_GPUS        GPU count for eval (default: 8)
 #   EVAL_MAX_EPISODES  Limit eval episodes for smoke/debug (default: unset)
@@ -91,7 +91,7 @@ host: ${HOSTNAME_STR}
 mode: ${MODE}
 splits_after_train: ${SPLITS_LIST}
 train_gpus: ${TRAIN_GPUS}
-satnav_version: ${SATNAV_VERSION:-auto}
+satnav_version: ${SATNAV_VERSION:-ver_260418}
 time: $(date '+%Y-%m-%d %H:%M:%S')"
 send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_START_MSG}"
 

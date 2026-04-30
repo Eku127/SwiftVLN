@@ -44,8 +44,8 @@ SCRATCH_MODEL="${SCRATCH_MODEL:-${BASELINE_DIR}/model/navila-siglip-llama3-8b-v1
 CONTINUE_MODEL="${CONTINUE_MODEL:-${BASELINE_DIR}/model/navila-llama3-8b-8f}"
 DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero2.json}"
 
-DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data/annotations.json}"
-IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260327/trajectory_data}"
+DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data/annotations.json}"
+IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data}"
 
 # Sample reduction strategy: head + stop + turn-protected forward stride.
 #   - Head  steps 1..HEAD_KEEP : always kept (unique <8-frame input distribution)

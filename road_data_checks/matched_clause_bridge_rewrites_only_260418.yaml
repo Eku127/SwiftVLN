@@ -1,0 +1,248 @@
+- {rewrite: 'Next, maintain a straight path past the bridge for 150 meters.'}
+- {rewrite: 'Next, proceed straight past the bridge.'}
+- {rewrite: 'Upon reaching the bridge, maintain a straight course for an additional 150 meters until a confluence becomes visible.'}
+- {rewrite: 'After the first waypoint, continue straight past the bridge along the river.'}
+- {rewrite: Keep going straight past the first bridge.}
+- {rewrite: 'It then proceeds straight past the bridge for 150 meters, followed by a 250-meter transit past the first bridge.'}
+- {rewrite: Continue straight after reaching the bridge.}
+- {rewrite: 'continue past the first bridge, the second bridge, the third confluence, the fourth bridge'}
+- {rewrite: 'The navigation continues straight past the first bridge for 150 meters, then straight at the confluence for 250 meters.'}
+- {rewrite: 'Next, keep going straight past the first bridge.'}
+- {rewrite: 'Straight along river past the first bridge, the second bridge, the third confluence.'}
+- {rewrite: 'Passing the second bridge, the route continues for 100 meters.'}
+- {rewrite: 'Next, proceed straight past the second bridge.'}
+- {rewrite: 'After second bridge, keep going straight along river.'}
+- {rewrite: 'It then proceeds straight through the confluence, covering 150 meters, followed by 100 meters past the second bridge.'}
+- {rewrite: Continue straight again at the second bridge.}
+- {rewrite: 'and the third waypoint, 150 meters after the bridge.'}
+- {rewrite: Proceed straight past the bridge.}
+- {rewrite: third bridge straight}
+- {rewrite: straight to fifth bridge}
+- {rewrite: Continue straight when you get to the first bridge.}
+- {rewrite: Continue straight again when you reach the bridge.}
+- {rewrite: 'pass second bridge, continue straight'}
+- {rewrite: 'Subsequently, navigation continues straight for 150 meters past the bridge.'}
+- {rewrite: 'Upon reaching the bridge, proceed straight along the water.'}
+- {rewrite: 'Straight past first bridge, second bridge, and third confluence.'}
+- {rewrite: 'Subsequently, it continues straight past the bridge, maintaining its course along the river for 150 meters until reaching the confluence, where the route concludes.'}
+- {rewrite: 'Subsequently navigating straight past the first bridge, it covers an additional 150 meters, followed by 150 meters straight past the bridge.'}
+- {rewrite: Continue straight past the bridge.}
+- {rewrite: Continue until you reach the next bridge.}
+- {rewrite: Proceed straight again at the bridge.}
+- {rewrite: 'Immediately after, it proceeds straight past the bridge junction, continuing its advance along the river for 150 meters.'}
+- {rewrite: Continue straight past the first bridge and the second bridge.}
+- {rewrite: Advance 100 meters upon reaching the subsequent bridge.}
+- {rewrite: straight to second bridge}
+- {rewrite: 'Upon reaching the bridge, continue straight along the river for 100 meters.'}
+- {rewrite: 'When you reach the bridge, proceed straight along the flow.'}
+- {rewrite: Proceeding straight past the bridge requires covering 100 meters.}
+- {rewrite: straight first bridge along river}
+- {rewrite: Continue straight at the next bridge.}
+- {rewrite: 'Along the river, straight past first confluence, straight past second bridge.'}
+- {rewrite: 'Upon reaching the vicinity of the bridge, advance another 150 meters.'}
+- {rewrite: Proceed straight past the bridge.}
+- {rewrite: third bridge straight river}
+- {rewrite: 'Following this, the path continues straight past the first bridge for 150 meters, then straight past a bridge for 150 meters.'}
+- {rewrite: Carry on straight past the bridge.}
+- {rewrite: Continue onward for 150 meters past the bridge.}
+- {rewrite: Keep going straight past the bridge.}
+- {rewrite: 'Straight progress past first bridge, second bridge, third bridge.'}
+- {rewrite: 'Continuing straight past the bridge for another 150 meters requires following the water, culminating at the designated second bridge.'}
+- {rewrite: 'When you reach the bridge, keep going straight, staying alongside the water.'}
+- {rewrite: 'pass the first bridge, continuing straight along the river'}
+- {rewrite: 'Upon reaching the bridge, continue straight for 150 meters.'}
+- {rewrite: 'When you get to the bridge, continue straight along the water.'}
+- {rewrite: Keep straight along the river past first bridge.}
+- {rewrite: 'Keep going straight past the bridge, then go straight at the confluence.'}
+- {rewrite: 'Straight past the first bridge, the second bridge, the third bridge, the fourth confluence.'}
+- {rewrite: Go straight past the bridge.}
+- {rewrite: 'past second bridge, continue straight'}
+- {rewrite: 'Subsequently, it proceeds 150 meters past the second bridge, followed by a 150-meter transit beyond the bridge.'}
+- {rewrite: 'Then, proceed past the bridge.'}
+- {rewrite: Navigation continues straight past the bridge for another 100 meters along the watercourse.}
+- {rewrite: Continue straight along the water past the bridge.}
+- {rewrite: 'pass bridge, continue straight'}
+- {rewrite: 'The path navigates past the bridge (150 meters), proceeds past the third bridge (250 meters), and continues for 100 meters toward the confluence.'}
+- {rewrite: Keep going straight past the bridge.}
+- {rewrite: 'straight past third bridge, fourth bridge, fifth confluence.'}
+- {rewrite: 'Continue until you reach the next bridge, followed by the third bridge.'}
+- {rewrite: 'proceed past first bridge, second confluence, third bridge, fourth bridge, fifth bridge'}
+- {rewrite: 'After passing the bridge, proceed along the river.'}
+- {rewrite: 'Subsequently, the route proceeds past the second bridge for 150 meters, then navigates the bridge for 150 meters before stopping at the third bridge.'}
+- {rewrite: 'Maintain a straight trajectory past the bridge, then follow the river course for approximately 100 meters.'}
+- {rewrite: Proceed straight when you reach the bridge.}
+- {rewrite: 'Continue straight past the second bridge, the third bridge, and the fourth bridge.'}
+- {rewrite: Proceed straight past the bridge and the following confluence.}
+- {rewrite: 'After passing the bridge, proceed along the river.'}
+- {rewrite: Continue straight along the water after the bridge.}
+- {rewrite: 'At the first bridge, continue straight river path.'}
+- {rewrite: 'Upon reaching the bridge (the first waypoint), the drone continues straight.'}
+- {rewrite: 'Upon reaching the bridge, continue straight following the water.'}
+- {rewrite: 'Next, at the bridge, continue straight.'}
+- {rewrite: 'follow river past the first bridge, the second bridge'}
+- {rewrite: Proceed straight past the bridge at the first waypoint.}
+- {rewrite: 'The navigation continues for 200 meters towards the bridge, then proceeds 300 meters to reach the second bridge.'}
+- {rewrite: Make your way past the bridge.}
+- {rewrite: Go straight when you reach the bridge.}
+- {rewrite: 'Straight past first bridge, straight past second bridge.'}
+- {rewrite: 'Upon reaching the subsequent bridge, continue straight ahead for 100 meters.'}
+- {rewrite: 'When you reach the first waypoint, continue straight past the bridge and proceed along the water.'}
+- {rewrite: 'Pass the first bridge, continue straight, stopping finally at the second confluence.'}
+- {rewrite: Continue straight when you reach the bridge.}
+- {rewrite: 'Following a bend in the river, the UAV will pass the bridge and continue for 200 meters.'}
+- {rewrite: Proceed straight along the water past the first bridge.}
+- {rewrite: continue along river past first bridge}
+- {rewrite: 'Following the attainment of the bridge, the vessel must maintain a straight heading for an additional 300 meters.'}
+- {rewrite: Go straight along the water when you reach the bridge.}
+- {rewrite: Continue straight along the river past the first bridge.}
+- {rewrite: 'Upon reaching the second bridge, it proceeds straight for 100 meters.'}
+- {rewrite: 'First, the bridge requires going straight along the river.'}
+- {rewrite: It continues straight for 300 meters past the bridge.}
+- {rewrite: 'After reaching the bridge, head straight.'}
+- {rewrite: 'Past the first bridge, the second bridge, the third confluence, the fourth bridge straight.'}
+- {rewrite: 'Continue straight past the bridge, proceeding along the river.'}
+- {rewrite: 'Go past the first bridge, continue.'}
+- {rewrite: 'It proceeds straight for 200 meters past the first bridge, then continues straight for 300 meters at the bridge.'}
+- {rewrite: Keep going past the bridge.}
+- {rewrite: 'Subsequently, continue straight past the first bridge for 300 meters, then proceed straight past the bridge for 200 meters.'}
+- {rewrite: 'Go straight past the first bridge, then Continue until you reach the next bridge.'}
+- {rewrite: 'Go straight past second bridge, third bridge, fourth bridge.'}
+- {rewrite: Go straight when you reach the first bridge.}
+- {rewrite: 'Subsequently, upon reaching the bridge, the drone continues straight for 50 meters.'}
+- {rewrite: Keep going straight when you reach the bridge.}
+- {rewrite: 'Continue onward until the first bridge, proceeding straight through it.'}
+- {rewrite: 'Subsequent to reaching a bridge, a straight trajectory is maintained for 200 meters.'}
+- {rewrite: Keep following the river past the bridge until you reach the second bridge.}
+- {rewrite: 'After navigating past a bridge, the flight path extends 50 meters to reach the first confluence.'}
+- {rewrite: 'You''ll pass a bridge, then the first confluence, followed by the second confluence, and a bridge.'}
+- {rewrite: 'Proceed along the river, passing the bridge, second and third confluences, fourth bridge.'}
+- {rewrite: straight past second bridge}
+- {rewrite: Navigation continues straight past the bridge for 200 meters.}
+- {rewrite: Continue along the water past the bridge.}
+- {rewrite: Continue past the bridge.}
+- {rewrite: 'Upon reaching the bridge, the vessel maintains a forward course for 300 meters.'}
+- {rewrite: continue straight along river past the second bridge}
+- {rewrite: 'A bend becomes apparent ahead, requiring the continuation straight past the first bridge.'}
+- {rewrite: 'first bridge reached, continue straight along river'}
+- {rewrite: 'After encountering the first bridge, the flight path proceeds straight for 350 meters.'}
+- {rewrite: 'Then, continue straight again at the second bridge.'}
+- {rewrite: go straight to first bridge}
+- {rewrite: 'At the first waypoint, go straight past the bridge.'}
+- {rewrite: 'straight to the first bridge, then straight to the second bridge'}
+- {rewrite: and the fourth waypoint is located 200 meters past the bridge.}
+- {rewrite: 'A further 300 meters proceeds past the third bridge, and an additional 200 meters extends past the bridge.'}
+- {rewrite: 'Approaching a visible bend ahead, it proceeds straight through the subsequent bridge for a distance of 200 meters.'}
+- {rewrite: 'At the first waypoint, continue straight past the bridge, moving along the water.'}
+- {rewrite: 'Following this, 300 meters are covered to a bridge, then 200 meters to the fourth bridge.'}
+- {rewrite: 'Then, go straight past the second bridge, heading towards the bridge.'}
+- {rewrite: 'Follow the river, passing one bridge, then another bridge, followed by a confluence.'}
+- {rewrite: straight past first bridge.}
+- {rewrite: 'Subsequently, upon encountering the first bridge, it proceeds straight for 350 meters.'}
+- {rewrite: Proceed straight past the first bridge.}
+- {rewrite: go straight past the first bridge along the river}
+- {rewrite: Continue straight past the bridge.}
+- {rewrite: 'Traversing 300 meters straight past another bridge, the route then follows a straight path for 200 meters toward the bridge.'}
+- {rewrite: Keep heading straight past the bridge.}
+- {rewrite: 'Straight past the third bridge, then the fourth bridge.'}
+- {rewrite: Go straight past the bridge.}
+- {rewrite: straight past second bridge}
+- {rewrite: 'Proceed 350 meters, then maintain a straight heading past the second bridge for 100 meters.'}
+- {rewrite: Continue straight when you reach the first bridge.}
+- {rewrite: 'Upon reaching the first bridge, the trajectory maintains a straight course, continuing along the waterway for 350 meters.'}
+- {rewrite: Continue straight along the water when you reach the first bridge.}
+- {rewrite: 'Continue straight across the second bridge for 50 meters, followed by a 200-meter straight transit past the bridge.'}
+- {rewrite: 'At the subsequent bridge, maintain a straight course for 200 meters.'}
+- {rewrite: 'When you get to the bridge, keep going straight along the water.'}
+- {rewrite: 'Upon reaching the bridge, the route proceeds directly for 200 meters, terminating at the second bridge.'}
+- {rewrite: 'Next, continue straight along the flow at the bridge.'}
+- {rewrite: 'continue straight past the first bridge along the river, then straight past the second bridge, stopping at the third bridge.'}
+- {rewrite: 'Following this, the drone proceeds straight past the bridge, continuing along the river for 50 meters.'}
+- {rewrite: Continue straight when you reach the bridge.}
+- {rewrite: 'Following navigation past the bridge, a 50-meter straight segment is traversed.'}
+- {rewrite: 'Upon reaching the bridge, continue straight along the water.'}
+- {rewrite: 'reach first bridge, continue straight along river'}
+- {rewrite: 'Subsequently, it proceeds straight past one bridge for 50 meters, and continues straight past another bridge for another 50 meters.'}
+- {rewrite: Continue straight along the water past the first bridge.}
+- {rewrite: 'Continue straight past the bridge, then straight past the following bridge.'}
+- {rewrite: 'At the second waypoint, the vessel passes the bridge and continues straight for 200 meters.'}
+- {rewrite: Continue straight past the bridge.}
+- {rewrite: go straight past the second bridge}
+- {rewrite: Maintain this path until the bridge is reached.}
+- {rewrite: 'Subsequently, at the bridge, maintain a straight course along the waterway for 50 meters.'}
+- {rewrite: 'Upon reaching the bridge, continue straight and proceed along the water.'}
+- {rewrite: 'Subsequently, maintain a straight trajectory at the first bridge for 150 meters, followed by a straight path at the first confluence extending 200 meters.'}
+- {rewrite: Continue straight again at the bridge.}
+- {rewrite: Continue straight along the bridge for 500 meters.}
+- {rewrite: Keep going straight past the next bridge and under the bridge.}
+- {rewrite: Continue straight past the second bridge and the bridge.}
+- {rewrite: 'Straight, fourth bridge.'}
+- {rewrite: The segment extending 500 meters proceeds straight past the bridge marker.}
+- {rewrite: 'Keep going until the next bridge, then proceed straight past it.'}
+- {rewrite: 'Straight, third bridge.'}
+- {rewrite: Navigation continues straight for 500 meters past the next bridge.}
+- {rewrite: Continue straight past the second bridge.}
+- {rewrite: 'Following a bridge, proceed straight for 150 meters.'}
+- {rewrite: 'Continue straight past the bridge, then straight past the following bridge.'}
+- {rewrite: straight third bridge}
+- {rewrite: 'Continue straight past the bridge, and then straight past the following bridge.'}
+- {rewrite: 'Straight past first confluence, second bridge, third bridge.'}
+- {rewrite: 'Upon reaching the bridge, the drone proceeds straight for 200 meters.'}
+- {rewrite: Go straight past the bridge.}
+- {rewrite: Continue straight past second bridge.}
+- {rewrite: 'After passing the bridge, proceed straight.'}
+- {rewrite: 'Proceed straight past the bridge, then continue straight past the following bridge.'}
+- {rewrite: Continue straight past the first bridge and second bridge.}
+- {rewrite: 'straight past third bridge, fourth bridge, fifth confluence'}
+- {rewrite: 'As the bridge becomes visible ahead, maintain a straight course for 200 meters.'}
+- {rewrite: Straight past the first bridge.}
+- {rewrite: 'Proceed past the bridge, going straight at the following confluence.'}
+- {rewrite: 'straight on first bridge, right at second confluence, straight past third bridge, fourth bridge, and fifth confluence'}
+- {rewrite: Go straight when you reach the bridge.}
+- {rewrite: 'First bridge: straight.'}
+- {rewrite: 'Maintaining a straight trajectory, the drone passes one bridge, continuing for 500 meters, and proceeds straight past the following bridge for another 150 meters before stopping at the third confluence.'}
+- {rewrite: Keep going towards the bridge and continue straight past it.}
+- {rewrite: 'Upon reaching the bridge, proceed straight for 200 meters.'}
+- {rewrite: 'Next, continue straight past the bridge.'}
+- {rewrite: Continue straight past second bridge.}
+- {rewrite: It continues straight 200 meters past the first bridge.}
+- {rewrite: 'When you get to the first bridge, keep going straight.'}
+- {rewrite: Proceed straight past the bridge for 500 meters.}
+- {rewrite: Continue past the bridge.}
+- {rewrite: Maintain straight path through the first confluence and second bridge.}
+- {rewrite: 'Straight third bridge, straight fourth bridge.'}
+- {rewrite: 'Continue straight past the first and second confluences, and the third bridge.'}
+- {rewrite: Its trajectory remains straight for 150 meters after passing the bridge landmark.}
+- {rewrite: Go straight when you reach the bridge.}
+- {rewrite: 'Straight past first bridge, second, third, fourth confluences.'}
+- {rewrite: 'Reaching the bridge, the platform continues straight along the waterway for roughly 500 meters.'}
+- {rewrite: Continue straight when you reach the bridge.}
+- {rewrite: Straight past first bridge}
+- {rewrite: An additional 150-meter straight segment continues past the first bridge.}
+- {rewrite: Continue straight past the first bridge.}
+- {rewrite: 'Past the first confluence, second bridge, and third bridge go straight.'}
+- {rewrite: 'After passing the bridge, continue straight for 100 meters.'}
+- {rewrite: Go straight upon reaching the first bridge.}
+- {rewrite: continue straight past first bridge}
+- {rewrite: 'It maintains a straight path past the first bridge for a distance of 50 meters, and continues straight again for 550 meters, passing the bridge.'}
+- {rewrite: Go straight when you reach the bridge.}
+- {rewrite: 'Straight via first bridge, then second bridge, next third confluence.'}
+- {rewrite: Continue straight past the bridge.}
+- {rewrite: 'Straight through first, second, third confluences and fourth bridge.'}
+- {rewrite: Continue straight along the water at the first bridge.}
+- {rewrite: Straight along first bridge.}
+- {rewrite: Continue straight when you reach the bridge.}
+- {rewrite: 'Straight past first bridge, straight past second bridge.'}
+- {rewrite: 'After passing the bridge, proceed straight along the river.'}
+- {rewrite: 'Following this, the bridge is passed straight for 150 meters.'}
+- {rewrite: Keep going straight past the bridge.}
+- {rewrite: Go straight past the second bridge.}
+- {rewrite: 'Upon reaching the bridge, the flight path continues straight for 150 meters.'}
+- {rewrite: Go straight when you reach the bridge.}
+- {rewrite: Keep going straight past the bridge.}
+- {rewrite: 'Go straight through the first confluence, straight past the second bridge, straight past the third bridge, straight through the fourth confluence.'}
+- {rewrite: 'Then, go straight past the bridge.'}
+- {rewrite: Straight on past second bridge.}
+- {rewrite: 'Keep moving until the bridge, then continue straight.'}
+- {rewrite: 'Then, continue straight past the bridge.'}
+- {rewrite: 'proceed straight past the second bridge, the third bridge, and the fourth confluence (turn right there)'}
+- {rewrite: 'After passing the bridge, proceed along the river.'}

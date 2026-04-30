@@ -14,7 +14,7 @@ INPUT="${1:-}"
 SPLIT_ARG="${2:-}"
 NUM_GPUS="${3:-1}"
 MAX_EPISODES="${4:-}"
-SATNAV_VERSION="${SATNAV_VERSION:-}"
+SATNAV_VERSION="${SATNAV_VERSION:-ver_260418}"
 TORCH_DTYPE="${TORCH_DTYPE:-auto}"
 MASTER_PORT="${MASTER_PORT:-29500}"
 MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
@@ -66,10 +66,6 @@ fi
 
 if [ -n "${RESULTS_BASE_OVERRIDE}" ]; then
     OUTPUT_BASE_DIR="${RESULTS_BASE_OVERRIDE}"
-fi
-
-if [ -z "${SATNAV_VERSION}" ]; then
-    SATNAV_VERSION=$(ls -d "${SATNAV_DATA_ROOT}"/ver_* 2>/dev/null | sort | tail -1 | xargs basename || true)
 fi
 
 if [ -z "${SATNAV_VERSION}" ]; then

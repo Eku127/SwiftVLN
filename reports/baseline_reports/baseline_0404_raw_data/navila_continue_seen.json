@@ -1,0 +1,41 @@
+{
+  "eval_split": "val_seen",
+  "model_type": "navila",
+  "model_variant": "continue",
+  "model_name": "navila-continue0404-r1-20260409-134207-sample-hk7-fs7-stopx4",
+  "keep_list_preset": "data260404_road345",
+  "n_total_in_result": 4844,
+  "n_missing_keep": 0,
+  "success_rate": 0.174649,
+  "mean_spl": 0.173766,
+  "oracle_success": 0.287572,
+  "navigation_error": 118.3102,
+  "avg_steps": 56.83,
+  "total_episodes": 4844,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.241793,
+      "mean_spl": 0.23923,
+      "oracle_success": 0.530303,
+      "navigation_error": 55.926,
+      "avg_steps": 83.18,
+      "total_episodes": 1584
+    },
+    "LandmarkSet": {
+      "success_rate": 0.042794,
+      "mean_spl": 0.042694,
+      "oracle_success": 0.066079,
+      "navigation_error": 155.0925,
+      "avg_steps": 33.51,
+      "total_episodes": 1589
+    },
+    "Road": {
+      "success_rate": 0.236385,
+      "mean_spl": 0.236351,
+      "oracle_success": 0.268103,
+      "navigation_error": 142.4692,
+      "avg_steps": 54.01,
+      "total_episodes": 1671
+    }
+  }
+}

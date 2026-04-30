@@ -365,6 +365,7 @@ interactive_setup() {
         echo ""
         echo "示例:"
         echo "  overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-20260417-210520"
+        echo "  overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456  # per_frame, random"
         echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456  # per_frame, no embed"
         echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-20260204-123456  # initial + pose"
         echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-20260204-123456  # pixel+pose"

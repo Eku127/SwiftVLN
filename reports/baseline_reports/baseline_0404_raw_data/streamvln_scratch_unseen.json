@@ -1,0 +1,41 @@
+{
+  "eval_split": "val_unseen",
+  "model_type": "streamvln",
+  "model_variant": "scratch",
+  "model_name": "streamvln-baseline-scratch-1ep-f32h8s4-data260404-bs32-lr2e-5-20260405-081630",
+  "keep_list_preset": "data260404_road345",
+  "n_total_in_result": 8756,
+  "n_missing_keep": 0,
+  "success_rate": 0.57138,
+  "mean_spl": 0.562459,
+  "oracle_success": 0.696094,
+  "navigation_error": 119.7223,
+  "avg_steps": 63.46,
+  "total_episodes": 8756,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.668879,
+      "mean_spl": 0.649742,
+      "oracle_success": 0.833741,
+      "navigation_error": 18.1134,
+      "avg_steps": 69.27,
+      "total_episodes": 2863
+    },
+    "LandmarkSet": {
+      "success_rate": 0.542827,
+      "mean_spl": 0.535751,
+      "oracle_success": 0.620474,
+      "navigation_error": 218.9313,
+      "avg_steps": 64.61,
+      "total_episodes": 2872
+    },
+    "Road": {
+      "success_rate": 0.506124,
+      "mean_spl": 0.50513,
+      "oracle_success": 0.637537,
+      "navigation_error": 121.7013,
+      "avg_steps": 56.86,
+      "total_episodes": 3021
+    }
+  }
+}

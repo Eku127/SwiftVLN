@@ -55,7 +55,7 @@ Before starting, confirm the following with the user:
 | Parameter | Default | Notes |
 |---|---|---|
 | Model name(s) | — | One or more model names to evaluate, or use queue-based consumption |
-| Eval split | SatNav: 不指定则同时跑 `val_seen` + `val_unseen`；Habitat: `val_unseen` | 显式设置 `EVAL_SPLIT=val_seen` 可只跑单个 split |
+| Eval split | SatNav: 不指定则同时跑 `val_seen` + `val_unseen`；Habitat: `val_unseen` | 当前 `ver_260418` 默认只有 `val_seen(4574)` 与 `val_unseen(8756)`；`2026-04-20` 已从 `val_seen` 中移除 `27` 个与 train 路线重复的 episodes；`val_seen_update` 已不再作为默认目录存在 |
 | CUDA devices | `0,1,2,3,4,5,6,7` | GPU device list |
 | Save video | `false` | Whether to save evaluation videos |
 | Conda env | `swift-vln-eval` | Must be activated before running eval scripts |

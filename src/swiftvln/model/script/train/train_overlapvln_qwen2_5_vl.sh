@@ -128,12 +128,15 @@ fi
 MODEL_TYPE="overlapvln_qwen2_5_vl"
 
 # Training stage: "stage1" (from base Qwen) or "stage2" (from trained VLN model)
-TRAIN_STAGE="stage1"
+TRAIN_STAGE="${TRAIN_STAGE:-stage1}"
 
 # Model paths for each stage
 # Stage1 defaults to the local offline cache path to avoid ModelScope hub resolution.
-STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
-STAGE2_MODEL_PATH="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239"
+# Default remains the local 3B cache path. For 7B, override STAGE1_MODEL_PATH
+# via env, e.g.:
+#   STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
+STAGE1_MODEL_PATH="${STAGE1_MODEL_PATH:-/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct}"
+STAGE2_MODEL_PATH="${STAGE2_MODEL_PATH:-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239}"
 
 # Select model path based on stage
 if [ "$TRAIN_STAGE" == "stage1" ]; then
@@ -153,7 +156,7 @@ MODEL_SIZE=${MODEL_SIZE:-"3b"}
 # VLN Data Configuration
 # ============================================================================
 # Environment type: "habitat" (forward=0.25m) or "satnav" (forward=10m)
-VLN_ENV_TYPE="satnav"
+VLN_ENV_TYPE="${VLN_ENV_TYPE:-satnav}"
 
 # Define data paths for each environment
 HABITAT_DATA_PATHS=(
@@ -162,7 +165,7 @@ HABITAT_DATA_PATHS=(
     # "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/EnvDrop"
 )
 SATNAV_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data"
+    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data"
 )
 
 # Select data paths based on VLN_ENV_TYPE (using nameref)
@@ -175,10 +178,10 @@ fi
 VLN_DATA_PATH=$(IFS=','; echo "${VLN_DATA_PATHS[*]}")
 
 # VLN-Specific Parameters
-NUM_FRAMES=32
-NUM_HISTORY=8
-NUM_FUTURE_STEPS=4
-USE_RANDOM=false
+NUM_FRAMES="${NUM_FRAMES:-32}"
+NUM_HISTORY="${NUM_HISTORY:-8}"
+NUM_FUTURE_STEPS="${NUM_FUTURE_STEPS:-4}"
+USE_RANDOM="${USE_RANDOM:-false}"
 # Default to baseline full-data training.
 # 0 means "use all available samples".
 MAX_SAMPLES="${MAX_SAMPLES:-0}"
@@ -187,10 +190,10 @@ MAX_SAMPLES="${MAX_SAMPLES:-0}"
 # Mixed Training: QA Dataset Configuration (Optional)
 # ============================================================================
 # Set USE_QA_MIXED_TRAINING=true to enable mixed training with VLN + QA data
-USE_QA_MIXED_TRAINING=false
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/data/qa_swift.jsonl"
-QA_RATIO=0.15             # Ratio of QA samples (0.15 = 15% QA, 85% VLN)
-QA_MAX_SAMPLES=0          # Max QA samples (0 = use all available)
+USE_QA_MIXED_TRAINING="${USE_QA_MIXED_TRAINING:-false}"
+QA_DATASET="${QA_DATASET:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl}"
+QA_RATIO="${QA_RATIO:-0.15}"             # Ratio of QA samples (0.15 = 15% QA, 85% VLN)
+QA_MAX_SAMPLES="${QA_MAX_SAMPLES:-0}"    # Max QA samples (0 = use all available)
 
 # ============================================================================
 # OverlapVLN-Specific Parameters
@@ -201,29 +204,29 @@ QA_MAX_SAMPLES=0          # Max QA samples (0 = use all available)
 #   - log_base>1.0: Logarithmic sampling (more recent frames preserved)
 # - gtc: Global Token Clustering, cross-frame clustering to fixed tokens
 # - segment_gtc: Segment-wise GTC, splits history into 8 segments
-HISTORY_PROCESSOR_TYPE="per_frame"
+HISTORY_PROCESSOR_TYPE="${HISTORY_PROCESSOR_TYPE:-per_frame}"
 
 # ---------- Per-frame parameters (used when HISTORY_PROCESSOR_TYPE="per_frame") ----------
 # Compression stride (2 = 4x compression, 3 = 9x, 4 = 16x)
-COMPRESS_STRIDE=2
+COMPRESS_STRIDE="${COMPRESS_STRIDE:-2}"
 
 # Compression method: false = average pooling, true = GridToMe
 # GridToMe provides better semantic preservation for small objects
-USE_TOME=false
+USE_TOME="${USE_TOME:-false}"
 
 # Sampling distribution: 1.0 = uniform, >1.0 = logarithmic (more recent frames)
 # 2.0 = moderate, 3.0+ = aggressive concentration on recent frames
-LOG_BASE=1.0
+LOG_BASE="${LOG_BASE:-1.0}"
 
 # ---------- GTC/SegmentGTC parameters (used when HISTORY_PROCESSOR_TYPE="gtc" or "segment_gtc") ----------
 # Fixed number of output tokens for Global Token Clustering / Segment GTC
-GTC_OUTPUT_TOKENS=512
+GTC_OUTPUT_TOKENS="${GTC_OUTPUT_TOKENS:-512}"
 
 # Temperature for soft assignment in Soft K-Means (lower = sharper)
-GTC_TEMPERATURE=0.1
+GTC_TEMPERATURE="${GTC_TEMPERATURE:-0.1}"
 
 # Number of Soft K-Means iterations (1-2 usually sufficient)
-GTC_NUM_ITERATIONS=1
+GTC_NUM_ITERATIONS="${GTC_NUM_ITERATIONS:-1}"
 
 # ---------- Sliding window overlap configuration ----------
 # Baseline default (2026-04-17): overlap=0.
@@ -231,14 +234,18 @@ GTC_NUM_ITERATIONS=1
 # num_overlap: Number of overlapping actions between consecutive windows
 # When num_overlap > 0, stride = num_frames - num_overlap
 # First (num_overlap / num_future_steps) turns in non-first samples have loss masked
-NUM_OVERLAP=0
+NUM_OVERLAP="${NUM_OVERLAP:-0}"
+# Legacy tail window adjustment for overlap training.
+# false: keep strict stride-aligned overlap windows (current default for overlap > 0)
+# true: move short tail windows backward to cover end-of-episode/STOP data
+OVERLAP_TAIL_WINDOW_ADJUST="${OVERLAP_TAIL_WINDOW_ADJUST:-false}"
 
 # ---------- System prompt setting ----------
 # System prompt strategy: "vanilla" (default, no initial view) or "initial"
 # - vanilla: Standard prompt without initial view image
 # - initial: Add the first frame of the episode (uncompressed) to the system prompt
 #   as the initial observation at the starting point of the journey
-SYSTEM_PROMPT_SETTING="vanilla"
+SYSTEM_PROMPT_SETTING="${SYSTEM_PROMPT_SETTING:-vanilla}"
 
 # ---------- Memory method ----------
 # history: original historical RGB frames
@@ -246,14 +253,14 @@ SYSTEM_PROMPT_SETTING="vanilla"
 MEMORY_METHOD="${MEMORY_METHOD:-history}"
 MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
 MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
-MAP_RENDER_PX="${MAP_RENDER_PX:-384}"
+MAP_RENDER_PX="${MAP_RENDER_PX:-448}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
 # ---------- Map-memory render cache ----------
 # Caches rendered (global, local) PNG pairs on disk to eliminate rasterio
 # re-rendering cost across epochs. Default ("auto"): the Python layer uses
 #   {dataset_root}/map_cache
-# (i.e. co-located with ver_260404). Override with any absolute path, or set
+# (i.e. co-located with ver_260418). Override with any absolute path, or set
 # to one of {off,false,none,0,disable,disabled,no} to disable caching.
 # Only has effect when MEMORY_METHOD=map.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
@@ -262,68 +269,70 @@ MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 # Pixel coordinate embedding enhancement (Fourier + MLP)
 # - false: disable (default)
 # - true: enable and train pixel embedding module
-USE_PIXEL_EMBED=false
+USE_PIXEL_EMBED="${USE_PIXEL_EMBED:-false}"
 
 # Pose embedding enhancement (MLP, per-image pose injection)
 # - false: disable (default)
 # - true: enable and train pose embedding module
-USE_POSE_EMBED=false
+USE_POSE_EMBED="${USE_POSE_EMBED:-false}"
 
 # Stage-A UAV adapter enhancement
 # - false: disable (default)
 # - true: enable and optionally load from an external s2r checkpoint
-USE_UAV_ADAPTER=false
-UAV_ADAPTER_PATH=""
-UAV_ADAPTER_TYPE="transformer_v1"
-UAV_ADAPTER_APPLY_SCOPE="all_images"
+USE_UAV_ADAPTER="${USE_UAV_ADAPTER:-false}"
+UAV_ADAPTER_PATH="${UAV_ADAPTER_PATH:-}"
+UAV_ADAPTER_TYPE="${UAV_ADAPTER_TYPE:-transformer_v1}"
+UAV_ADAPTER_APPLY_SCOPE="${UAV_ADAPTER_APPLY_SCOPE:-all_images}"
 
 # Pose fusion method: "additive" (default) or "film"
-POSE_FUSION_METHOD="additive"
+POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
 
 # Pose normalization scale for tanh(pos/scale), default 100.0
-POSE_NORM_SCALE=100.0
+POSE_NORM_SCALE="${POSE_NORM_SCALE:-100.0}"
 
 # ============================================================================
 # Training Parameters
 # ============================================================================
-TRAIN_TYPE="full"
-NUM_EPOCHS=1
-LEARNING_RATE=2e-5
-BATCH_SIZE=8
-GRAD_ACCUM_STEPS=1
-MAX_LENGTH=32768
+TRAIN_TYPE="${TRAIN_TYPE:-full}"
+NUM_EPOCHS="${NUM_EPOCHS:-1}"
+LEARNING_RATE="${LEARNING_RATE:-2e-5}"
+BATCH_SIZE="${BATCH_SIZE:-8}"
+GRAD_ACCUM_STEPS="${GRAD_ACCUM_STEPS:-1}"
+MAX_LENGTH="${MAX_LENGTH:-32768}"
 
 # Model Freezing
-FREEZE_VIT=false
-FREEZE_LLM=false
-FREEZE_ALIGNER=false
+FREEZE_VIT="${FREEZE_VIT:-false}"
+FREEZE_LLM="${FREEZE_LLM:-false}"
+FREEZE_ALIGNER="${FREEZE_ALIGNER:-false}"
 
 # Optimization
-USE_DEEPSPEED=true
-DEEPSPEED_CONFIG="zero2"
-GRADIENT_CHECKPOINTING=true
-TF32=true
-TORCH_COMPILE=false
+USE_DEEPSPEED="${USE_DEEPSPEED:-true}"
+DEEPSPEED_CONFIG="${DEEPSPEED_CONFIG:-zero2}"
+GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-true}"
+TF32="${TF32:-true}"
+TORCH_COMPILE="${TORCH_COMPILE:-false}"
 
 # Learning Rate Schedule
-WARMUP_RATIO=0.075
-WEIGHT_DECAY=0.
-LR_SCHEDULER_TYPE="cosine_with_min_lr"
-LR_SCHEDULER_KWARGS='{"min_lr":1.85e-05}'
+WARMUP_RATIO="${WARMUP_RATIO:-0.075}"
+WEIGHT_DECAY="${WEIGHT_DECAY:-0.}"
+LR_SCHEDULER_TYPE="${LR_SCHEDULER_TYPE:-cosine_with_min_lr}"
+LR_SCHEDULER_KWARGS="${LR_SCHEDULER_KWARGS:-{\"min_lr\":1.85e-05}}"
 
 # Attention Implementation
-ATTN_IMPL="flash_attn"
+ATTN_IMPL="${ATTN_IMPL:-flash_attn}"
 
 # ============================================================================
 # Performance Acceleration
 # ============================================================================
 # NOTE: padding_free must be FALSE for OverlapVLN (custom tokens incompatible)
-PADDING_FREE=false
+PADDING_FREE="${PADDING_FREE:-false}"
 
-USE_LIGER_KERNEL=true
-DATALOADER_PREFETCH_FACTOR=10
-DATALOADER_PERSISTENT_WORKERS=true
-DATASET_NUM_PROC=2
+USE_LIGER_KERNEL="${USE_LIGER_KERNEL:-true}"
+DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
+DATALOADER_PIN_MEMORY="${DATALOADER_PIN_MEMORY:-true}"
+DATALOADER_PREFETCH_FACTOR="${DATALOADER_PREFETCH_FACTOR:-10}"
+DATALOADER_PERSISTENT_WORKERS="${DATALOADER_PERSISTENT_WORKERS:-true}"
+DATASET_NUM_PROC="${DATASET_NUM_PROC:-2}"
 
 # ============================================================================
 # Output Configuration
@@ -379,10 +388,14 @@ elif [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
     COMPRESS_METHOD="pool"
     [ "$USE_TOME" = true ] && COMPRESS_METHOD="tome"
     NO_MEMORY_SUFFIX=""
+    RANDOM_SUFFIX=""
     if [ "$NUM_HISTORY" = "0" ]; then
         NO_MEMORY_SUFFIX="-nomem"
+    elif [ "$USE_RANDOM" = true ] || [ "$USE_RANDOM" = "true" ]; then
+        # Only tag random when it actually changes per-frame history sampling.
+        RANDOM_SUFFIX="-random"
     fi
-    MEMORY_SUFFIX="pf-h${NUM_HISTORY}${NO_MEMORY_SUFFIX}-b${LOG_BASE}-${COMPRESS_METHOD}-s${COMPRESS_STRIDE}"
+    MEMORY_SUFFIX="pf-h${NUM_HISTORY}${NO_MEMORY_SUFFIX}${RANDOM_SUFFIX}-b${LOG_BASE}-${COMPRESS_METHOD}-s${COMPRESS_STRIDE}"
 elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
     # GTC: include output tokens
     MEMORY_SUFFIX="gtc-k${GTC_OUTPUT_TOKENS}"
@@ -437,7 +450,20 @@ if [ "$VLN_ENV_TYPE" = "satnav" ]; then
     fi
 fi
 
-EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+_OVERLAP_TAIL_WINDOW_ADJUST_NORMALIZED="$(echo "$OVERLAP_TAIL_WINDOW_ADJUST" | tr '[:upper:]' '[:lower:]')"
+_OVERLAP_TAIL_WINDOW_ADJUST_ENABLED=false
+case "$_OVERLAP_TAIL_WINDOW_ADJUST_NORMALIZED" in
+    true|1|yes|y|on)
+        _OVERLAP_TAIL_WINDOW_ADJUST_ENABLED=true
+        ;;
+esac
+
+TAIL_WINDOW_SUFFIX=""
+if [ "$NUM_OVERLAP" -gt 0 ] && [ "$_OVERLAP_TAIL_WINDOW_ADJUST_ENABLED" != "true" ]; then
+    TAIL_WINDOW_SUFFIX="-notailadj"
+fi
+
+EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${TAIL_WINDOW_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 OUTPUT_DIR="output/overlapvln/${EXP_NAME}"
 if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
     OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
@@ -462,16 +488,16 @@ fi
 # ============================================================================
 # SwanLab Configuration
 # ============================================================================
-USE_SWANLAB=false
-SWANLAB_PROJECT="StreamVLN"
+USE_SWANLAB="${USE_SWANLAB:-false}"
+SWANLAB_PROJECT="${SWANLAB_PROJECT:-StreamVLN}"
 SWANLAB_EXP_NAME="${EXP_NAME}"
-SWANLAB_MODE="cloud"
+SWANLAB_MODE="${SWANLAB_MODE:-cloud}"
 
 # WXWork Notification
-USE_WXWORK_NOTIFICATION=false
-SWANLAB_NOTIFICATION_METHOD="wxwork"
-SWANLAB_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d78d3128-7b16-4bf1-a6a7-403bf0915fe0"
-SWANLAB_SECRET=""
+USE_WXWORK_NOTIFICATION="${USE_WXWORK_NOTIFICATION:-false}"
+SWANLAB_NOTIFICATION_METHOD="${SWANLAB_NOTIFICATION_METHOD:-wxwork}"
+SWANLAB_WEBHOOK_URL="${SWANLAB_WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d78d3128-7b16-4bf1-a6a7-403bf0915fe0}"
+SWANLAB_SECRET="${SWANLAB_SECRET:-}"
 
 # ============================================================================
 # Environment Setup
@@ -553,6 +579,7 @@ elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc
 fi
 echo "Overlap: num_overlap=$NUM_OVERLAP, window_stride=$WINDOW_STRIDE"
 echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with start_idx > 0"
+echo "  Tail window adjust: $OVERLAP_TAIL_WINDOW_ADJUST"
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
 echo "Pixel Embed: $USE_PIXEL_EMBED"
 echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
@@ -576,6 +603,8 @@ echo "Freeze ViT: $FREEZE_VIT | LLM: $FREEZE_LLM | Aligner: $FREEZE_ALIGNER"
 echo "DeepSpeed: $USE_DEEPSPEED ($DEEPSPEED_CONFIG)"
 echo "------------------------------------------"
 echo "Acceleration:"
+echo "  dataloader_num_workers: $DATALOADER_NUM_WORKERS"
+echo "  dataloader_pin_memory: $DATALOADER_PIN_MEMORY"
 echo "  padding_free: $PADDING_FREE (must be false for OverlapVLN)"
 echo "  use_liger_kernel: $USE_LIGER_KERNEL"
 echo "=========================================="
@@ -699,7 +728,8 @@ torchrun \
     --freeze_vit $FREEZE_VIT \
     --freeze_llm $FREEZE_LLM \
     --freeze_aligner $FREEZE_ALIGNER \
-    --dataloader_num_workers 8 \
+    --dataloader_num_workers $DATALOADER_NUM_WORKERS \
+    --dataloader_pin_memory $DATALOADER_PIN_MEMORY \
     --dataloader_drop_last true \
     --dataloader_prefetch_factor $DATALOADER_PREFETCH_FACTOR \
     --dataloader_persistent_workers $DATALOADER_PERSISTENT_WORKERS \
@@ -713,6 +743,7 @@ torchrun \
     --vln_env_type $VLN_ENV_TYPE \
     --compress_stride $COMPRESS_STRIDE \
     --num_overlap $NUM_OVERLAP \
+    --overlap_tail_window_adjust $OVERLAP_TAIL_WINDOW_ADJUST \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
     $MEMORY_ARGS \
     --use_pixel_embed $USE_PIXEL_EMBED \

@@ -85,10 +85,6 @@ from uninavid.constants import (
     IAMGE_SEPARATOR,
 )
 from uninavid.conversation import conv_templates, SeparatorStyle
-from swiftvln.common.eval.reporting import (
-    compute_weighted_trajectory_type_metrics,
-    load_satnav_reference_distribution,
-)
 
 from satnav.core.env import Env as SatNavEnv
 from satnav.dataset.satnav_dataset import SatNavDataset
@@ -640,22 +636,6 @@ def save_summary(results: list, output_path: str, args) -> None:
                 "avg_steps": float(np.mean(ts["steps"])),
                 "count": len(ts["sucs"]),
             }
-        reference_distribution = load_satnav_reference_distribution(args.satnav_config_path)
-        if reference_distribution:
-            weighted = compute_weighted_trajectory_type_metrics(
-                summary["by_trajectory_type"],
-                reference_distribution,
-                metric_keys={
-                    "SR": "SR",
-                    "SPL": "SPL",
-                    "OS": "OS",
-                    "NE": "NE",
-                    "avg_steps": "avg_steps",
-                },
-            )
-            if weighted:
-                summary["weighted_by_seen_unseen_distribution"] = weighted
-
     print("\n" + "=" * 60)
     print(f"Uni-NaVid SatNav Evaluation Summary ({args.eval_split})")
     print("=" * 60)
@@ -674,14 +654,6 @@ def save_summary(results: list, output_path: str, args) -> None:
                 f"OS: {ts['OS']:.2%}, NE: {ts['NE']:.2f}m, "
                 f"Steps: {ts['avg_steps']:.2f}, N: {ts['count']}"
             )
-    if "weighted_by_seen_unseen_distribution" in summary:
-        ws = summary["weighted_by_seen_unseen_distribution"]
-        print("\n--- Weighted (val_seen+val_unseen) ---")
-        print(
-            f"  SR: {ws['SR']:.2%}, SPL: {ws['SPL']:.4f}, "
-            f"OS: {ws['OS']:.2%}, NE: {ws['NE']:.2f}m, "
-            f"Steps: {ws['avg_steps']:.2f}"
-        )
 
     print("=" * 60)
 

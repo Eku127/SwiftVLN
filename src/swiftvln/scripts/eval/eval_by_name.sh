@@ -11,6 +11,9 @@
 # 示例:
 #   # OverlapVLN 评估 (per_frame, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456
+#
+#   # OverlapVLN 评估 (per_frame with random history sampling)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456
 #   
 #   # OverlapVLN 评估 (per_frame with tome, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-noembed-bs64-lr2e-5-20260204-123456
@@ -119,7 +122,7 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # ============================================================================
 # 新格式 (带 env_type 和 stage):
 # 注: qa 参数(混合训练比例)不影响 eval，解析时会被忽略
-# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (gtc):         overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (segment_gtc): overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 #   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
@@ -144,8 +147,9 @@ parse_env_type() {
 
 parse_overlapvln_params() {
     local name="$1"
-    # 新格式 (map):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-map-g1000-l400-r384-d20-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # 新格式 (map):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-map-g1000-l400-r448-d20-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # 新格式 (per_frame):   overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # random 示例:          overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260418-123456
     # no-memory 示例:       overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # 新格式 (gtc):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # 新格式 (segment_gtc): overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
@@ -180,6 +184,7 @@ parse_overlapvln_params() {
     local num_history="8"
     local log_base="1.0"
     local compress_stride="2"
+    local use_random="false"
     local use_tome="false"
     local gtc_output_tokens=""
     local use_pixel_embed="false"
@@ -214,7 +219,14 @@ parse_overlapvln_params() {
     elif [[ "$name" == *"-pf-h"* ]]; then
         history_processor_type="per_frame"
         num_history=$(echo "$name" | grep -oP 'pf-h\d+' | sed 's/pf-h//')
-        log_base=$(echo "$name" | grep -oP '\-b[0-9.]+\-' | sed 's/-b//' | sed 's/-//')
+        if [[ "$name" == *"-random-"* ]]; then
+            use_random="true"
+        fi
+        local parsed_log_base=""
+        parsed_log_base=$(echo "$name" | grep -oP '\-b[0-9.]+\-' | sed 's/-b//' | sed 's/-//' || true)
+        if [ -n "$parsed_log_base" ]; then
+            log_base="$parsed_log_base"
+        fi
         compress_stride=$(echo "$name" | grep -oP '\-(pool|tome)\-s\d+' | grep -oP 's\d+' | sed 's/s//')
         if [[ "$name" == *"-tome-s"* ]]; then
             use_tome="true"
@@ -256,6 +268,7 @@ parse_overlapvln_params() {
     echo "MEMORY_METHOD=$memory_method"
     echo "HISTORY_PROCESSOR_TYPE=$history_processor_type"
     echo "LOG_BASE=$log_base"
+    echo "USE_RANDOM=$use_random"
     echo "COMPRESS_STRIDE=$compress_stride"
     echo "USE_TOME=$use_tome"
     echo "GTC_OUTPUT_TOKENS=$gtc_output_tokens"
@@ -309,7 +322,7 @@ if [ "$MODEL_ARCH" == "overlapvln" ]; then
     if [ "${MEMORY_METHOD:-history}" == "map" ]; then
         echo "MAP_GLOBAL_SIDE_M: ${MAP_GLOBAL_SIDE_M:-1000}"
         echo "MAP_LOCAL_SIDE_M: ${MAP_LOCAL_SIDE_M:-400}"
-        echo "MAP_RENDER_PX: ${MAP_RENDER_PX:-384}"
+        echo "MAP_RENDER_PX: ${MAP_RENDER_PX:-448}"
         echo "MAP_MASK_METHOD: ${MAP_MASK_METHOD:-dilate20}"
         echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
     else
@@ -323,6 +336,10 @@ if [ "$MODEL_ARCH" == "overlapvln" ]; then
     elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
         echo "NUM_HISTORY:    ${NUM_HISTORY:-8}"
         echo "LOG_BASE:       ${LOG_BASE:-1.0}"
+        echo "USE_RANDOM:     ${USE_RANDOM:-false}"
+        if [ "${USE_RANDOM:-false}" = "true" ]; then
+            echo "SAMPLING_MODE:  random (LOG_BASE metadata only)"
+        fi
         echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
         echo "USE_TOME:       ${USE_TOME:-false}"
     fi
@@ -416,6 +433,9 @@ if [ "$CHECK_ONLY" == "true" ]; then
         fi
         if [ -n "$LOG_BASE" ]; then
             echo "LOG_BASE=${LOG_BASE}"
+        fi
+        if [ -n "$USE_RANDOM" ]; then
+            echo "USE_RANDOM=${USE_RANDOM}"
         fi
         if [ -n "$COMPRESS_STRIDE" ]; then
             echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
@@ -655,6 +675,9 @@ else
     if [ -n "$LOG_BASE" ]; then
         export LOG_BASE
     fi
+    if [ -n "$USE_RANDOM" ]; then
+        export USE_RANDOM
+    fi
     if [ -n "$COMPRESS_STRIDE" ]; then
         export COMPRESS_STRIDE
     fi
@@ -699,7 +722,7 @@ if [ "$MODEL_ARCH" == "overlapvln" ]; then
     if [ "${MEMORY_METHOD:-history}" == "map" ]; then
         echo "MAP_GLOBAL_SIDE_M:  ${MAP_GLOBAL_SIDE_M:-1000}"
         echo "MAP_LOCAL_SIDE_M:   ${MAP_LOCAL_SIDE_M:-400}"
-        echo "MAP_RENDER_PX:      ${MAP_RENDER_PX:-384}"
+        echo "MAP_RENDER_PX:      ${MAP_RENDER_PX:-448}"
         echo "MAP_MASK_METHOD:    ${MAP_MASK_METHOD:-dilate20}"
         echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"
     else
@@ -713,6 +736,10 @@ if [ "$MODEL_ARCH" == "overlapvln" ]; then
     elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
         echo "NUM_HISTORY:        ${NUM_HISTORY:-8}"
         echo "LOG_BASE:           ${LOG_BASE:-1.0}"
+        echo "USE_RANDOM:         ${USE_RANDOM:-false}"
+        if [ "${USE_RANDOM:-false}" = "true" ]; then
+            echo "SAMPLING_MODE:      random (LOG_BASE metadata only)"
+        fi
         echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"
         echo "USE_TOME:           ${USE_TOME:-false}"
     fi

@@ -11,6 +11,8 @@ Key features:
 - When num_overlap > 0, stride = num_frames - num_overlap
 - For samples where start_idx > 0, first (num_overlap / num_future_steps) turns 
   have loss=0.0 (masked), acting as pure context
+- overlap_tail_window_adjust: Legacy option to move short tail windows backward.
+  Defaults to False so overlap windows stay aligned with eval-time stride.
 """
 
 import os
@@ -27,6 +29,7 @@ from swiftvln.common.constants import (
     HISTORY_MEMORY_TOKEN,
 )
 from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
+from swiftvln.common.history_processors.per_frame import sample_per_frame_history_indices
 from swiftvln.model.map_memory import (
     SatNavMapMemoryBuilder,
     SatNavTrajectoryMetadataResolver,
@@ -52,6 +55,18 @@ def _preview_text(text: str, limit: int = 220) -> str:
     return text[:limit] + '...'
 
 
+def _coerce_bool(value: Any, name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ('1', 'true', 'yes', 'y', 'on'):
+            return True
+        if normalized in ('0', 'false', 'no', 'n', 'off'):
+            return False
+    raise ValueError(f"{name} must be a boolean value, got {value!r}")
+
+
 class OverlapVLNDataset(Dataset):
     """
     OverlapVLN Dataset with sliding window overlap and loss masking.
@@ -65,6 +80,8 @@ class OverlapVLNDataset(Dataset):
         num_overlap: Number of overlapping actions between windows (default: 16)
                     When > 0, stride = num_frames - num_overlap
                     Set to 0 to disable overlap (original behavior)
+        overlap_tail_window_adjust: When True, keep legacy tail-window adjustment
+                    for overlap training. When False, keep stride-aligned starts.
         env_type: Environment type - 'habitat' (forward=0.25m) or 'satnav' (forward=10m)
     """
     
@@ -77,6 +94,7 @@ class OverlapVLNDataset(Dataset):
         use_random: bool = False,
         max_samples: Optional[int] = None,
         num_overlap: int = 16,  # New parameter for overlap
+        overlap_tail_window_adjust: bool = False,
         env_type: str = "habitat",  # New parameter for environment type
         history_processor_type: str = "per_frame",  # History sampling strategy
         log_base: float = 1.0,  # Sampling distribution (1.0=uniform, >1.0=logarithmic)
@@ -84,12 +102,16 @@ class OverlapVLNDataset(Dataset):
         memory_method: str = "history",
         map_global_side_m: float = 1000.0,
         map_local_side_m: float = 400.0,
-        map_render_px: int = 384,
+        map_render_px: int = 448,
         map_mask_method: str = "dilate20",
     ):
         # Store num_overlap before calling super().__init__ 
         # because we need to override the data indexing logic
         self.num_overlap = num_overlap
+        self.overlap_tail_window_adjust = _coerce_bool(
+            overlap_tail_window_adjust,
+            "overlap_tail_window_adjust",
+        )
         
         # Don't call parent __init__ directly, replicate the logic with our modifications
         # This is necessary because parent builds data_list in __init__
@@ -190,8 +212,9 @@ class OverlapVLNDataset(Dataset):
         # Build data index with sliding window overlap
         # Format: (episode_id, instruction_id, start_frame)
         self.data_list = []
-        skipped_samples = 0
         adjusted_samples = 0
+        skipped_redundant_samples = 0
+        skipped_no_new_samples = 0
         
         for ep_id, item in enumerate(self.nav_data):
             instructions = item.get('instructions', [])
@@ -220,21 +243,27 @@ class OverlapVLNDataset(Dataset):
                     
                     actual_start_idx = start_idx
                     
-                    # If effective actions too few, adjust start_idx to cover more
-                    # This ensures end-of-episode data (including STOP) is trained
+                    # If effective actions too few, legacy mode adjusts start_idx to cover more.
+                    # For overlap training, strict mode keeps eval-aligned window starts and
+                    # allows a short final supervised turn instead of moving the window back.
                     if effective_actions < self.num_future_steps:
-                        # Adjust start_idx: from end backwards by num_frames
-                        adjusted_start = max(0, actions_len - self.num_frames)
-                        
-                        # Check if previous sample already covers this range
-                        if i > 0 and adjusted_start <= all_start_indices[i - 1]:
-                            # Previous sample already covers the end, skip this one
-                            skipped_samples += 1
-                            continue
-                        
-                        # Use adjusted start_idx
-                        actual_start_idx = adjusted_start
-                        adjusted_samples += 1
+                        if self.num_overlap > 0 and not self.overlap_tail_window_adjust:
+                            if effective_actions <= 0:
+                                skipped_no_new_samples += 1
+                                continue
+                        else:
+                            # Adjust start_idx: from end backwards by num_frames
+                            adjusted_start = max(0, actions_len - self.num_frames)
+
+                            # Check if previous sample already covers this range
+                            if i > 0 and adjusted_start <= all_start_indices[i - 1]:
+                                # Previous sample already covers the end, skip this one
+                                skipped_redundant_samples += 1
+                                continue
+
+                            # Use adjusted start_idx
+                            actual_start_idx = adjusted_start
+                            adjusted_samples += 1
                     
                     self.data_list.append((ep_id, ins_id, actual_start_idx))
         
@@ -244,12 +273,16 @@ class OverlapVLNDataset(Dataset):
                   f"num_overlap={num_overlap}, stride={self.stride}")
             print(f"[OverlapVLN] Loss masking: first {num_overlap // num_future_steps} turns "
                   f"will have loss=0.0 for samples with start_idx > 0")
+            print(f"[OverlapVLN] Tail window adjustment: {self.overlap_tail_window_adjust}")
             if adjusted_samples > 0:
                 print(f"[OverlapVLN] Adjusted {adjusted_samples} end-of-episode samples "
                       f"to ensure STOP data is trained")
-            if skipped_samples > 0:
-                print(f"[OverlapVLN] Skipped {skipped_samples} redundant samples "
+            if skipped_redundant_samples > 0:
+                print(f"[OverlapVLN] Skipped {skipped_redundant_samples} redundant samples "
                       f"(already covered by previous sample)")
+            if skipped_no_new_samples > 0:
+                print(f"[OverlapVLN] Skipped {skipped_no_new_samples} samples "
+                      f"with no new trainable actions after overlap")
         else:
             print(f"[OverlapVLN] No overlap (stride={self.stride})")
         
@@ -356,15 +389,12 @@ class OverlapVLNDataset(Dataset):
         Sampling strategies:
         - per_frame: Sample num_history frames using power transformation
           - num_history=0: Disable history sampling entirely (effective no-memory mode)
+          - use_random=True: Uniform random sampling without replacement
           - log_base=1.0: Uniform/linear sampling
           - log_base>1.0: Logarithmic sampling (more recent frames)
         - gtc: Sample with num_future_steps interval (denser, for cross-frame clustering)
         """
-        import math
-        
-        available_history_indices = np.arange(0, current_start_abs)
-        
-        if len(available_history_indices) == 0:
+        if current_start_abs <= 0:
             return np.array([], dtype=np.int32)
         
         if self.history_processor_type in ('gtc', 'segment_gtc'):
@@ -384,61 +414,29 @@ class OverlapVLNDataset(Dataset):
                 # will skip inserting <history_memory>.
                 return np.array([], dtype=np.int32)
             
-            if self.use_random:
-                history_step_ids = np.random.choice(
-                    available_history_indices,
-                    size=num_samples,
-                    replace=False
-                )
-                history_step_ids = np.sort(history_step_ids)
-            else:
-                # Use power transformation for flexible sampling
-                # log_base=1.0: t_frame = t_sample (linear/uniform)
-                # log_base>1.0: more samples at recent end
-                indices = []
-                for i in range(num_samples):
-                    if num_samples == 1:
-                        t_sample = 1.0  # Most recent
-                    else:
-                        t_sample = i / (num_samples - 1)
-                    
-                    # Power transformation: t_frame = 1 - (1 - t_sample)^log_base
-                    t_frame = 1.0 - math.pow(1.0 - t_sample, self.log_base)
-                    
-                    # Map to frame index
-                    frame_idx = int(round(t_frame * (num_frames - 1)))
-                    frame_idx = max(0, min(num_frames - 1, frame_idx))
-                    
-                    if frame_idx not in indices:
-                        indices.append(frame_idx)
-                
-                # Sort and ensure we have num_samples frames
-                indices.sort()
-                
-                # Fill missing slots if duplicates removed
-                while len(indices) < num_samples:
-                    for k in range(num_frames):
-                        if k not in indices:
-                            indices.append(k)
-                            indices.sort()
-                            break
-                    else:
-                        break  # No more frames available
-                
-                history_step_ids = np.array(indices[:num_samples], dtype=np.int32)
-                
-                # Debug output (only for first few samples)
-                if os.environ.get('OVERLAPVLN_DEBUG') and not hasattr(self, '_debug_sample_count'):
-                    self._debug_sample_count = 0
-                if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_sample_count < 3:
-                    print(f"  [DEBUG SAMPLE {self._debug_sample_count}] History sampling:")
-                    print(f"    -> Available frames: 0-{num_frames-1} ({num_frames} total)")
-                    print(f"    -> Sampling {num_samples} frames with log_base={self.log_base}")
-                    print(f"    -> Sampled indices: {list(history_step_ids)}")
-                    self._debug_sample_count += 1
-            
+            history_step_ids = np.array(
+                sample_per_frame_history_indices(
+                    num_frames=num_frames,
+                    num_samples=self.num_history,
+                    log_base=self.log_base,
+                    use_random=self.use_random,
+                ),
+                dtype=np.int32,
+            )
+
+            # Debug output (only for first few samples)
+            if os.environ.get('OVERLAPVLN_DEBUG') and not hasattr(self, '_debug_sample_count'):
+                self._debug_sample_count = 0
+            if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_sample_count < 3:
+                sampling_mode = "random" if self.use_random else f"log_base={self.log_base}"
+                print(f"  [DEBUG SAMPLE {self._debug_sample_count}] History sampling:")
+                print(f"    -> Available frames: 0-{num_frames-1} ({num_frames} total)")
+                print(f"    -> Sampling {num_samples} frames with {sampling_mode}")
+                print(f"    -> Sampled indices: {list(history_step_ids)}")
+                self._debug_sample_count += 1
+
             history_step_ids = np.clip(history_step_ids, 0, num_video_frames - 1)
-        
+
         return history_step_ids
 
     def _build_map_memory_images(

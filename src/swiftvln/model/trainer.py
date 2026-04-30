@@ -91,7 +91,7 @@ class OverlapVLNSft(BaseVLNSft):
             self.template.memory_method = getattr(self.args, 'memory_method', 'history')
             self.template.map_global_side_m = getattr(self.args, 'map_global_side_m', 1000.0)
             self.template.map_local_side_m = getattr(self.args, 'map_local_side_m', 400.0)
-            self.template.map_render_px = getattr(self.args, 'map_render_px', 384)
+            self.template.map_render_px = getattr(self.args, 'map_render_px', 448)
             self.template.map_mask_method = getattr(self.args, 'map_mask_method', 'dilate20')
 
             self.template.history_processor = create_history_processor(
@@ -235,6 +235,7 @@ class OverlapVLNSft(BaseVLNSft):
             "use_random": self.args.use_random,
             "max_samples": self.args.vln_max_samples,
             "num_overlap": self.args.num_overlap,
+            "overlap_tail_window_adjust": self.args.overlap_tail_window_adjust,
             "env_type": self.args.vln_env_type,
             "history_processor_type": self.args.history_processor_type,
             "log_base": self.args.log_base,
@@ -264,7 +265,8 @@ class OverlapVLNSft(BaseVLNSft):
             )
         self._log(
             f"num_overlap={self.args.num_overlap}, "
-            f"stride={self.args.num_frames - self.args.num_overlap}"
+            f"stride={self.args.num_frames - self.args.num_overlap}, "
+            f"overlap_tail_window_adjust={self.args.overlap_tail_window_adjust}"
         )
         self._log(f"system_prompt_setting={self.args.system_prompt_setting}")
         if self.args.memory_method == 'map':

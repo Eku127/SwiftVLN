@@ -48,7 +48,30 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 因此 `address already in use` 这类错误现在可以稳定进入 auto-fix 重试链路
   - 2026-04-17 起脚本末尾显式 `exit $?`，避免长跑队列执行期间若脚本文件被原地改写，
     在收尾阶段继续解释被修改后的尾部内容，导致异常“重入”重跑
+- 链式启动脚本进程检测修复（Updated: 2026-04-29）：
+  - `runtime/train_queue/launchers/launch_overlap0418_notail_after_navila.sh`
+  - `runtime/tmp/navila0418_eval_after_98_and_17.sh`
+  - NaVILA train/eval 等待逻辑中的 `pgrep -f` 现使用 bracketed regex，避免匹配到
+    `pgrep` 自身命令行后误判训练仍在运行，导致后续 overlap 队列或 98 eval 无法启动。
 - 训练 watchdog：`src/swiftvln/scripts/train/train_watchdog.sh`
+- StreamVLN baseline 训练版本标签命名（Updated: 2026-04-20）：
+  - 脚本：`baseline/streamvln/scripts/train_satnav.sh`
+  - `EXP_NAME` 中的 `data...` 段现在直接使用 `SATNAV_VERSION` 去掉 `ver_` 后的完整后缀
+  - 例如：`ver_260418p80 -> data260418p80`，不再因 `grep -oP '\d+'` 提取多段数字而在目录名中引入换行
+  - 这使得 `p80` / `p75` 这类子集训练目录、日志与后续链式调度可以稳定按名字管理
+- OpenFly scratch native checkpoint 本地 HF cache（Updated: 2026-04-20）：
+  - 核心实现：`baseline/openfly/src/native_core/checkpoint_conversion.py`
+  - 当前 `scratch` backend 不再让 8 个 rank 各自重复读取 `openvlaopenvla-7b-prismatic/checkpoints/*.pt`
+  - 现改为：首个进入的 rank 在本机本地盘把 native `.pt` 单次转换为 HF `safetensors` shard，其他 rank 等待完成后直接从共享本地 cache 加载
+  - 默认 cache 根目录：`/mnt/data4/jiangjiajun/openfly_native_hf_cache`
+  - 关闭方式：`OPENFLY_NATIVE_HF_CACHE_DIR=off|false|none|0`
+  - cache key 包含：native checkpoint 路径/大小/mtime、processor source、`grid_size`、`unnorm_key`
+  - cache 完成标记：`.cache_complete`；并发互斥通过同目录下 `.<cache_name>.lock` 文件锁实现
+  - 2026-04-20 同步在 `baseline/openfly/src/train_satnav.py` 增加了阶段日志：
+    - `Building SatNavOpenFlyDataset...`
+    - `Dataset ready: samples=...`
+    - `Building training backend...`
+    - `Backend ready: backend=...`
 - GPU 健康监控（Updated: 2026-04-07）：
   - 单机监控脚本：`src/swiftvln/scripts/monitor/gpu_health_monitor.sh`
   - 双机启动脚本：`src/swiftvln/scripts/monitor/start_gpu_health_monitors.sh`
@@ -87,7 +110,73 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `SAVE_STEPS=1`
     - `SAVE_TOTAL_LIMIT=1`
     - 见 `.codex/skills/swiftvln-smoke-test/SKILL.md`
-- OverlapVLN no-memory 配置约定（Updated: 2026-04-17）：
+- OverlapVLN overlap 训练尾窗默认（Updated: 2026-04-30）：
+  - `OVERLAP_TAIL_WINDOW_ADJUST` 已固定进默认训练流程，默认 `false`
+  - 仅在 `NUM_OVERLAP>0` 时影响 VLN dataset 索引：
+    - `false`：保持严格 `stride = num_frames - num_overlap` 的窗口起点，短尾窗不再向后回挪
+    - `true`：保留历史 legacy 行为，尾窗有效监督不足 `num_future_steps` 时向后回挪以覆盖结尾/STOP
+  - `NUM_OVERLAP=0` 保持原有尾窗调整逻辑不变，避免影响当前 baseline
+  - 当 `NUM_OVERLAP>0` 且 `OVERLAP_TAIL_WINDOW_ADJUST=false` 时，训练实验名额外包含
+    `-notailadj`；`true` 保持历史实验名格式不变
+  - `-notailadj` 只是训练命名标记，评测脚本不解析该字段
+  - `src/swiftvln/scripts/train/train_queue.sh` 的默认配置已包含
+    `OVERLAP_TAIL_WINDOW_ADJUST=false`；因此后续只设置 `NUM_OVERLAP>0`
+    就默认进入 no-tail-adjust 流程
+  - 如需复现实验历史 legacy 行为，必须显式设置
+    `OVERLAP_TAIL_WINDOW_ADJUST=true`
+- OverlapVLN 评测窗口默认与 `overlap=0` 修复（Updated: 2026-04-27）：
+  - 相关文件：
+    - `src/swiftvln/scripts/eval/eval_by_name.sh`
+    - `src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+    - `src/swiftvln/model/eval.py`
+    - `src/swiftvln/model/evaluator.py`
+  - `eval_by_name.sh` 会从实验名中的 `f{num_frames}s{num_future_steps}` 与
+    `overlap{num_overlap}` 解析并透传：
+    - `NUM_FRAMES`
+    - `NUM_FUTURE_STEPS`
+    - `NUM_OVERLAP`
+  - 底层 eval 默认 `NUM_OVERLAP` 已与当前 baseline 对齐为 `0`；
+    直接调用 distributed eval 或 Python eval 时，不再回落到历史 `16`
+  - `evaluator._prepare_overlap_context()` 已修复 `NUM_OVERLAP=0` 时
+    `self.window_turns[-0:]` 等价于整窗复用的问题；当前 `overlap_turns <= 0`
+    会明确禁用上一窗口 context
+- OverlapVLN `7B` 启动约定（Updated: 2026-04-18）：
+  - 主训练脚本默认 base model **仍是 3B**：
+    - `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
+  - 当前脚本已支持通过环境变量覆盖关键训练参数，而不修改默认值：
+    - `TRAIN_STAGE`
+    - `STAGE1_MODEL_PATH`
+    - `STAGE2_MODEL_PATH`
+    - `BATCH_SIZE`
+    - `LEARNING_RATE`
+    - `NUM_EPOCHS`
+    - `GRAD_ACCUM_STEPS`
+    - `NUM_HISTORY`
+    - `HISTORY_PROCESSOR_TYPE`
+    - `NUM_OVERLAP`
+    - 以及常用 memory / embed / scheduler 相关参数
+  - 本地可用 `7B` 离线路径：
+    - `/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct`
+  - 2026-04-18 在 `17` 上用 `8卡` 对 `Qwen2.5-VL-7B` baseline 做过实测：
+    - 配置：`satnav`, `overlap=0`, `per_frame`, `history`, `num_history=8`, `log_base=1.0`
+    - `bsz=8` 稳定
+    - `bsz=10` 稳定
+    - `bsz=12` 也可稳定进入训练
+  - 同日正式长跑中，`bsz=12` 在第 1 个 step 后触发过
+    `pin_memory` 线程里的 `torch.AcceleratorError: CUDA error: invalid argument`
+    （`rank4`，17 机）
+  - 当前主训练脚本已支持 env 覆盖：
+    - `DATALOADER_NUM_WORKERS`
+    - `DATALOADER_PIN_MEMORY`
+  - 当前在 `17` 上重启 `7B baseline` 的更稳妥口径：
+    - `BATCH_SIZE=10`
+    - `LEARNING_RATE=2e-5`
+    - `DATALOADER_PIN_MEMORY=false`
+  - 当前推荐的 `7B baseline` 起训口径：
+    - `BATCH_SIZE=12`
+    - `LEARNING_RATE=2e-5`
+    - 其余 baseline 配置保持不变
+- OverlapVLN no-memory / per-frame naming 配置约定（Updated: 2026-04-20）：
   - 训练脚本：`src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
   - 数据集：`src/swiftvln/model/dataset.py`
   - 队列展示/解析：`src/swiftvln/scripts/train/train_queue.sh`
@@ -97,8 +186,34 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `NUM_HISTORY=0`
   - 该配置会让 dataset 采样 `0` 张历史帧，并且 system prompt 不插入 `<history_memory>`
   - 统一实验名约定：`pf-h0-nomem-b{log_base}-{method}-s{stride}`
+  - `per_frame` 且 `USE_RANDOM=true` 且 `NUM_HISTORY>0` 时，实验名会额外带：
+    - `pf-h{num_history}-random-b{log_base}-{method}-s{stride}`
+  - `per_frame` 非 random 路径保持原格式不变：
+    - `pf-h{num_history}-b{log_base}-{method}-s{stride}`
+  - `src/swiftvln/scripts/train/train_queue.sh` 与
+    `src/swiftvln/scripts/eval/eval_by_name.sh`
+    当前都兼容解析旧的非 random 名字与新的 `-random-` 名字
+  - 2026-04-20 起，`per_frame` 的 `USE_RANDOM=true` 已在**评测端**完整接通：
+    - Python CLI：`src/swiftvln/model/eval.py`
+    - evaluator 实际采样：`src/swiftvln/model/evaluator.py`
+    - distributed eval 脚本：`src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+    - `eval_by_name.sh` 解析出的 `USE_RANDOM=true` 不再只是命名元数据，而会真实影响 eval 的 history sampling
   - `log_base` / `use_random` 在 `NUM_HISTORY=0` 时保留为配置元数据，但不会实际影响采样
   - `gtc` / `segment_gtc` 不适用该 no-memory 约定，因为其历史采样逻辑不看 `NUM_HISTORY`
+- OverlapVLN 本地 deploy 默认模型（Updated: 2026-04-21）：
+  - CLI：`src/swiftvln/cli.py`
+  - 解析常量：`src/swiftvln/deployment/model_resolver.py`
+  - wrapper：
+    - `src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh`
+    - `src/swiftvln/scripts/deploy/run_deploy_session.sh`
+  - 当前若 deploy 未显式传 `--model-name` / `model_name`，默认使用：
+    - `output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050`
+  - `start_overlapvln_deploy.sh` 现支持：
+    - `bash .../start_overlapvln_deploy.sh`
+    - `bash .../start_overlapvln_deploy.sh <model_name> [session_root]`
+  - `run_deploy_session.sh` 现支持：
+    - `bash .../run_deploy_session.sh <requests_jsonl>`
+    - `bash .../run_deploy_session.sh <requests_jsonl> [model_name] [session_root]`
 - OverlapVLN `map` memory 配置约定（Updated: 2026-04-17）：
   - 共享实现：
     - `src/swiftvln/model/map_memory.py`
@@ -131,7 +246,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - 默认参数：
       - `map_global_side_m=1000`
       - `map_local_side_m=400`
-      - `map_render_px=384`
+      - `map_render_px=448`
       - `map_mask_method=dilate20`
     - 训练与评测都按 **window cadence** 更新 map：
       - 训练样本里，map 固定锚定在 `start_idx` 之前的历史
@@ -143,12 +258,12 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
       - 即 map 模式的 history slot 语义是"起点 + 已探索区域"，在首窗口退化为"仅起点"
   - 统一实验名约定：
     - `map-g{global}-l{local}-r{render}-{mask}-s{compress_stride}`
-    - 例：`map-g1000-l400-r384-d20-s2`
+    - 例：`map-g1000-l400-r448-d20-s2`
   - 依赖说明：
     - `map_memory.py` 运行时依赖可选 geo 包：`rasterio` 与 `pyproj`
     - 当前仓库实现已做惰性导入；若环境缺依赖，只会在 `memory_method=map` 真正执行到地图渲染时报错
   - **On-disk render cache**（Updated: 2026-04-17）：
-    - 位置：默认 `{dataset_root}/map_cache`（例：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/map_cache`）
+    - 位置：默认 `{dataset_root}/map_cache`（例：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/map_cache`）
       - 训练入口（`dataset.py`）从 `SatNavTrajectoryMetadataResolver.dataset_root` 推导
       - 评测入口（`evaluator.py`）从 habitat `DATA_PATH` 回溯找第一个 `ver_*` 目录
     - 开关（优先级从高到低）：
@@ -206,16 +321,33 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 数据集 merge：`src/swiftvln/scripts/data_process/merge_satnav_data.py`
 - 数据同步：`src/swiftvln/scripts/data_sync/*.sh`
 - SatNav merge skill：`.codex/skills/merge-satnav-data/SKILL.md`
-- 主线评测 summary 重加权指标（Updated: 2026-04-14）：
+- 主线评测 summary 指标（Updated: 2026-04-18）：
   - 公共汇总逻辑：`src/swiftvln/common/eval/runner.py`
-  - 权重/统计 helper：`src/swiftvln/common/eval/reporting.py`
-  - 当 `env_type=satnav` 且存在 `by_trajectory_type` 时，`evaluation_summary.json`
-    现在额外写出 `weighted_by_seen_unseen_distribution`
-  - 该字段使用 `satnav_task.yaml` 中 `DATA_PATH` 对应的 `val_seen + val_unseen`
-    episode 合并分布，输出统一加权后的：
-    `success_rate / mean_spl / oracle_success / navigation_error / avg_steps`
-  - 目的：在不修改实际评测 episode 的前提下，降低 `seen/unseen`
-    任务类型配比差异对总指标解释的干扰
+  - 统计 helper：`src/swiftvln/common/eval/reporting.py`
+  - 顶层 `success_rate / mean_spl / oracle_success / navigation_error / avg_steps`
+    为当前 split 内所有 episode 的**直接平均**，无任何 trajectory-type 重加权
+  - `evaluation_summary.json` 仍会写出 `by_trajectory_type` 细分，便于分类查看
+  - `collect_eval_results.py` 的 `ALL_*` 列直接读顶层指标
+  - 同等清理已同步至所有 baseline：
+    `baseline/{streamvln,navila,uninavid,openfly}/src/eval_satnav.py`
+- StreamVLN baseline 默认训练口径（Updated: 2026-04-18）：
+  - 训练脚本：`baseline/streamvln/scripts/train_satnav.sh`
+  - 当前默认 SatNav 正式训练配置：
+    - `SATNAV_VERSION=ver_260418`
+    - `NUM_EPOCHS=1`
+    - `LEARNING_RATE=2e-5`
+    - `BATCH_SIZE=3`
+    - `GRAD_ACCUM=2`
+    - `GPUS_PER_NODE=8`
+  - 即默认有效 batch size 为 `48`
+  - `scratch` 与 `continue` 都复用同一组默认 batch 配置；如需更保守，可显式覆盖 `BATCH_SIZE=2`
+- SatNav 0404 eval 子集管理工具（Updated: 2026-04-18）：
+  - eval 子集生成脚本：`src/swiftvln/scripts/eval/generate_satnav_keep_lists.py`
+  - 将生成的子集写回数据盘（先备份再覆盖）：
+    `src/swiftvln/scripts/eval/trim_satnav_eval_episodes_by_keep_csv.py`
+  - 分析产物目录：`runtime/analysis/satnav_keep_lists/`
+- Baseline eval 结果子集回填脚本（Updated: 2026-04-18）：
+  - `src/swiftvln/scripts/eval/apply_keep_subset_to_baselines.py`
 
 ### Baseline StreamVLN Layout (Updated: 2026-03-09)
 
@@ -235,12 +367,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 训练模型：`output/streamvln-baseline/<EXP_NAME>/`
   - smoke test 模型：`output/streamvln-baseline/smoketest/<EXP_NAME>/`
   - 评测结果：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
-- baseline eval 默认：`8` 卡 + `val_unseen`（`baseline/streamvln/scripts/eval_satnav.sh`）
-  - SatNav eval split 路由约定（0319 起）：
+- baseline eval 默认：`8` 卡；SatNav 默认不显式传 split 时顺序跑 `val_seen + val_unseen`
+  - SatNav eval split 路由约定：
     - `DATA_PATH` 使用 `{split}` 占位符：`episodes/eval/{split}/all_episodes.json`
     - `--eval_split val_seen` → 展开为 `episodes/eval/val_seen/all_episodes.json`
-    - `--eval_split val_unseen` → 展开为 `episodes/eval/val_unseen/all_episodes.json`（目录暂不存在，待新城市引入后生成）
+    - `--eval_split val_unseen` → 展开为 `episodes/eval/val_unseen/all_episodes.json`
     - 路径不存在时直接报错（`FileNotFoundError`），无 fallback
+    - 当前 `ver_260418` 实际存在的 eval 子目录只有：
+      - `val_seen/`（`4574` episodes）
+      - `val_unseen/`（`8756` episodes）
+    - `val_seen_update/` 已不再作为当前默认 eval split 使用，也不应继续假定其存在
     - 路由逻辑：`src/swiftvln/common/eval/evaluator.py` 的 `_init_satnav_config()`
     - 配置文件：`src/swiftvln/configs/satnav_task.yaml` 的 `DATASET.DATA_PATH`
   - baseline SatNav eval 默认 split 约定（0319 更新）：
@@ -258,11 +394,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 多卡汇总改为 rank0 从 `result.jsonl` 离线去重汇总，不再用末尾 `all_gather(...)` 汇总本地 `results`
   - resume / 去重唯一键使用 `scene_id + episode_id`，避免仅按 `episode_id` 导致跨 scene 冲突
   - `--max_episodes` 语义为“先截断总 episode，再做分布式切分”
-  - `evaluation_summary.json`（Updated: 2026-04-14）在存在 `by_trajectory_type` 时会额外写出
-    `weighted_by_seen_unseen_distribution`
-  - 该字段使用 `src/swiftvln/configs/satnav_task.yaml` 对应的
-    `val_seen + val_unseen` 合并任务类型分布做统一加权，输出
-    `SR / SPL / OS / NE / avg_steps`
+  - `evaluation_summary.json` 当前仅保留直接平均指标；不再额外写重加权字段
 
 ### Baseline NaVILA Layout (Updated: 2026-03-12)
 
@@ -318,11 +450,7 @@ NaVILA SatNav eval 约定：
     的文件标记等待，不再依赖末尾 `dist.barrier()`
   - `baseline/navila/scripts/eval_satnav.sh` 现会为每个 split 传唯一 `--run_id`
   - 目的：保留 8 卡断点续跑能力，同时规避收尾阶段 `Socket Timeout` / NCCL barrier 崩溃
-  - `evaluation_summary.json`（Updated: 2026-04-14）在存在 `by_trajectory_type` 时会额外写出
-    `weighted_by_seen_unseen_distribution`
-  - 该字段使用 `src/swiftvln/configs/satnav_task.yaml` 对应的
-    `val_seen + val_unseen` 合并任务类型分布做统一加权，输出
-    `SR / SPL / OS / NE / avg_steps`
+  - `evaluation_summary.json` 当前仅保留直接平均指标；不再额外写重加权字段
 - 生成停止条件与 dtype 稳定性修复（Updated: 2026-04-07）：
   - `baseline/navila/src/eval_satnav.py` 不再直接使用上游 `KeywordsStoppingCriteria`
   - 当前改为本地 `SafeKeywordsStoppingCriteria`，只匹配**生成后缀**，避免 Llama 3 prompt 内自带 `<|eot_id|>` 时在 `0 token` 阶段被误判为 stop
@@ -477,6 +605,7 @@ OpenFly SatNav baseline 约定：
     等来源信息
   - 新增 `OUTPUT_DIR_OVERRIDE=<abs_path>`，可把训练输出直接落到本地盘
     （如 73 的 `/mnt/data3/...`），减少往 NFS 工作区写大 checkpoint 时的卡顿风险
+  - 默认 `SAVE_TOTAL_LIMIT=1`，训练过程中最多保留最新一个 `checkpoint-*`
   - 训练脚本默认禁用 wandb：
     - `--report_to none`
     - `WANDB_DISABLED=true`
@@ -581,6 +710,8 @@ OpenFly SatNav baseline 约定：
 - 默认实验命名：
   - `uninavid-baseline-continue-{epochs}ep-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
   - `uninavid-baseline-scratch-{epochs}ep-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
+- `baseline/uninavid/scripts/train_satnav.sh` 默认 `SAVE_TOTAL_LIMIT=1`，
+  训练过程中最多保留最新一个 `checkpoint-*`
 
 UniNaVid SatNav eval 约定（Updated: 2026-04-01）：
 
@@ -632,12 +763,14 @@ nohup bash src/swiftvln/scripts/eval/eval_watchdog.sh \
   --cleanup-days 7 &
 ```
 
-### Train Watchdog 异步回调机制（Updated: 2026-03-18）
+### Train Watchdog 异步回调机制（Updated: 2026-04-21）
 
 训练同样使用 **tmux + watchdog** 事件驱动模式，支持多服务器并行启动：
 
 - 训练在 tmux session 中运行（命名：`train_<short_desc>_<HHMMSS>`）
 - `train_watchdog.sh` 后台监控，通过 `train_events.log` 消费实验事件
+- 2026-04-21 修复：`cleanup_old_runs()` 里的计数从 `((count++))` 改为 `((count += 1))`
+  旧写法在 `set -e` 下清理到首个旧 run 目录时会直接退出，表现为 watchdog 启动后立刻静默结束
 - 事件驱动回调（非轮询）：
   - 实验失败 → `codex exec resume` 让 Codex 分析修复
   - 全部完成 → `codex exec`（新 session）按 eval skill 启动评测
@@ -657,19 +790,58 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 ## Current SatNav Dataset Defaults
 
 - Dataset root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets`
-- 当前常用版本：`ver_260404`
+- 当前训练 / eval 默认版本：`ver_260418`
 - Eval episodes (val_seen):
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/episodes/eval/val_seen/all_episodes.json`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/eval/val_seen/all_episodes.json`
+  （当前：4574 条；2026-04-20 在 2026-04-19 重建 split 基础上移除了 `27` 个与 train 路线重复的 episodes）
 - Eval episodes (val_unseen):
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/episodes/eval/val_unseen/all_episodes.json`
-- **注意**：`episodes/eval/` 下只有 `val_seen/` 和 `val_unseen/` 子目录，不再有顶层扁平文件
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/eval/val_unseen/all_episodes.json`
+  （当前：8756 条；`val_unseen` 默认评测集）
+- **注意**：`episodes/eval/` 下当前默认只有 `val_seen/` 和 `val_unseen/` 两个子目录
+- `val_seen_update/` 已不再作为当前 0418 默认 eval 目录使用；如果历史脚本仍引用它，需要先改回 `val_seen`
 - QA JSONL:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/data/qa_swift.jsonl`
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl`
+  （2026-04-26 已重写，JSONL 内图片绝对路径均指向 `ver_260418`，不再指向 `ver_260404`）
 - Trajectory data:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data`
+  - train 主集：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data`
+  - val_seen standalone 子集：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data_val_seen`
 - Scene maps:
   - active: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
   - backup(old): `/mnt/data3/jiangjiajun/dataset/satnav_datasets/old_scenes`
+
+### SatNav ver_260418 Snapshot (Updated: 2026-04-26)
+
+- 当前主线 `OverlapVLN` 与 `baseline/*` 默认训练 / eval 版本已统一切到 `ver_260418`
+- 默认路径已同步到：
+  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - `src/swiftvln/scripts/train/train_queue.sh`
+  - `src/swiftvln/configs/satnav_task.yaml`
+  - `baseline/{streamvln,navila,uninavid,openfly}/configs/satnav_task.yaml`
+  - `baseline/{streamvln,navila,uninavid,openfly}/scripts/*satnav.sh`
+- 新增 `trajectory-group` 级别 seen split 构建脚本：
+  - `src/swiftvln/scripts/data_process/build_similarity_val_seen_from_train.py`
+  - 用途：从当前 `train` 中按 `(scene_id, trajectory_id)` 选完整 traj group，构建 `100% route-disjoint` 的 `val_seen`，同时抽取 standalone `trajectory_data_val_seen` 并从主 train / 主 `trajectory_data` 中同步移除
+  - 默认参考 split：`val_seen_update`
+  - 当前默认参数口径：`scene_coverage_min=45`、`size_tolerance=5%`、`ratio_tolerance=2pp`、`top_k=5`
+- 2026-04-19 重建后的 0418 split / trajdata 状态：
+  - `val_seen`: `4574` episodes, `56` scenes
+    - `2026-04-20` 额外移除了 `27` 个与 train 路线重复的 episodes（9 条唯一轨迹）
+  - `val_unseen`: `8756` episodes
+    - `2026-04-26` 已基于 `val_unseen/all_episodes.json` 重建类型拆分文件：
+      `boundary=2863`、`landmark=2872`、`road=3021`，三者 union 与 all 严格一致
+  - `trajectory_data_val_seen`: 历史 standalone 子集仍为 `4601` trajectories；本次仅修正 `episodes/eval/val_seen/*` 与相关 baseline `val_seen` 结果
+  - train after cleanup: `105164` episodes
+  - main `trajectory_data`: `105164` trajectories
+  - train 与主 `trajectory_data` 现在已严格对齐（`0` missing / `0` extra）
+  - 清理 manifest：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/train/remove_missing_traj_manifest.json`
+- 新 `val_seen` 与 train 在 episode / `(scene_id, trajectory_id)` 两级都 `0 overlap`
+- 2026-04-19 当前评测口径补充：
+  - 0418 实际默认 eval split 只有 `val_seen` 与 `val_unseen`
+  - `val_seen_update` 不再作为当前默认目录存在；若要复现实验历史，需要显式提供对应文件而不是继续假定默认脚本可直接找到
+- 2026-04-26 数据一致性修复：
+  - `data/qa_swift.jsonl` 已重新生成，共 `273120` 行，图片路径版本计数为 `ver_260418: 273120`，缺图数为 `0`
+  - `episodes/eval/val_unseen/{boundary,landmark,road}_episodes.json` 已从当前 `all_episodes.json` 定点重建
+  - 注意：`merge_manifest.json` 仍是原始 merge 产物记录，不代表后续 0418 split 清理 / QA 路径修复后的当前状态
 
 ### SatNav ver_260403 Snapshot (Updated: 2026-04-03)
 
@@ -795,10 +967,11 @@ TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train
 - `TRAIN_STAGE`（`stage1` 或 `stage2`）
 - `ENV_TYPE`（`satnav` 或 `habitat`）
 
-`train_queue.sh` 的 SwanLab 约定（Updated: 2026-03-20）：
-- 交互式与非交互式均**强制启用** SwanLab
+`train_queue.sh` 的 SwanLab 约定（Updated: 2026-04-21）：
+- 交互式默认启用 SwanLab
+- 非交互模式默认仍为 `USE_SWANLAB=true`
+- 非交互配置文件现在可显式写 `USE_SWANLAB=false` 关闭 SwanLab；`train_queue.sh` 不再强制改回 `true`
 - 默认 `SWANLAB_PROJECT=SatNav`
-- 非交互配置文件里若写 `USE_SWANLAB=false` 会被忽略；如需自定义只改 `SWANLAB_PROJECT`
 
 由 `orchestrate-plan` skill 在运行时通过 Write tool 生成，放在 `runtime/plans/generated/` 下。
 
@@ -993,6 +1166,43 @@ Stage-A 当前验证状态（2026-04-03）：
   - 最优 `u2s_r@1 = 0.46875`，对应 `step=32`
   - 一次已验证产物目录：
     `output/s2r/smoke-large-multisrc-20260403-152012`
+
+## Local Deployment (Updated: 2026-04-21)
+
+- CLI 入口：`python -m swiftvln deploy --model overlapvln --model-name <EXP_NAME>`
+- CLI 接线：`src/swiftvln/cli.py`
+- runner：`src/swiftvln/runners/deploy.py`
+- 部署包：`src/swiftvln/deployment/`
+  - `model_resolver.py`：解析 overlapvln baseline 实验名并查找最新 checkpoint
+  - `gpu.py`：默认自动选择本机一张空闲 H100；若已设置 `CUDA_VISIBLE_DEVICES`，则沿用现有可见卡
+  - `loader.py`：加载 overlapvln checkpoint
+  - `policy.py`：baseline-only 的 window/history/overlap 推理逻辑
+  - `session.py`：单会话状态机、图片落盘、events/summary 记录
+  - `server.py`：JSONL stdin/stdout 协议入口
+- README：`src/swiftvln/deployment/README.md`
+- 启动 wrapper：`src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh`
+- 单次 session wrapper：`src/swiftvln/scripts/deploy/run_deploy_session.sh`
+- smoke 脚本：`src/swiftvln/scripts/deploy/deploy_smoke.sh`
+- 单测：`tests/test_overlapvln_deployment.py`
+
+当前部署产品定义：
+
+- 只支持 `overlapvln` baseline `per_frame + pool + noembed`
+- 当前只适配名字里的 `NUM_OVERLAP`、`NUM_HISTORY`、`LOG_BASE`、`USE_RANDOM`
+- 明确不支持：`map` / `gtc` / `segment_gtc` / `tome` / `initial` / embedding enhancement
+- 协议是**单进程、单会话** JSONL CLI，不提供 HTTP
+- 输入命令：
+  - `{"type":"start","instruction":"...","session_id":"optional"}`
+  - `{"type":"image","image_path":"/abs/path/to/image.jpg"}`
+  - `{"type":"end","reason":"optional"}`
+- 状态机：`waiting_start -> waiting_image -> waiting_feedback -> closed`
+- 会话目录默认写到：`runtime/deploy/sessions/<session_id>/`
+  - 固定产物：`session_meta.json` / `events.jsonl` / `session_summary.json` / `images/`
+- 行为与 eval baseline 对齐：
+  - 第一张图必定触发一次推理
+  - 之后每张图表示刚完成一个动作
+  - 若动作队列在这张反馈图上耗尽，则立刻用该图再次推理
+  - 若模型输出无法解析动作，fallback 为 `[STOP]`
 
 ## Commit Style
 

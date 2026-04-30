@@ -229,7 +229,7 @@ class SatNavMapMemoryBuilder:
         scenes_dir: str,
         global_side_m: float = 1000.0,
         local_side_m: float = 400.0,
-        render_px: int = 384,
+        render_px: int = 448,
         mask_method: str = "dilate20",
         hfov: float = 90.0,
         sensor_width: int = 448,

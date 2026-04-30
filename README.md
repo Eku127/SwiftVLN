@@ -28,12 +28,48 @@ swiftvln train --model overlapvln -- --model_type overlapvln_qwen2_5_vl ...
 # 评测
 swiftvln eval --model overlapvln -- --model_path /path/to/checkpoint --env-type habitat ...
 
+# 本地部署
+swiftvln deploy --model overlapvln
+
 # 队列
 swiftvln queue train
 swiftvln queue eval
 ```
 
 说明：`--` 后参数会原样透传给对应模型的训练/评测入口。
+
+## 本地部署
+
+当前仓库已提供 `overlapvln` 的本地部署入口，默认会自动选择本机一张空闲 H100。
+
+如果不显式指定 `model_name`，deploy 默认使用：
+
+```text
+output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050
+```
+
+最简启动：
+
+```bash
+conda activate swift-vln-eval
+bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh
+```
+
+单次 session：
+
+```bash
+bash src/swiftvln/scripts/deploy/run_deploy_session.sh /abs/path/to/requests.jsonl
+```
+
+如果要覆盖默认模型：
+
+```bash
+swiftvln deploy --model overlapvln --model-name <EXP_NAME>
+```
+
+更完整的协议、JSONL 示例和目录结构说明见：
+
+- `src/swiftvln/deployment/README.md`
 
 ## 兼容脚本
 

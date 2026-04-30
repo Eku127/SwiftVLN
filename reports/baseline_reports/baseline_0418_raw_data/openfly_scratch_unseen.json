@@ -1,0 +1,41 @@
+{
+  "eval_split": "val_unseen",
+  "model_type": "openfly",
+  "model_variant": "scratch",
+  "model_name": "openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110",
+  "eval_protocol": "default_satnav_val_seen_val_unseen",
+  "result_dir": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/openfly-baseline/openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110",
+  "source_summary_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/openfly-baseline/openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110/val_unseen/evaluation_summary.json",
+  "success_rate": 0.117291,
+  "mean_spl": 0.116239,
+  "oracle_success": 0.321722,
+  "navigation_error": 195.9073,
+  "avg_steps": 66.35,
+  "total_episodes": 8756,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.121202,
+      "mean_spl": 0.118983,
+      "oracle_success": 0.603912,
+      "navigation_error": 61.4709,
+      "avg_steps": 78.78,
+      "total_episodes": 2863
+    },
+    "LandmarkSet": {
+      "success_rate": 0.051184,
+      "mean_spl": 0.050851,
+      "oracle_success": 0.129178,
+      "navigation_error": 289.7628,
+      "avg_steps": 61.49,
+      "total_episodes": 2872
+    },
+    "Road": {
+      "success_rate": 0.176432,
+      "mean_spl": 0.175802,
+      "oracle_success": 0.237339,
+      "navigation_error": 234.0863,
+      "avg_steps": 59.2,
+      "total_episodes": 3021
+    }
+  }
+}

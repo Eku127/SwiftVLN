@@ -1,0 +1,42 @@
+{
+  "eval_split": "val_unseen",
+  "model_type": "uninavid",
+  "model_variant": "continue",
+  "model_name": "uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618",
+  "eval_protocol": "default_satnav_val_seen_val_unseen",
+  "result_dir": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/uninavid-baseline/uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618",
+  "source_summary_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/uninavid-baseline/uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618/val_unseen/evaluation_summary.json",
+  "success_rate": 0.367177,
+  "mean_spl": 0.362855,
+  "oracle_success": 0.558474,
+  "navigation_error": 149.8461,
+  "avg_steps": 64.75,
+  "total_episodes": 8756,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.275585,
+      "mean_spl": 0.271659,
+      "oracle_success": 0.656654,
+      "navigation_error": 39.1037,
+      "avg_steps": 66.45,
+      "total_episodes": 2863
+    },
+    "LandmarkSet": {
+      "success_rate": 0.454735,
+      "mean_spl": 0.44668,
+      "oracle_success": 0.550836,
+      "navigation_error": 296.1396,
+      "avg_steps": 72.8,
+      "total_episodes": 2872
+    },
+    "Road": {
+      "success_rate": 0.370738,
+      "mean_spl": 0.369591,
+      "oracle_success": 0.472691,
+      "navigation_error": 115.7185,
+      "avg_steps": 55.49,
+      "total_episodes": 3021
+    }
+  },
+  "model_path": "/mnt/data4/jiangjiajun/uninavid_ckpt_cache/uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618_checkpoint-6000_38fbd79f2c46"
+}

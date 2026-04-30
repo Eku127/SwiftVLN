@@ -21,7 +21,7 @@
 #   max_episodes     Limit episodes (for debug/smoke, optional)
 #
 # Environment variables:
-#   SATNAV_VERSION   — Override data version (default: auto from exp name or latest)
+#   SATNAV_VERSION   — Override data version (default: auto from exp name or ver_260418)
 #   MODEL_BASE       — Base model path for adapter-only checkpoints (optional)
 #   LOCAL_CACHE_DIR  — Local disk dir to cache checkpoint (avoids NFS D-state).
 #                      Auto-detected: uses /mnt/data4/jiangjiajun/uninavid_ckpt_cache
@@ -146,12 +146,8 @@ fi
 
 # ---- Resolve SatNav version ----
 if [ -z "$SATNAV_VERSION" ]; then
-    SATNAV_VERSION=$(ls -d "${SATNAV_DATA_ROOT}"/ver_* 2>/dev/null | sort | tail -1 | xargs basename || true)
-    if [ -z "$SATNAV_VERSION" ]; then
-        print_error "No SatNav data versions found in ${SATNAV_DATA_ROOT}"
-        exit 1
-    fi
-    print_info "Auto-detected SatNav version: ${SATNAV_VERSION}"
+    SATNAV_VERSION="ver_260418"
+    print_info "Using default SatNav version: ${SATNAV_VERSION}"
 else
     print_info "Using SatNav version: ${SATNAV_VERSION}"
 fi

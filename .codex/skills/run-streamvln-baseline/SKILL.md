@@ -13,7 +13,7 @@ description: "在 SatNav 数据上执行 StreamVLN baseline 的训练与评测�
 
 - 8 卡全量训练 StreamVLN baseline on SatNav data
 - 两种训练模式：`continue`（从官方 checkpoint fine-tune）或 `scratch`（从 LLaVA-Video-7B-Qwen2 开始）
-- 支持选择 SatNav 数据版本（默认最新）
+- 支持选择 SatNav 数据版本（默认 `ver_260418`）
 - 支持指定训练服务器（98 / 73 / 17）
 - 训练完成后 eval by name
 
@@ -88,8 +88,12 @@ send_wecom_markdown() {
 ### EXP_NAME 命名规范
 
 ```
-streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{ver}-bs{eff_bs}-lr{lr}-{timestamp}
+streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{ver_suffix}-bs{eff_bs}-lr{lr}-{timestamp}
 ```
+
+说明：
+- `ver_suffix` 直接取 `SATNAV_VERSION` 去掉 `ver_` 后的完整后缀
+- 例如：`ver_260418 -> data260418`，`ver_260418p80 -> data260418p80`
 
 示例：
 ```
@@ -109,7 +113,7 @@ streamvln-baseline-scratch-1ep-f32h8s4-data260306-bs32-lr2e-5-20260309-150000
 |---|---|---|
 | Training mode | `continue` | `continue` or `scratch` |
 | Target server | — | `98` / `73` / `17`，需用户明确指定 |
-| SatNav data version | auto-detect latest | 如不指定则自动用最新版本 |
+| SatNav data version | `ver_260418` | 如不指定则默认用 `ver_260418` |
 | SwanLab | `false` | 是否开启 SwanLab 上报 |
 | Webhook notification | `true` | 强制开启，发送 train/eval 开始和结束通知 |
 
@@ -429,7 +433,11 @@ send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_END_MSG}"
 
 > **必须发送 eval 开始 / 结束通知。**
 > 本 skill 当前约定：**默认 val_seen 和 val_unseen 两个 split 均跑（8卡）**。若用户明确指定了单个 split，则只跑指定的那个。
-> 0319 起 `episodes/eval/` 下只有 `val_seen/` 和 `val_unseen/` 子目录，不再有顶层扁平文件。
+> 当前 `ver_260418` 的默认 eval 目录只有 `val_seen/` 和 `val_unseen/`：
+> - `val_seen = 4574`
+> - `val_unseen = 8756`
+> - `2026-04-20` 已从 `val_seen` 中移除 `27` 个与 train 路线重复的 episodes
+> - `val_seen_update` 已不再作为默认目录存在
 >
 > 如果使用了一键串行模式（`train_eval_satnav.sh`），eval 已自动执行且 webhook 已自动发送，可跳过本步骤中的手动 eval 和手动 webhook 部分，直接进入"校验评测产物"。
 
