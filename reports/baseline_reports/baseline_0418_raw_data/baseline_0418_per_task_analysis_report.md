@@ -15,7 +15,7 @@
 
 ## 总览结论
 
-- 当前 strongest tier 很清晰：`StreamVLN / StreamVLN* / SwiftVLN` 明显领先，`UniNaVid*` 处于第二梯队，传统 baseline 在 `Landmark` 上基本失效。
+- 当前 strongest tier 很清晰：`StreamVLN / StreamVLN* / SwiftVLN` 明显领先，`UniNaVid*` 处于第二梯队，传统 baseline 与 NaVILA 系列在 `Landmark` 上基本失效。
 - `Boundary` 是 top models 最稳定的任务。`seen/unseen` 上 `StreamVLN` 与 `SwiftVLN` 都能保持 `61%~69%` SR，说明“回家”本身不难，真正的瓶颈在 stop 时机。
 - `Landmark` 是最能拉开模型代差的任务。`CMA / Seq2Seq / OpenFly` 在这项上几乎没有竞争力，而 `StreamVLN* / SwiftVLN / StreamVLN / UniNaVid*` 才真正具备 landmark grounding 能力。
 - `Road` 在 `seen` 上不算最难，但在 `unseen` 上退化明显，说明它对 route pattern 泛化、路口计数和长链路跟随更敏感。
@@ -89,11 +89,13 @@
   - `UniNaVid*` `45.47%`
   - `StreamVLN` `43.66%`
 
-而传统 baselines 在 landmark 上基本失效：
+而传统 / NaVILA baselines 在 landmark 上基本失效：
 
 - `Seq2Seq`: `0.00% / 0.22%`
 - `CMA`: `0.00% / 0.00%`
 - `OpenFly`: `2.65% / 5.12%`
+- `NaVILA`: `8.08% / 3.45%`
+- `NaVILA*`: `4.51% / 4.91%`
 
 这说明 landmark 任务对 grounded localization 的要求非常高，没有足够强的视觉定位与 instruction-grounding 能力，很容易直接崩掉。
 
@@ -105,6 +107,8 @@ Landmark 上 `NE` 非常说明问题：
 - `StreamVLN`: `98.10 -> 145.66`
 - `StreamVLN*`: `92.24 -> 152.97`
 - `UniNaVid*`: `186.74 -> 296.14`
+- `NaVILA`: `128.96 -> 149.17`
+- `NaVILA*`: `146.61 -> 151.93`
 - `CMA`: `789.61 -> 853.06`
 
 这和 SatNav 的 landmark 特性高度一致：
@@ -241,7 +245,7 @@ road 更依赖：
 - 但整体仍不如 `StreamVLN / SwiftVLN`
 - 在 unseen 上 NE 仍偏大，说明泛化稳定性不足
 
-### OpenFly / CMA / Seq2Seq
+### NaVILA / OpenFly / CMA / Seq2Seq
 
 - 在 boundary 与 road 上有部分能力，但 landmark 基本不成立
 - 这类模型更容易出现：

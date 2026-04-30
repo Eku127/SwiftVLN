@@ -2,7 +2,7 @@
 
 本文档用于整理当前使用 `0418` 数据训练的 baseline 模型及其训练与评测情况。下面先给出状态矩阵（基于当前文档回填情况）：
 
-`说明`：本页 `StreamVLN` 最终结果使用 `0418` 数据的 `80%` 训练版本（`ver_260418p80`）作为收口结果；评测仍按默认 SatNav `val_seen + val_unseen` 口径。`OverlapVLN` 当前先回填纯 baseline setting（`overlap0 / pf-h8 / b1.0 / pool-s2 / noembed`）的 `20260421-125912` 结果。`Seq2Seq` 当前仅先回填 `0404` 训练 checkpoint 在 `0418` 数据上的 cross-eval，用于看跨版本泛化；`0418` 原生训练产物仍待补充。
+`说明`：本页 `StreamVLN` 最终结果使用 `0418` 数据的 `80%` 训练版本（`ver_260418p80`）作为收口结果；评测仍按默认 SatNav `val_seen + val_unseen` 口径。`OverlapVLN` 当前先回填纯 baseline setting（`overlap0 / pf-h8 / b1.0 / pool-s2 / noembed`）的 `20260421-125912` 结果。`Seq2Seq` 当前仅先回填 `0404` 训练 checkpoint 在 `0418` 数据上的 cross-eval，用于看跨版本泛化；`0418` 原生训练产物仍待补充。`NaVILA` 当前先回填 `0404` scratch / continue checkpoint 在 `0418` 数据上的 cross-eval；`0418` 原生 scratch/continue 训练产物仍待补充。
 
 `✅` 已完成，`⏳` 进行中 / 待补充，`➖` 暂无记录 / 不适用
 
@@ -13,7 +13,7 @@
 | OverlapVLN | ✅ | ➖ | ✅ | ➖ |
 | StreamVLN | ✅ | ✅ | ✅ | ✅ |
 | OpenFly | ✅ | ✅ | ✅ | ✅ |
-| NaVILA | ⏳ | ⏳ | ⏳ | ⏳ |
+| NaVILA | ⏳ | ⏳ | ✅ | ✅ |
 | UniNaVid | ✅ | ✅ | ✅ | ✅ |
 
 # 传统模型
@@ -240,54 +240,56 @@
 当前主线 NaVILA `0418` 训练产物如下：
 
 1. `a. scratch train`
-   `输出目录`：`待补充`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
    `训练日志`：`待补充`
-   `训练数据`：`0418`
-   `执行信息`：`待补充`
-   `状态`：`待补充`
-   `训练配置`：`待补充`
+   `训练数据`：`0404`
+   `执行信息`：`0404` scratch checkpoint，当前在本页作为 `0418` cross-eval 的 source model；`0418` 原生 scratch 训练尚未回填
+   `状态`：source checkpoint 已完成，`0418` 原生训练未回填
+   `训练配置`：`sample-hk7-fs7-stopx4`
    `训练结果`：`待补充`
    `训练速度`：`待补充`
-   `产出`：`待补充`
+   `产出`：`checkpoint-60000`
 
 2. `b. continue train`
-   `输出目录`：`待补充`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4`
    `训练日志`：`待补充`
-   `训练数据`：`0418`
-   `执行信息`：`待补充`
-   `状态`：`待补充`
-   `训练配置`：`待补充`
+   `训练数据`：`0404`
+   `执行信息`：`0404` continue checkpoint，当前在本页作为 `0418` cross-eval 的 source model；`0418` 原生 continue 训练尚未回填
+   `状态`：source checkpoint 已完成，`0418` 原生训练未回填
+   `训练配置`：`sample-hk7-fs7-stopx4`
    `训练结果`：`待补充`
    `训练速度`：`待补充`
-   `产出`：`待补充`
+   `产出`：`checkpoint-60000`
 
-`备注`：`待补充`
+`备注`：当前 NaVILA 先回填 `0404` scratch / continue checkpoint 在 `0418` 上的 cross-eval。该记录不代表 `0418` 原生 NaVILA scratch / continue 训练已经完成。
 
 ### Eval
 
 当前主线 NaVILA `0418` 评测产物如下：
 
 1. `a. scratch eval`
-   `模型目录`：`待补充`
-   `结果目录`：`待补充`
+   `模型目录`：`/mnt/data4/jiangjiajun/archive/data0404/baseline/model/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
+   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/by-path/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
+   `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/by-path/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4/val_seen/eval.log`，`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/by-path/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4/val_unseen/eval.log`
    `数据版本`：`0418`
-   `执行信息`：`待补充`
-   `状态`：`待补充`
-   `val_seen`：`待补充`
-   `val_unseen`：`待补充`
-   `overall`：`待补充`
+   `执行信息`：`0404` scratch checkpoint 在 `0418` 数据上的 cross-eval，`8` 卡 eval，默认 SatNav `val_seen + val_unseen`
+   `状态`：已完成
+   `val_seen`：`SR 18.10% | SPL 0.1802 | OS 27.59% | NE 93.05m | Avg Steps 48.08 | Total 4574`
+   `val_unseen`：`SR 13.00% | SPL 0.1296 | OS 23.66% | NE 128.88m | Avg Steps 53.71 | Total 8756`
+   `overall`：`0404 -> 0418` scratch cross-eval 已完整回填，可作为 NaVILA continue / `0418` 原生训练的对照组
 
 2. `b. continue eval`
-   `模型目录`：`待补充`
-   `结果目录`：`待补充`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4/checkpoint-60000`
+   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4`
+   `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/eval_navila0418_continue_r2_98_090216.log`
    `数据版本`：`0418`
-   `执行信息`：`待补充`
-   `状态`：`待补充`
-   `val_seen`：`待补充`
-   `val_unseen`：`待补充`
-   `overall`：`待补充`
+   `执行信息`：`0404` continue checkpoint 在 `0418` 数据上的 cross-eval，`98` 服务器，`8` 卡 eval，默认 SatNav `val_seen + val_unseen`
+   `状态`：已完成
+   `val_seen`：`SR 24.99% | SPL 0.2488 | OS 35.00% | NE 93.88m | Avg Steps 51.47 | Total 4574`
+   `val_unseen`：`SR 18.57% | SPL 0.1844 | OS 31.60% | NE 123.49m | Avg Steps 59.57 | Total 8756`
+   `overall`：`0404 -> 0418` continue cross-eval 已完整回填；相比 scratch cross-eval，`val_seen` 提升 `+6.89pt`，`val_unseen` 提升 `+5.57pt`
 
-`备注`：`待补充`
+`备注`：本轮 scratch / continue eval 都使用 `0404` checkpoint，因此主要反映 `0404 -> 0418` 的跨版本泛化，不是 `0418` 原生训练 NaVILA 的最终口径。原始 summary 位于各自结果目录的 `val_seen/evaluation_summary.json` 与 `val_unseen/evaluation_summary.json`。
 
 ## UniNaVid
 

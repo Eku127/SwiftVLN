@@ -1,0 +1,44 @@
+{
+  "eval_split": "val_seen",
+  "model_type": "navila",
+  "model_variant": "scratch",
+  "model_name": "navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4",
+  "eval_protocol": "default_satnav_val_seen_val_unseen",
+  "result_dir": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/by-path/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4",
+  "source_summary_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/by-path/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4/val_seen/evaluation_summary.json",
+  "training_data_version": "0404",
+  "eval_data_version": "0418",
+  "success_rate": 0.181023,
+  "mean_spl": 0.180191,
+  "oracle_success": 0.275907,
+  "navigation_error": 93.0548,
+  "avg_steps": 48.08,
+  "total_episodes": 4574,
+  "by_trajectory_type": {
+    "Boundary": {
+      "success_rate": 0.207835,
+      "mean_spl": 0.20648,
+      "oracle_success": 0.463479,
+      "navigation_error": 42.8544,
+      "avg_steps": 62.0,
+      "total_episodes": 1506
+    },
+    "LandmarkSet": {
+      "success_rate": 0.080848,
+      "mean_spl": 0.080428,
+      "oracle_success": 0.093439,
+      "navigation_error": 128.9588,
+      "avg_steps": 31.67,
+      "total_episodes": 1509
+    },
+    "Road": {
+      "success_rate": 0.252085,
+      "mean_spl": 0.251359,
+      "oracle_success": 0.271328,
+      "navigation_error": 106.796,
+      "avg_steps": 50.51,
+      "total_episodes": 1559
+    }
+  },
+  "model_path": "/mnt/data4/jiangjiajun/archive/data0404/baseline/model/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4"
+}
