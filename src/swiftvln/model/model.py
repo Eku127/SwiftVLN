@@ -18,11 +18,14 @@ import json
 import os
 
 import torch
+from swift.model.models.qwen import Qwen2_5VLLoader
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLConfig
+
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
 
 # Special tokens (must match dataset.py and template.py)
 HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
+OVERLAPVLN_SPECIAL_TOKENS = [HISTORY_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
 
 
 class OverlapVLNQwen25VLConfig(Qwen2_5_VLConfig):
@@ -151,150 +154,123 @@ except Exception:
     pass
 
 
-def get_model_tokenizer_overlapvln_qwen2_5_vl(model_dir, model_info, model_kwargs, load_model=True, **kwargs):
-    """
-    Load OverlapVLN Qwen2.5-VL model and processor.
-    
-    This function is called by ms-swift when loading the registered model.
-    It adds custom special tokens (<history_image>, <current_image>) to the
-    tokenizer and resizes model embeddings if necessary.
-    
-    Args:
-        model_dir: Path to the model directory (e.g., 'Qwen/Qwen2.5-VL-3B-Instruct')
-        model_info: ModelInfo object from ms-swift
-        model_kwargs: Additional kwargs for model loading
-        load_model: Whether to load the model weights
-        **kwargs: Additional arguments including:
-            - use_pixel_embed: bool, whether to enable pixel coordinate embedding enhancement
-            - use_pose_embed: bool, whether to enable pose embedding enhancement
-            - use_uav_adapter: bool, whether to enable Stage-A UAV adapter enhancement
-            - uav_adapter_path: str, optional external Stage-A checkpoint
-            - uav_adapter_type: str, UAV adapter implementation type
-            - uav_adapter_apply_scope: str, currently only 'all_images'
-            - pose_fusion_method: str, pose fusion method ('additive' or 'film')
-            - pose_norm_scale: float, tanh normalization scale for pose positions
-            - attn_impl, torch_dtype, etc.
-        
-    Returns:
-        tuple: (model, processor)
-    """
-    from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_5_vl
-    
-    # Extract custom arguments before passing to parent loader
-    use_pixel_embed = kwargs.pop('use_pixel_embed', False)
-    use_pose_embed = kwargs.pop('use_pose_embed', False)
-    use_uav_adapter = kwargs.pop('use_uav_adapter', False)
-    uav_adapter_path = kwargs.pop('uav_adapter_path', '')
-    uav_adapter_type = kwargs.pop('uav_adapter_type', 'transformer_v1')
-    uav_adapter_apply_scope = kwargs.pop('uav_adapter_apply_scope', 'all_images')
-    pose_fusion_method = kwargs.pop('pose_fusion_method', 'additive')
-    pose_norm_scale = kwargs.pop('pose_norm_scale', 100.0)
-    
-    # Use OverlapVLN's custom model class
-    kwargs['automodel_class'] = OverlapVLNQwen25VLForConditionalGeneration
-    
-    # Use the standard Qwen2.5-VL loader
-    model, processor = get_model_tokenizer_qwen2_5_vl(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    
-    # Add custom special tokens for differentiated image compression
-    # Include both legacy per-frame token and new unified memory token
-    special_tokens_dict = {
-        'additional_special_tokens': [HISTORY_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
+def _pop_embedding_options(kwargs):
+    return {
+        'use_pixel_embed': kwargs.pop('use_pixel_embed', False),
+        'use_pose_embed': kwargs.pop('use_pose_embed', False),
+        'use_uav_adapter': kwargs.pop('use_uav_adapter', False),
+        'uav_adapter_path': kwargs.pop('uav_adapter_path', ''),
+        'uav_adapter_type': kwargs.pop('uav_adapter_type', 'transformer_v1'),
+        'uav_adapter_apply_scope': kwargs.pop('uav_adapter_apply_scope', 'all_images'),
+        'pose_fusion_method': kwargs.pop('pose_fusion_method', 'additive'),
+        'pose_norm_scale': kwargs.pop('pose_norm_scale', 100.0),
     }
-    num_added = processor.tokenizer.add_special_tokens(special_tokens_dict)
-    
-    if num_added > 0:
-        print(f"[OverlapVLN] Added {num_added} special tokens to tokenizer:")
-        print(f"  - {HISTORY_IMAGE_TOKEN}: {processor.tokenizer.convert_tokens_to_ids(HISTORY_IMAGE_TOKEN)} (legacy)")
-        print(f"  - {HISTORY_MEMORY_TOKEN}: {processor.tokenizer.convert_tokens_to_ids(HISTORY_MEMORY_TOKEN)} (unified)")
-        print(f"  - {CURRENT_IMAGE_TOKEN}: {processor.tokenizer.convert_tokens_to_ids(CURRENT_IMAGE_TOKEN)}")
-        
-        # Resize model embeddings only if tokenizer is larger than model vocab
-        if model is not None:
-            tokenizer_vocab_size = len(processor.tokenizer)
-            model_vocab_size = model.config.vocab_size
-            if tokenizer_vocab_size > model_vocab_size:
-                model.resize_token_embeddings(tokenizer_vocab_size)
-                print(f"  - Resized model embeddings: {model_vocab_size} -> {tokenizer_vocab_size}")
-            else:
-                print(f"  - Model vocab ({model_vocab_size}) already covers tokenizer ({tokenizer_vocab_size}), no resize needed")
-    
-    # Create embedding enhancement pipeline
-    # The pipeline uses nn.ModuleDict, so all parameters are automatically:
-    # - Managed by the optimizer (trained)
-    # - Serialized in state_dict (saved/restored with checkpoints)
-    # - No manual checkpoint restore logic needed
-    if model is not None:
-        from swiftvln.common.embedding_enhancement import create_embedding_pipeline
-        
-        embed_dim = model.config.hidden_size
-        
-        model.embed_enhance = create_embedding_pipeline(
-            embed_dim=embed_dim,
-            use_pixel_embed=use_pixel_embed,
-            use_pose_embed=use_pose_embed,
-            use_uav_adapter=use_uav_adapter,
-            pose_fusion=pose_fusion_method,
-            pose_norm_scale=pose_norm_scale,
-            uav_adapter_path=uav_adapter_path,
-            uav_adapter_type=uav_adapter_type,
-            uav_adapter_apply_scope=uav_adapter_apply_scope,
+
+
+def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
+    if model is None:
+        return
+
+    from swiftvln.common.embedding_enhancement import create_embedding_pipeline
+
+    use_pixel_embed = options['use_pixel_embed']
+    use_pose_embed = options['use_pose_embed']
+    use_uav_adapter = options['use_uav_adapter']
+    uav_adapter_path = options['uav_adapter_path']
+    uav_adapter_type = options['uav_adapter_type']
+    uav_adapter_apply_scope = options['uav_adapter_apply_scope']
+    pose_fusion_method = options['pose_fusion_method']
+    pose_norm_scale = options['pose_norm_scale']
+
+    embed_dim = model.config.hidden_size
+
+    model.embed_enhance = create_embedding_pipeline(
+        embed_dim=embed_dim,
+        use_pixel_embed=use_pixel_embed,
+        use_pose_embed=use_pose_embed,
+        use_uav_adapter=use_uav_adapter,
+        pose_fusion=pose_fusion_method,
+        pose_norm_scale=pose_norm_scale,
+        uav_adapter_path=uav_adapter_path,
+        uav_adapter_type=uav_adapter_type,
+        uav_adapter_apply_scope=uav_adapter_apply_scope,
+    )
+
+    # Move to the same device/dtype as the visual encoder/model
+    target_dtype = model.visual.dtype if hasattr(model, 'visual') and hasattr(model.visual, 'dtype') else None
+    try:
+        target_device = next(model.parameters()).device
+    except (StopIteration, AttributeError, TypeError):
+        target_device = getattr(model, 'device', torch.device('cpu'))
+    to_kwargs = {}
+    if target_dtype is not None:
+        to_kwargs['dtype'] = target_dtype
+    if target_device is not None:
+        to_kwargs['device'] = target_device
+    if to_kwargs and not model.embed_enhance.is_empty:
+        model.embed_enhance = model.embed_enhance.to(**to_kwargs)
+
+    # Try to restore embed_enhance weights from local checkpoint (if present).
+    # This is needed at eval time when loading a finetuned checkpoint that
+    # contains trained enhancement parameters (e.g., pixel_embed weights).
+    if not model.embed_enhance.is_empty and os.path.isdir(model_dir):
+        _restore_enhancement_weights(model, model_dir)
+
+    # Explicit external UAV adapter should win over local embed_enhance weights.
+    if use_uav_adapter and uav_adapter_path and 'uav' in model.embed_enhance.enhancements:
+        resolved_path = model.embed_enhance.enhancements['uav'].load_external_checkpoint(
+            uav_adapter_path,
+            strict=True,
         )
-        
-        # Move to the same device/dtype as the visual encoder/model
-        target_dtype = model.visual.dtype if hasattr(model, 'visual') and hasattr(model.visual, 'dtype') else None
-        try:
-            target_device = next(model.parameters()).device
-        except (StopIteration, AttributeError, TypeError):
-            target_device = getattr(model, 'device', torch.device('cpu'))
-        to_kwargs = {}
-        if target_dtype is not None:
-            to_kwargs['dtype'] = target_dtype
-        if target_device is not None:
-            to_kwargs['device'] = target_device
-        if to_kwargs and not model.embed_enhance.is_empty:
-            model.embed_enhance = model.embed_enhance.to(**to_kwargs)
-        
-        # Try to restore embed_enhance weights from local checkpoint (if present).
-        # This is needed at eval time when loading a finetuned checkpoint that
-        # contains trained enhancement parameters (e.g., pixel_embed weights).
-        if not model.embed_enhance.is_empty and os.path.isdir(model_dir):
-            _restore_enhancement_weights(model, model_dir)
+        print(f"[OverlapVLN] Loaded external UAV adapter from: {resolved_path}")
 
-        # Explicit external UAV adapter should win over local embed_enhance weights.
-        if use_uav_adapter and uav_adapter_path and 'uav' in model.embed_enhance.enhancements:
-            resolved_path = model.embed_enhance.enhancements['uav'].load_external_checkpoint(
-                uav_adapter_path,
-                strict=True,
-            )
-            print(f"[OverlapVLN] Loaded external UAV adapter from: {resolved_path}")
-        
-        if not model.embed_enhance.is_empty:
-            print(f"[OverlapVLN] Embedding enhancement pipeline: {model.embed_enhance}")
-            print(f"  - embed_dim: {embed_dim}")
-            print(f"  - Enhancements: {model.embed_enhance.enhancement_names}")
-            print(f"  - Module will be trained and saved with checkpoints")
-        
-        # Backward compatibility: expose aliases without registering duplicate submodules.
-        def _set_alias(alias_name: str, value) -> None:
-            if hasattr(model, '_modules'):
-                model._modules.pop(alias_name, None)
-            model.__dict__[alias_name] = value
+    if not model.embed_enhance.is_empty:
+        print(f"[OverlapVLN] Embedding enhancement pipeline: {model.embed_enhance}")
+        print(f"  - embed_dim: {embed_dim}")
+        print(f"  - Enhancements: {model.embed_enhance.enhancement_names}")
+        print(f"  - Module will be trained and saved with checkpoints")
 
-        if use_pixel_embed and 'pixel' in model.embed_enhance.enhancements:
-            _set_alias('pixel_embed', model.embed_enhance.enhancements['pixel'])
-        else:
-            _set_alias('pixel_embed', None)
-        if use_pose_embed and 'pose' in model.embed_enhance.enhancements:
-            _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
-        else:
-            _set_alias('pose_embed', None)
-        if use_uav_adapter and 'uav' in model.embed_enhance.enhancements:
-            _set_alias('uav_adapter', model.embed_enhance.enhancements['uav'])
-        else:
-            _set_alias('uav_adapter', None)
-    
-    return model, processor
+    # Backward compatibility: expose aliases without registering duplicate submodules.
+    def _set_alias(alias_name: str, value) -> None:
+        if hasattr(model, '_modules'):
+            model._modules.pop(alias_name, None)
+        model.__dict__[alias_name] = value
+
+    if use_pixel_embed and 'pixel' in model.embed_enhance.enhancements:
+        _set_alias('pixel_embed', model.embed_enhance.enhancements['pixel'])
+    else:
+        _set_alias('pixel_embed', None)
+    if use_pose_embed and 'pose' in model.embed_enhance.enhancements:
+        _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
+    else:
+        _set_alias('pose_embed', None)
+    if use_uav_adapter and 'uav' in model.embed_enhance.enhancements:
+        _set_alias('uav_adapter', model.embed_enhance.enhancements['uav'])
+    else:
+        _set_alias('uav_adapter', None)
+
+
+class OverlapVLNQwen25VLLoader(Qwen2_5VLLoader):
+    """ms-swift 4.x loader for the OverlapVLN Qwen2.5-VL model."""
+
+    def __init__(self, *args, **kwargs):
+        self._overlapvln_embedding_options = _pop_embedding_options(kwargs)
+        new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
+        for token in OVERLAPVLN_SPECIAL_TOKENS:
+            if token not in new_special_tokens:
+                new_special_tokens.append(token)
+        kwargs['new_special_tokens'] = new_special_tokens
+        super().__init__(*args, **kwargs)
+
+    def get_model(self, model_dir: str, *args, **kwargs):
+        self.auto_model_cls = self.auto_model_cls or OverlapVLNQwen25VLForConditionalGeneration
+        model = super().get_model(model_dir, *args, **kwargs)
+        _attach_embedding_enhancement(
+            model,
+            model_dir,
+            **self._overlapvln_embedding_options,
+        )
+        return model
 
 
 def _restore_enhancement_weights(model, model_dir: str):

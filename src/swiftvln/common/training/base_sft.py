@@ -14,8 +14,8 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional, Type
 
-from swift.llm.dataset import LazyLLMDataset
-from swift.llm.train.sft import SwiftSft
+from swift.dataset import LazyLLMDataset
+from swift.pipelines.train.sft import SwiftSft
 from swift.utils import get_logger
 
 from .mixed_dataset import MixedVLNQADataset

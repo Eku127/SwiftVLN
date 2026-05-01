@@ -13,7 +13,8 @@ set -e  # Exit on error
 # Conda Environment
 # ============================================================================
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate swift-vln-train
+SWIFTVLN_TRAIN_CONDA_ENV="${SWIFTVLN_TRAIN_CONDA_ENV:-swift-vln-train-update}"
+conda activate "$SWIFTVLN_TRAIN_CONDA_ENV"
 
 # ============================================================================
 # GPU Configuration
@@ -294,6 +295,7 @@ POSE_NORM_SCALE="${POSE_NORM_SCALE:-100.0}"
 # Training Parameters
 # ============================================================================
 TRAIN_TYPE="${TRAIN_TYPE:-full}"
+TRAIN_MODE_ARGS=(--tuner_type "$TRAIN_TYPE")
 NUM_EPOCHS="${NUM_EPOCHS:-1}"
 LEARNING_RATE="${LEARNING_RATE:-2e-5}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
@@ -474,12 +476,16 @@ fi
 # explicitly if they need per-step checkpointing.
 SAVE_STEPS="${SAVE_STEPS:-1000}"
 SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-1}"
-LOGGING_STEPS=10
+LOGGING_STEPS="${LOGGING_STEPS:-10}"
 
 # Note: MAX_SAMPLES is a soft cap - if actual samples < MAX_SAMPLES, all available samples are used.
 # Training is controlled by num_train_epochs, not max_steps, so the trainer will iterate
 # over the actual dataset size. This avoids over-iteration when actual samples < MAX_SAMPLES.
+MAX_STEPS="${MAX_STEPS:-}"
 MAX_STEPS_ARG=""
+if [[ -n "$MAX_STEPS" && "$MAX_STEPS" -gt 0 ]]; then
+    MAX_STEPS_ARG="--max_steps $MAX_STEPS"
+fi
 if [[ "$MAX_SAMPLES" -gt 0 ]]; then
     echo "[INFO] MAX_SAMPLES=$MAX_SAMPLES set as upper limit. Training controlled by num_epochs=$NUM_EPOCHS"
     echo "[INFO] If actual samples < MAX_SAMPLES, all available samples will be used."
@@ -707,7 +713,7 @@ torchrun \
     --model_type $MODEL_TYPE \
     --model $MODEL_PATH \
     --dataset $VLN_DATA_PATH \
-    --train_type $TRAIN_TYPE \
+    "${TRAIN_MODE_ARGS[@]}" \
     --torch_dtype bfloat16 \
     --num_train_epochs $NUM_EPOCHS \
     --learning_rate $LEARNING_RATE \

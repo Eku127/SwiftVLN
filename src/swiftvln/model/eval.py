@@ -168,7 +168,7 @@ class OverlapVLNEval(BaseVLNEval):
 
     def load_model(self):
         """Load model and processor with optional pixel embedding module."""
-        from swift.llm import get_model_tokenizer
+        from swift.model import get_model_processor
 
         # Device mapping based on mode
         if self.world_size > 1:
@@ -176,7 +176,7 @@ class OverlapVLNEval(BaseVLNEval):
         else:
             device_map = 'auto'
 
-        model, processor = get_model_tokenizer(
+        model, processor = get_model_processor(
             model_id_or_path=self.args.model_path,
             model_type=self.model_type,
             torch_dtype=torch.bfloat16,
@@ -195,7 +195,7 @@ class OverlapVLNEval(BaseVLNEval):
     
     def load_template(self, processor):
         """Load OverlapVLN template."""
-        from swift.llm import get_template
+        from swift.template import get_template
         
         template = get_template(
             template_type=self.template_type,

@@ -9,7 +9,7 @@ Includes QA mixed training parameters that can be shared.
 from dataclasses import dataclass, field
 from typing import Optional
 
-from swift.llm import TrainArguments
+from swift.arguments import SftArguments as TrainArguments
 
 
 @dataclass

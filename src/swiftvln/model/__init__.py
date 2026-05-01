@@ -51,35 +51,33 @@ print("[OverlapVLN] Template 'overlapvln_qwen2_5_vl' registered successfully!")
 # Model Registration
 # =============================================================================
 
-from swift.llm import register_model, ModelMeta, ModelGroup, Model
-from swift.llm.model import ModelArch, MODEL_MAPPING
+from swift.model import MODEL_MAPPING, Model, ModelArch, ModelGroup, ModelMeta, register_model
 
 from .model import (
+    OverlapVLNQwen25VLLoader,
     OverlapVLNQwen25VLConfig,
     OverlapVLNQwen25VLForConditionalGeneration,
-    get_model_tokenizer_overlapvln_qwen2_5_vl,
 )
 
 # Register OverlapVLN model based on Qwen2.5-VL (only if not already registered)
 if 'overlapvln_qwen2_5_vl' not in MODEL_MAPPING:
-    register_model(
-        ModelMeta(
-            model_type='overlapvln_qwen2_5_vl',
-            model_groups=[
-                ModelGroup([
-                    Model('overlapvln-qwen2.5-vl-3b', 'Qwen/Qwen2.5-VL-3B-Instruct'),
-                    Model('overlapvln-qwen2.5-vl-7b', 'Qwen/Qwen2.5-VL-7B-Instruct'),
-                ])
-            ],
-            template='overlapvln_qwen2_5_vl',  # Use custom template with compression
-            get_function=get_model_tokenizer_overlapvln_qwen2_5_vl,
-            model_arch=ModelArch.qwen2_vl,
-            architectures=['OverlapVLNQwen25VLForConditionalGeneration'],
-            requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6'],
-            tags=['vision', 'vln', 'navigation', 'compression'],
-            is_multimodal=True,
-        )
+    model_meta_kwargs = dict(
+        model_type='overlapvln_qwen2_5_vl',
+        model_groups=[
+            ModelGroup([
+                Model('overlapvln-qwen2.5-vl-3b', 'Qwen/Qwen2.5-VL-3B-Instruct'),
+                Model('overlapvln-qwen2.5-vl-7b', 'Qwen/Qwen2.5-VL-7B-Instruct'),
+            ])
+        ],
+        template='overlapvln_qwen2_5_vl',  # Use custom template with compression
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['OverlapVLNQwen25VLForConditionalGeneration'],
+        requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6'],
+        tags=['vision', 'vln', 'navigation', 'compression'],
+        is_multimodal=True,
     )
+    model_meta_kwargs['loader'] = OverlapVLNQwen25VLLoader
+    register_model(ModelMeta(**model_meta_kwargs))
     print("[OverlapVLN] Model 'overlapvln_qwen2_5_vl' registered successfully!")
 
 
@@ -93,9 +91,9 @@ from swiftvln.common import HistoryTokenCompressor
 
 __all__ = [
     # Model
+    'OverlapVLNQwen25VLLoader',
     'OverlapVLNQwen25VLConfig',
     'OverlapVLNQwen25VLForConditionalGeneration',
-    'get_model_tokenizer_overlapvln_qwen2_5_vl',
     # Template
     'OverlapVLNQwen25VLTemplate',
     'HISTORY_IMAGE_TOKEN',

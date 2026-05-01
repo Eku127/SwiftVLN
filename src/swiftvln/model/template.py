@@ -17,11 +17,11 @@ from typing import Any, Dict, List, Literal, Optional
 
 import torch
 
-from swift.llm.template.template.qwen import Qwen2_5VLTemplate, QwenTemplateMeta
-from swift.llm.template import register_template
-from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.llm.template.utils import Context, findall
-from swift.llm.template.base import to_device
+from swift.template import Template, register_template
+from swift.template.base import to_device
+from swift.template.template_inputs import StdTemplateInputs
+from swift.template.templates.qwen import Qwen2_5VLTemplate, QwenTemplateMeta
+from swift.template.utils import Context, findall
 
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
 from swiftvln.common.history_processors import (
@@ -273,8 +273,6 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
         - History: total_tokens = sum(compressed_tokens for each history image)
         - Current: token_len = grid_thw.prod() // merge_length
         """
-        from swift.llm.template.base import Template
-        
         # Call grandparent's _encode to get basic encoding without image processing
         encoded = Template._encode(self, inputs)
         

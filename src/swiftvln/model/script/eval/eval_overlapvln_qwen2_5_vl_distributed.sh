@@ -23,7 +23,8 @@ export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.js
 # Conda Environment
 # ============================================================================
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate swift-vln-eval
+SWIFTVLN_EVAL_CONDA_ENV="${SWIFTVLN_EVAL_CONDA_ENV:-swift-vln-eval-update}"
+conda activate "$SWIFTVLN_EVAL_CONDA_ENV"
 
 # ============================================================================
 # GPU Configuration

@@ -10,7 +10,7 @@ enable training with both VLN and QA data.
 import os
 from typing import Optional, Tuple, Any
 
-from swift.llm.dataset import LazyLLMDataset, load_dataset
+from swift.dataset import LazyLLMDataset, load_dataset
 from swift.utils import get_logger
 
 from .mixed_dataset import MixedVLNQADataset

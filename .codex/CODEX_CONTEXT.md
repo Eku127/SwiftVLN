@@ -1204,6 +1204,47 @@ Stage-A 当前验证状态（2026-04-03）：
   - 若动作队列在这张反馈图上耗尽，则立刻用该图再次推理
   - 若模型输出无法解析动作，fallback 为 `[STOP]`
 
+## ms-swift 4.x Adaptation (Updated: 2026-04-30)
+
+- 本仓库当前 `ms-swift-refactor` 分支正在适配最新 ms-swift。
+- 保护约定：
+  - 不修改旧环境 `swift-vln-train` / `swift-vln-eval`
+  - 不修改旧仓库 `/mnt/data1/home/jiangjiajun/workspace/ms-swift`
+  - 仅使用 update 环境：`swift-vln-train-update` / `swift-vln-eval-update`
+- update 环境当前从旧 train/eval 环境克隆后安装：
+  - `/mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset`
+  - 版本：`ms-swift 4.2.0.dev0`
+  - commit：`ad7d5c515 [docs] fix docs (#9244)`
+- SwiftVLN 当前直接使用 ms-swift 4.x API：
+  - `swift.arguments.SftArguments`
+  - `swift.dataset.*`
+  - `swift.model.*`
+  - `swift.template.*`
+  - `swift.pipelines.train.sft.SwiftSft`
+  - 不再保留 `swift.llm.*` / ms-swift 3.x fallback
+- OverlapVLN 模型注册：
+  - 直接使用 `OverlapVLNQwen25VLLoader`
+  - `ModelMeta` 使用 `loader=OverlapVLNQwen25VLLoader`
+  - 特殊 token 仍为 `<history_image>` / `<history_memory>` / `<current_image>`
+- 默认脚本环境：
+  - train 脚本默认激活 `swift-vln-train-update`
+  - eval distributed 脚本默认激活 `swift-vln-eval-update`
+  - 可分别通过 `SWIFTVLN_TRAIN_CONDA_ENV` / `SWIFTVLN_EVAL_CONDA_ENV` 覆盖回其他环境
+- Qwen3/Qwen3.5 可行性报告：
+  - `reports/ms_swift_qwen3_future.md`
+  - 结论：可适配，但需要模型族抽象，不能只替换 `model_type` / `model_path`
+- 已验证 smoke：
+  - 73 机 8 卡 train smoke：
+    - `MAX_SAMPLES=128 MAX_STEPS=2 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1`
+    - 输出：`output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260430-173751/v0-20260430-173826/checkpoint-2`
+    - 训练日志：`/tmp/smoke_overlapvln_ms_swift4_direct_train.log`
+    - loss：step1 `1.22701669` -> step2 `1.15895748`，有限、无 NaN/inf
+  - 73 机 eval smoke：
+    - `MAX_EPISODES=2 EVAL_SPLIT=val_seen CUDA_DEVICES=0,1`
+    - 结果：`results/eval/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260430-173751/val_seen/20260430_174342/evaluation_summary.json`
+    - eval 日志：`/tmp/smoke_overlapvln_ms_swift4_direct_eval.log`
+    - summary：`total_episodes=2`，`world_size=2`
+
 ## Commit Style
 
 - 使用 conventional commit：`feat/fix/refactor/docs/test/perf/chore`
