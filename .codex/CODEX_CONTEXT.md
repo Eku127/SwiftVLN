@@ -176,6 +176,46 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `BATCH_SIZE=12`
     - `LEARNING_RATE=2e-5`
     - 其余 baseline 配置保持不变
+- OverlapVLN `Qwen2.5-VL-32B` 17 机启动约定（Updated: 2026-05-05）：
+  - 本地离线模型路径：
+    - `/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-32B-Instruct`
+  - 17 机 `streamvln-container` 内没有 `tmux`，32B 长跑采用 **17 host tmux + docker exec 容器训练**：
+    - launcher: `runtime/tmp/launch_qwen25_32b_17.sh`
+    - config: `runtime/train_queue/qwen25_vl_32b_0418.env`
+  - 2026-05-05 实测：
+    - `BATCH_SIZE=1`
+    - `GRAD_ACCUM_STEPS=8`（8 卡有效 batch=64）
+    - `USE_DEEPSPEED=true`
+    - `DEEPSPEED_CONFIG=zero3`
+    - `MAX_LENGTH=24576`
+    - `FREEZE_VIT=true`
+    - `DATALOADER_PIN_MEMORY=false`
+    - `DATALOADER_NUM_WORKERS=2`
+    - `DATALOADER_PREFETCH_FACTOR=2`
+    - `DATASET_NUM_PROC=1`
+  - 保持 overlapvln 当前 default 语义配置：
+    - `SatNav0418`
+    - `NUM_FRAMES=32`
+    - `NUM_FUTURE_STEPS=4`
+    - `NUM_OVERLAP=0`
+    - `HISTORY_PROCESSOR_TYPE=per_frame`
+    - `NUM_HISTORY=8`
+    - `COMPRESS_STRIDE=2`
+    - no pixel/pose/uav embed
+  - `zero3_offload` 在当前 17 环境会触发
+    `AttributeError: 'DeepSpeedCPUAdam' object has no attribute 'ds_opt_adam'`，
+    因此不作为默认选择。
+  - 训练脚本已修正 CUDA allocator 环境变量：
+    - 使用 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+    - 不再使用无效的 `PYTORCH_ALLOC_CONF`
+  - 不带 `FREEZE_VIT=true` 或未修正 allocator 时，32B 会在前 1-2 step 附近 OOM。
+  - 2026-05-05 73 机重启 32B 时新增队列配置：
+    - `runtime/train_queue/qwen25_vl_32b_0418_73_nomidckpt.env`
+    - 训练超参与 17/原 73 配置一致，仅将 `SAVE_STEPS=5000`，跳过 step-1000
+      中间 checkpoint，避免再次在中间保存阶段中止。
+    - 已启动 session：`train_q25vl32b73_restart_224552`
+    - 日志：`logs/train_launch/train_q25vl32b73_restart_224552.log`
+    - 输出：`output/overlapvln/overlapvln-satnav-stage1-32b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260505-224602`
 - OverlapVLN no-memory / per-frame naming 配置约定（Updated: 2026-04-20）：
   - 训练脚本：`src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
   - 数据集：`src/swiftvln/model/dataset.py`
@@ -1233,7 +1273,51 @@ Stage-A 当前验证状态（2026-04-03）：
 - Qwen3/Qwen3.5 可行性报告：
   - `reports/ms_swift_qwen3_future.md`
   - 结论：可适配，但需要模型族抽象，不能只替换 `model_type` / `model_path`
+- Qwen3-VL 适配重构（Updated: 2026-05-01）：
+  - 当前主线已保留 `overlapvln_qwen2_5_vl` 并新增 `overlapvln_qwen3_vl`
+  - 共享逻辑：
+    - streaming KV-cache 状态管理
+    - `<history_image>` / `<history_memory>` / `<current_image>` 注入
+    - `embed_enhance` pipeline 创建、迁移到目标 device/dtype、checkpoint 权重恢复
+  - 模板实现：
+    - Qwen2.5 继续基于 ms-swift `Qwen2_5VLTemplate`
+    - Qwen3 基于 ms-swift `Qwen3VLTemplate`
+    - history/current 图像展开与压缩逻辑通过 OverlapVLN mixin 复用
+    - Qwen3 visual encoder 返回 `pooler_output/deepstack_features` 或 tuple；训练模板与 evaluator 均需先归一化为 pooled visual tokens
+  - Qwen3 DeepSpeed 兼容：
+    - ms-swift Qwen3-VL DeepSpeed patch 在 `inputs_embeds` 路径仍会访问 `input_ids.device`
+    - `OverlapVLNQwen3VLLoader` 会给 `model.model.forward` 加窄补丁：仅当 OverlapVLN 已经把视觉特征注入 `inputs_embeds` 且没有原始 pixel media 时，直接进入 Qwen3 language stack
+  - 脚本选择：
+    - `MODEL_FAMILY=qwen2_5_vl`（默认） -> `MODEL_TYPE=overlapvln_qwen2_5_vl`
+    - `MODEL_FAMILY=qwen3_vl` -> `MODEL_TYPE=overlapvln_qwen3_vl`
+    - Qwen3 默认 base model：
+      `/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct`
+    - Qwen3 8B 可通过 `STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct` 覆盖
+  - 实验命名：
+    - Qwen2.5 保持旧格式，不额外加 family tag
+    - Qwen3 名字包含 `qwen3vl-`，例如 `overlapvln-satnav-stage1-qwen3vl-2b-...`
+  - `eval_by_name.sh` 会从模型名中的 `qwen3vl` 解析 `MODEL_FAMILY=qwen3_vl`
+  - README 当前只保留 conda 环境安装与 smoke 命令
+  - Qwen3.5 仍未注册为可运行模型；当前 update 环境缺少 `transformers.models.qwen3_5`，后续必须使用独立环境
+  - Qwen3 2B 下载/同步状态：
+    - 2026-05-01 98 上 `Qwen3-VL-2B-Instruct` 已下载完成并同步到 73：
+      `/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct`
+    - 73 上已验证 `overlapvln_qwen3_vl` + `load_model=False` 可正常加载 `Qwen3VLProcessor` / `OverlapVLNQwen3VLTemplate`
+    - 同目录存在 Hugging Face 下载残留 `.cache/huggingface/download/*.incomplete`；实际加载所需 `model.safetensors` 与 `config.json` 已和 98 hash 一致
 - 已验证 smoke：
+  - 2026-05-01 Qwen2.5 73 机 train/eval smoke：
+    - train：`MODEL_FAMILY=qwen2_5_vl MAX_SAMPLES=16 MAX_STEPS=2 TRAIN_NUM_GPUS=2`
+    - loss：step1 `1.28262424` -> step2 `0.92245096`，有限、无 NaN/inf
+    - eval：`MODEL_FAMILY=qwen2_5_vl MAX_EPISODES=1 CUDA_DEVICES=0,1 EVAL_SPLIT=val_seen`
+    - summary：`total_episodes=1`，`world_size=2`
+    - 本轮 smoke output/results/log 已清理
+  - 2026-05-01 Qwen3-VL 8B 73 机 train/eval smoke：
+    - base model：`/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct`
+    - train：`MODEL_FAMILY=qwen3_vl NUM_FRAMES=8 NUM_HISTORY=2 NUM_FUTURE_STEPS=2 MAX_SAMPLES=8 MAX_STEPS=1 TRAIN_NUM_GPUS=8`
+    - loss：step1 `5.48239994`，有限、无 NaN/inf；单步约 245s，保存后总 runtime 约 478s
+    - eval：`MODEL_FAMILY=qwen3_vl NUM_FRAMES=8 NUM_HISTORY=2 NUM_FUTURE_STEPS=2 MAX_EPISODES=1 CUDA_DEVICES=0,1 EVAL_SPLIT=val_seen`
+    - summary：`total_episodes=1`，`world_size=2`
+    - 本轮 smoke output/results/log 已清理
   - 73 机 8 卡 train smoke：
     - `MAX_SAMPLES=128 MAX_STEPS=2 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1`
     - 输出：`output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260430-173751/v0-20260430-173826/checkpoint-2`

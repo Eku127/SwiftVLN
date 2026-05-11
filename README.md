@@ -1,82 +1,129 @@
-# SwiftVLN
+# SwiftVLN Environment Setup
 
-SwiftVLN 是从 `ms-swift/examples/vln` 迁移出来的独立仓库，当前代码已重构为包结构并移除 `examples/vln` 路径。
+This repository uses the `ms-swift` 4.x API. Do not use the old
+`swift-vln-train` / `swift-vln-eval` environments for current OverlapVLN work.
 
-## 目录结构
-
-- `src/swiftvln/model/`: 主线 OverlapVLN 模型实现
-- `src/swiftvln/common/`: 通用训练与评估基础组件
-- `src/swiftvln/configs/`: Habitat/SatNav 配置
-- `src/swiftvln/scripts/`: 训练/评测队列与数据处理脚本
-- `src/swiftvln/cli.py`: 统一 CLI 入口
-
-说明：当前主线仓库只保留 `overlapvln`；其他历史模型实现已移除。基线实现仍保留在 `baseline/` 下。
-
-## 安装
+## Train Environment
 
 ```bash
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda create -n swift-vln-train-update --clone swift-vln-train
+conda activate swift-vln-train-update
+
+cd /mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset
+pip install -e .
+
+pip install "transformers>=4.57,<5.0" "qwen-vl-utils>=0.0.14" decord -U
+
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 pip install -e .
 ```
 
-## CLI 用法
+Expected key versions:
 
 ```bash
-# 训练
-swiftvln train --model overlapvln -- --model_type overlapvln_qwen2_5_vl ...
-
-# 评测
-swiftvln eval --model overlapvln -- --model_path /path/to/checkpoint --env-type habitat ...
-
-# 本地部署
-swiftvln deploy --model overlapvln
-
-# 队列
-swiftvln queue train
-swiftvln queue eval
+python - <<'PY'
+import importlib.metadata as m
+for p in ["ms-swift", "transformers", "qwen-vl-utils", "decord", "flash-attn", "deepspeed"]:
+    print(p, m.version(p))
+PY
 ```
 
-说明：`--` 后参数会原样透传给对应模型的训练/评测入口。
-
-## 本地部署
-
-当前仓库已提供 `overlapvln` 的本地部署入口，默认会自动选择本机一张空闲 H100。
-
-如果不显式指定 `model_name`，deploy 默认使用：
+Current validated baseline:
 
 ```text
-output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050
+ms-swift 4.2.0.dev0
+transformers 4.57.3
+qwen-vl-utils 0.0.14
 ```
 
-最简启动：
+## Eval Environment
 
 ```bash
-conda activate swift-vln-eval
-bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda create -n swift-vln-eval-update --clone swift-vln-eval
+conda activate swift-vln-eval-update
+
+cd /mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset
+pip install -e .
+
+pip install "transformers>=4.57,<5.0" "qwen-vl-utils>=0.0.14" decord -U
+
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+pip install -e .
 ```
 
-单次 session：
+## Model Cache
+
+Qwen2.5-VL default:
+
+```text
+/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct
+```
+
+Qwen3-VL default after the 2B model is fully cached:
+
+```text
+/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct
+```
+
+Current validated Qwen3-VL 8B smoke path on 73:
+
+```text
+/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct
+```
+
+## Smoke Commands
+
+Qwen2.5-VL train smoke:
 
 ```bash
-bash src/swiftvln/scripts/deploy/run_deploy_session.sh /abs/path/to/requests.jsonl
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda activate swift-vln-train-update
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+
+MODEL_FAMILY=qwen2_5_vl VLN_ENV_TYPE=satnav \
+MAX_SAMPLES=16 MAX_STEPS=2 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
+USE_SWANLAB=false USE_WXWORK_NOTIFICATION=false TRAIN_NUM_GPUS=2 \
+bash src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh
 ```
 
-如果要覆盖默认模型：
+Qwen3-VL 8B train smoke:
 
 ```bash
-swiftvln deploy --model overlapvln --model-name <EXP_NAME>
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda activate swift-vln-train-update
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+
+MODEL_FAMILY=qwen3_vl \
+STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct \
+VLN_ENV_TYPE=satnav NUM_FRAMES=8 NUM_HISTORY=2 NUM_FUTURE_STEPS=2 \
+MAX_SAMPLES=8 MAX_STEPS=1 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
+USE_SWANLAB=false USE_WXWORK_NOTIFICATION=false TRAIN_NUM_GPUS=8 \
+bash src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh
 ```
 
-更完整的协议、JSONL 示例和目录结构说明见：
+Eval smoke for either model:
 
-- `src/swiftvln/deployment/README.md`
+```bash
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda activate swift-vln-eval-update
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 
-## 兼容脚本
+MODEL_FAMILY=<qwen2_5_vl_or_qwen3_vl> ENV_TYPE=satnav EVAL_SPLIT=val_seen \
+MAX_EPISODES=2 CUDA_DEVICES=0,1 \
+bash src/swiftvln/scripts/eval/eval_by_name.sh <overlapvln_exp_name>
+```
 
-仍可直接使用脚本入口（已切换到新路径）：
+For the Qwen3-VL 8B smoke above, keep eval parameters aligned with training:
 
-- `bash src/swiftvln/scripts/train/train_queue.sh`
-- `bash src/swiftvln/scripts/eval/eval_by_name.sh <model_name>`
-- `bash src/swiftvln/scripts/eval/eval_queue.sh`
+```bash
+MODEL_FAMILY=qwen3_vl ENV_TYPE=satnav EVAL_SPLIT=val_seen \
+NUM_FRAMES=8 NUM_HISTORY=2 NUM_FUTURE_STEPS=2 MAX_EPISODES=1 CUDA_DEVICES=0,1 \
+MODEL_PATH=<checkpoint_path> \
+bash src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh
+```
 
-脚本会自动设置 `PYTHONPATH=${SWIFTVLN_ROOT}/src`。
+Qwen3.5 is not supported by these update environments. Use a separate
+Qwen3.5 environment with a Transformers build that provides
+`transformers.models.qwen3_5`.
