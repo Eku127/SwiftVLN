@@ -1,25 +1,23 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-OverlapVLN Model based on Qwen2.5-VL
+OverlapVLN models based on Qwen VL families.
 
-This module provides a OverlapVLN model that inherits from Qwen2.5-VL.
-The key addition is registering custom special tokens for differentiated
-image compression:
+This module provides OverlapVLN model wrappers for Qwen2.5-VL and Qwen3-VL.
+The key additions are registering custom special tokens for differentiated
+image compression and attaching optional embedding enhancements:
 - <history_image>: For history frames (will be compressed)
+- <history_memory>: Unified history memory block
 - <current_image>: For current frames (no compression)
-
-Architecture:
-    OverlapVLNQwen25VLForConditionalGeneration
-            ↓ inherits
-    Qwen2_5_VLForConditionalGeneration (from transformers)
 """
 
 import json
 import os
+from types import MethodType
 
 import torch
-from swift.model.models.qwen import Qwen2_5VLLoader
-from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLConfig
+from swift.model.models.qwen import Qwen2_5VLLoader, Qwen3VLLoader
+from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration
+from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration
 
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
 
@@ -28,45 +26,17 @@ HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
 OVERLAPVLN_SPECIAL_TOKENS = [HISTORY_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
 
 
-class OverlapVLNQwen25VLConfig(Qwen2_5_VLConfig):
+class OverlapVLNStreamingMixin:
     """
-    Configuration for OverlapVLN model based on Qwen2.5-VL.
-    
-    Inherits all configuration from Qwen2_5_VLConfig.
+    KV-cache state management shared by OverlapVLN Qwen-family wrappers.
     """
-    model_type = "overlapvln_qwen2_5_vl"
 
-
-class OverlapVLNQwen25VLForConditionalGeneration(Qwen2_5_VLForConditionalGeneration):
-    """
-    OverlapVLN model for Visual Language Navigation based on Qwen2.5-VL.
-    
-    This model directly inherits from Qwen2_5_VLForConditionalGeneration.
-    The ms-swift framework handles all multimodal processing through
-    the OverlapVLN template (OverlapVLNQwen25VLTemplate).
-    
-    Key features:
-    - Custom special tokens for history/current image differentiation
-    - All compression logic is handled in the template's _post_encode()
-    - Streaming inference state management (KV cache)
-    """
-    
-    config_class = OverlapVLNQwen25VLConfig
-
-    # =====================================================
-    # Streaming Inference State Management
-    # =====================================================
-    # These methods implement the KV cache management for streaming
-    # inference, following the original StreamVLN's approach.
-    # The cache allows efficient multi-turn inference within
-    # num_frames windows.
-    
     def reset(self, env_num: int = 1):
         """
         Initialize KV cache for multiple environments.
-        
+
         MUST be called before evaluation starts!
-        
+
         Args:
             env_num: Number of parallel environments
         """
@@ -77,9 +47,9 @@ class OverlapVLNQwen25VLForConditionalGeneration(Qwen2_5_VLForConditionalGenerat
     def reset_for_env(self, env_idx: int):
         """
         Reset KV cache for a single environment.
-        
+
         Called at the start of each episode and every num_frames steps.
-        
+
         Args:
             env_idx: Environment index to reset
         """
@@ -98,10 +68,10 @@ class OverlapVLNQwen25VLForConditionalGeneration(Qwen2_5_VLForConditionalGenerat
     def get_cache(self, env_idx: int):
         """
         Get past_key_values cache for a specific environment.
-        
+
         Args:
             env_idx: Environment index
-            
+
         Returns:
             past_key_values or None if not cached
         """
@@ -112,7 +82,7 @@ class OverlapVLNQwen25VLForConditionalGeneration(Qwen2_5_VLForConditionalGenerat
     def update_cache(self, env_idx: int, past_key_values):
         """
         Update past_key_values cache for a specific environment.
-        
+
         Args:
             env_idx: Environment index
             past_key_values: KV cache from model.generate()
@@ -132,10 +102,10 @@ class OverlapVLNQwen25VLForConditionalGeneration(Qwen2_5_VLForConditionalGenerat
     def get_step_count(self, env_idx: int) -> int:
         """
         Get current step count for an environment.
-        
+
         Args:
             env_idx: Environment index
-            
+
         Returns:
             Current step count
         """
@@ -144,12 +114,144 @@ class OverlapVLNQwen25VLForConditionalGeneration(Qwen2_5_VLForConditionalGenerat
         return 0
 
 
+class OverlapVLNQwen25VLConfig(Qwen2_5_VLConfig):
+    """Configuration for OverlapVLN model based on Qwen2.5-VL."""
+
+    model_type = "overlapvln_qwen2_5_vl"
+
+
+class OverlapVLNQwen25VLForConditionalGeneration(
+    OverlapVLNStreamingMixin,
+    Qwen2_5_VLForConditionalGeneration,
+):
+    """OverlapVLN model wrapper for Qwen2.5-VL."""
+
+    config_class = OverlapVLNQwen25VLConfig
+
+
+class OverlapVLNQwen3VLConfig(Qwen3VLConfig):
+    """Configuration for OverlapVLN model based on Qwen3-VL."""
+
+    model_type = "overlapvln_qwen3_vl"
+
+
+class OverlapVLNQwen3VLForConditionalGeneration(
+    OverlapVLNStreamingMixin,
+    Qwen3VLForConditionalGeneration,
+):
+    """OverlapVLN model wrapper for Qwen3-VL."""
+
+    config_class = OverlapVLNQwen3VLConfig
+
+
+def _patch_qwen3_inputs_embeds_only_forward(qwen3_model) -> None:
+    """
+    Support the OverlapVLN path where visual features have already been injected
+    into inputs_embeds before the Qwen3-VL submodel forward.
+    """
+    if getattr(qwen3_model, '_overlapvln_inputs_embeds_only_patch', False):
+        return
+
+    from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLModelOutputWithPast
+
+    origin_forward = qwen3_model.forward
+
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        position_ids=None,
+        past_key_values=None,
+        inputs_embeds=None,
+        pixel_values=None,
+        pixel_values_videos=None,
+        image_grid_thw=None,
+        video_grid_thw=None,
+        cache_position=None,
+        **kwargs,
+    ):
+        overlapvln_embeds_only = (
+            inputs_embeds is not None
+            and input_ids is None
+            and pixel_values is None
+            and pixel_values_videos is None
+        )
+        if not overlapvln_embeds_only:
+            return origin_forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                pixel_values=pixel_values,
+                pixel_values_videos=pixel_values_videos,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=video_grid_thw,
+                cache_position=cache_position,
+                **kwargs,
+            )
+
+        if position_ids is None:
+            attention_mask_tensor = attention_mask
+            if isinstance(attention_mask_tensor, dict):
+                attention_mask_tensor = attention_mask_tensor.get('full_attention')
+            if attention_mask_tensor is not None and attention_mask_tensor.ndim == 4:
+                attention_mask_tensor = torch.diagonal(attention_mask_tensor[:, 0], dim1=1, dim2=2)
+                if attention_mask_tensor.dtype.is_floating_point:
+                    attention_mask_tensor = attention_mask_tensor / torch.finfo(attention_mask_tensor.dtype).min
+                    attention_mask_tensor = (1.0 - attention_mask_tensor).int()
+
+            batch_size, seq_length, _ = inputs_embeds.shape
+            if attention_mask_tensor is not None:
+                position_ids = attention_mask_tensor.long().cumsum(-1) - 1
+                position_ids.masked_fill_(attention_mask_tensor == 0, 1)
+                position_ids = position_ids.unsqueeze(0).expand(3, -1, -1).to(inputs_embeds.device)
+                max_position_ids = position_ids.max(0, keepdim=False)[0].max(-1, keepdim=True)[0]
+                self.rope_deltas = max_position_ids + 1 - attention_mask_tensor.shape[-1]
+            else:
+                position_ids = (
+                    torch.arange(seq_length, device=inputs_embeds.device)
+                    .view(1, 1, -1)
+                    .expand(3, batch_size, -1)
+                )
+                self.rope_deltas = torch.zeros(
+                    [batch_size, 1],
+                    device=inputs_embeds.device,
+                    dtype=torch.long,
+                )
+
+        outputs = self.language_model(
+            input_ids=None,
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            cache_position=cache_position,
+            visual_pos_masks=None,
+            deepstack_visual_embeds=None,
+            **kwargs,
+        )
+
+        return Qwen3VLModelOutputWithPast(
+            last_hidden_state=outputs.last_hidden_state,
+            past_key_values=outputs.past_key_values,
+            rope_deltas=self.rope_deltas,
+        )
+
+    qwen3_model._overlapvln_origin_forward = origin_forward
+    qwen3_model.forward = MethodType(forward, qwen3_model)
+    qwen3_model._overlapvln_inputs_embeds_only_patch = True
+
+
 # Register model for auto loading with transformers
 try:
     from transformers import AutoModel, AutoModelForCausalLM, AutoConfig
     AutoConfig.register("overlapvln_qwen2_5_vl", OverlapVLNQwen25VLConfig)
     AutoModel.register(OverlapVLNQwen25VLConfig, OverlapVLNQwen25VLForConditionalGeneration)
     AutoModelForCausalLM.register(OverlapVLNQwen25VLConfig, OverlapVLNQwen25VLForConditionalGeneration)
+    AutoConfig.register("overlapvln_qwen3_vl", OverlapVLNQwen3VLConfig)
+    AutoModel.register(OverlapVLNQwen3VLConfig, OverlapVLNQwen3VLForConditionalGeneration)
+    AutoModelForCausalLM.register(OverlapVLNQwen3VLConfig, OverlapVLNQwen3VLForConditionalGeneration)
 except Exception:
     pass
 
@@ -265,6 +367,31 @@ class OverlapVLNQwen25VLLoader(Qwen2_5VLLoader):
     def get_model(self, model_dir: str, *args, **kwargs):
         self.auto_model_cls = self.auto_model_cls or OverlapVLNQwen25VLForConditionalGeneration
         model = super().get_model(model_dir, *args, **kwargs)
+        _attach_embedding_enhancement(
+            model,
+            model_dir,
+            **self._overlapvln_embedding_options,
+        )
+        return model
+
+
+class OverlapVLNQwen3VLLoader(Qwen3VLLoader):
+    """ms-swift 4.x loader for the OverlapVLN Qwen3-VL model."""
+
+    def __init__(self, *args, **kwargs):
+        self._overlapvln_embedding_options = _pop_embedding_options(kwargs)
+        new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
+        for token in OVERLAPVLN_SPECIAL_TOKENS:
+            if token not in new_special_tokens:
+                new_special_tokens.append(token)
+        kwargs['new_special_tokens'] = new_special_tokens
+        super().__init__(*args, **kwargs)
+
+    def get_model(self, model_dir: str, *args, **kwargs):
+        self.auto_model_cls = self.auto_model_cls or OverlapVLNQwen3VLForConditionalGeneration
+        model = super().get_model(model_dir, *args, **kwargs)
+        if model is not None and hasattr(model, 'model'):
+            _patch_qwen3_inputs_embeds_only_forward(model.model)
         _attach_embedding_enhancement(
             model,
             model_dir,

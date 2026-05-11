@@ -46,6 +46,12 @@ class OverlapVLNEval(BaseVLNEval):
     
     def add_model_specific_args(self, parser):
         """Add OverlapVLN-specific arguments."""
+        parser.add_argument("--model_type", type=str, default=self.model_type,
+                            choices=["overlapvln_qwen2_5_vl", "overlapvln_qwen3_vl"],
+                            help="Registered OverlapVLN model type")
+        parser.add_argument("--template_type", type=str, default=self.template_type,
+                            choices=["overlapvln_qwen2_5_vl", "overlapvln_qwen3_vl"],
+                            help="Registered OverlapVLN template type")
         parser.add_argument("--num_overlap", type=int, default=0,
                             help="Number of overlapping actions between windows")
         parser.add_argument("--use_tome", action="store_true",
@@ -111,6 +117,10 @@ class OverlapVLNEval(BaseVLNEval):
     def get_summary_extras(self):
         """Add OverlapVLN-specific summary fields."""
         extras = super().get_summary_extras()
+        if hasattr(self.args, 'model_type'):
+            extras['model_type'] = self.args.model_type
+        if hasattr(self.args, 'template_type'):
+            extras['template_type'] = self.args.template_type
         if hasattr(self.args, 'num_overlap'):
             extras['num_overlap'] = self.args.num_overlap
         if hasattr(self.args, 'history_processor_type'):
@@ -178,7 +188,7 @@ class OverlapVLNEval(BaseVLNEval):
 
         model, processor = get_model_processor(
             model_id_or_path=self.args.model_path,
-            model_type=self.model_type,
+            model_type=self.args.model_type,
             torch_dtype=torch.bfloat16,
             device_map=device_map,
             attn_impl='flash_attn',
@@ -198,7 +208,7 @@ class OverlapVLNEval(BaseVLNEval):
         from swift.template import get_template
         
         template = get_template(
-            template_type=self.template_type,
+            template_type=self.args.template_type,
             processor=processor
         )
         

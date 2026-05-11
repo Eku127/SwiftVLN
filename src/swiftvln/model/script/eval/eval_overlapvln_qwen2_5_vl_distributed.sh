@@ -1,5 +1,5 @@
 #!/bin/bash
-# OverlapVLN Distributed Evaluation Script - Qwen2.5-VL (ms-swift)
+# OverlapVLN Distributed Evaluation Script - Qwen VL families (ms-swift)
 # 
 # Usage:
 #   # Habitat evaluation (default)
@@ -37,6 +37,25 @@ MASTER_PORT="${MASTER_PORT:-29600}"
 # Model Configuration
 # ============================================================================
 MODEL_PATH="${MODEL_PATH:-/path/to/your/trained/checkpoint}"
+MODEL_FAMILY="${MODEL_FAMILY:-qwen2_5_vl}"  # qwen2_5_vl | qwen3_vl
+case "$MODEL_FAMILY" in
+    qwen2_5_vl|qwen25|qwen2.5)
+        MODEL_FAMILY="qwen2_5_vl"
+        DEFAULT_MODEL_TYPE="overlapvln_qwen2_5_vl"
+        DEFAULT_TEMPLATE_TYPE="overlapvln_qwen2_5_vl"
+        ;;
+    qwen3_vl|qwen3)
+        MODEL_FAMILY="qwen3_vl"
+        DEFAULT_MODEL_TYPE="overlapvln_qwen3_vl"
+        DEFAULT_TEMPLATE_TYPE="overlapvln_qwen3_vl"
+        ;;
+    *)
+        echo "[ERROR] Unknown MODEL_FAMILY: $MODEL_FAMILY. Available: qwen2_5_vl, qwen3_vl."
+        exit 1
+        ;;
+esac
+MODEL_TYPE="${MODEL_TYPE:-$DEFAULT_MODEL_TYPE}"
+TEMPLATE_TYPE="${TEMPLATE_TYPE:-$DEFAULT_TEMPLATE_TYPE}"
 
 # ============================================================================
 # Environment Type Configuration
@@ -189,6 +208,9 @@ echo "=============================================="
 echo "OverlapVLN Distributed Evaluation"
 echo "=============================================="
 echo "Environment:     ${ENV_TYPE}"
+echo "Model Family:    ${MODEL_FAMILY}"
+echo "Model Type:      ${MODEL_TYPE}"
+echo "Template Type:   ${TEMPLATE_TYPE}"
 echo "Config Path:     ${CONFIG_PATH}"
 echo "Model Path:      ${MODEL_PATH}"
 echo "Eval Split:      ${EVAL_SPLIT}"
@@ -329,6 +351,8 @@ EVAL_CMD=(
     --master_port="${MASTER_PORT}"
     -m swiftvln.model.eval
     --model_path "${MODEL_PATH}"
+    --model_type "${MODEL_TYPE}"
+    --template_type "${TEMPLATE_TYPE}"
     --env-type "${ENV_TYPE}"
     --habitat_config_path "${VLN_DIR}/${CONFIG_PATH}"
     --satnav-config "${VLN_DIR}/${CONFIG_PATH}"

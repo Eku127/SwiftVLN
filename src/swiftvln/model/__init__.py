@@ -6,7 +6,7 @@ This module provides VLN (Visual Language Navigation) training support with
 history frame compression using Qwen2.5-VL as the base model.
 
 Components:
-    1. Model Registration - Registers OverlapVLN model type with ms-swift
+    1. Model Registration - Registers OverlapVLN model types with ms-swift
     2. Template - Custom template with differentiated compression for history/current images
     3. Dataset - Extended VLN dataset using <history_image>/<current_image> tokens
     4. Training Arguments - OverlapVLN-specific parameters (compress_stride, etc.)
@@ -41,10 +41,15 @@ Architecture:
 # Template Registration (must be before model registration)
 # =============================================================================
 
-# Import and register the custom template FIRST
-from .template import OverlapVLNQwen25VLTemplate, HISTORY_IMAGE_TOKEN, CURRENT_IMAGE_TOKEN
+# Import and register the custom templates FIRST
+from .template import (
+    OverlapVLNQwen25VLTemplate,
+    OverlapVLNQwen3VLTemplate,
+    HISTORY_IMAGE_TOKEN,
+    CURRENT_IMAGE_TOKEN,
+)
 
-print("[OverlapVLN] Template 'overlapvln_qwen2_5_vl' registered successfully!")
+print("[OverlapVLN] Templates registered successfully!")
 
 
 # =============================================================================
@@ -55,8 +60,11 @@ from swift.model import MODEL_MAPPING, Model, ModelArch, ModelGroup, ModelMeta, 
 
 from .model import (
     OverlapVLNQwen25VLLoader,
+    OverlapVLNQwen3VLLoader,
     OverlapVLNQwen25VLConfig,
+    OverlapVLNQwen3VLConfig,
     OverlapVLNQwen25VLForConditionalGeneration,
+    OverlapVLNQwen3VLForConditionalGeneration,
 )
 
 # Register OverlapVLN model based on Qwen2.5-VL (only if not already registered)
@@ -80,6 +88,27 @@ if 'overlapvln_qwen2_5_vl' not in MODEL_MAPPING:
     register_model(ModelMeta(**model_meta_kwargs))
     print("[OverlapVLN] Model 'overlapvln_qwen2_5_vl' registered successfully!")
 
+if 'overlapvln_qwen3_vl' not in MODEL_MAPPING:
+    model_meta_kwargs = dict(
+        model_type='overlapvln_qwen3_vl',
+        model_groups=[
+            ModelGroup([
+                Model('overlapvln-qwen3-vl-2b', 'Qwen/Qwen3-VL-2B-Instruct'),
+                Model('overlapvln-qwen3-vl-4b', 'Qwen/Qwen3-VL-4B-Instruct'),
+                Model('overlapvln-qwen3-vl-8b', 'Qwen/Qwen3-VL-8B-Instruct'),
+            ])
+        ],
+        template='overlapvln_qwen3_vl',
+        model_arch=ModelArch.qwen3_vl,
+        architectures=['OverlapVLNQwen3VLForConditionalGeneration'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'vln', 'navigation', 'compression', 'qwen3'],
+        is_multimodal=True,
+    )
+    model_meta_kwargs['loader'] = OverlapVLNQwen3VLLoader
+    register_model(ModelMeta(**model_meta_kwargs))
+    print("[OverlapVLN] Model 'overlapvln_qwen3_vl' registered successfully!")
+
 
 # =============================================================================
 # Public API
@@ -92,10 +121,14 @@ from swiftvln.common import HistoryTokenCompressor
 __all__ = [
     # Model
     'OverlapVLNQwen25VLLoader',
+    'OverlapVLNQwen3VLLoader',
     'OverlapVLNQwen25VLConfig',
+    'OverlapVLNQwen3VLConfig',
     'OverlapVLNQwen25VLForConditionalGeneration',
+    'OverlapVLNQwen3VLForConditionalGeneration',
     # Template
     'OverlapVLNQwen25VLTemplate',
+    'OverlapVLNQwen3VLTemplate',
     'HISTORY_IMAGE_TOKEN',
     'CURRENT_IMAGE_TOKEN',
     # Dataset

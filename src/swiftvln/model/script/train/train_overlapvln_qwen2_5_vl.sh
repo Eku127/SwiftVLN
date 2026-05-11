@@ -1,5 +1,5 @@
 #!/bin/bash
-# OverlapVLN Training Script - Qwen2.5-VL (ms-swift)
+# OverlapVLN Training Script - Qwen VL families (ms-swift)
 # 
 # Usage:
 #   bash src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh
@@ -126,17 +126,37 @@ fi
 # ============================================================================
 # Model Configuration
 # ============================================================================
-MODEL_TYPE="overlapvln_qwen2_5_vl"
+MODEL_FAMILY="${MODEL_FAMILY:-qwen2_5_vl}"  # qwen2_5_vl | qwen3_vl
+case "$MODEL_FAMILY" in
+    qwen2_5_vl|qwen25|qwen2.5)
+        MODEL_FAMILY="qwen2_5_vl"
+        DEFAULT_MODEL_TYPE="overlapvln_qwen2_5_vl"
+        DEFAULT_STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
+        MODEL_FAMILY_NAME_TAG=""
+        ;;
+    qwen3_vl|qwen3)
+        MODEL_FAMILY="qwen3_vl"
+        DEFAULT_MODEL_TYPE="overlapvln_qwen3_vl"
+        DEFAULT_STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct"
+        MODEL_FAMILY_NAME_TAG="qwen3vl-"
+        ;;
+    *)
+        echo "[ERROR] Unknown MODEL_FAMILY: $MODEL_FAMILY. Available: qwen2_5_vl, qwen3_vl."
+        exit 1
+        ;;
+esac
+MODEL_TYPE="${MODEL_TYPE:-$DEFAULT_MODEL_TYPE}"
 
 # Training stage: "stage1" (from base Qwen) or "stage2" (from trained VLN model)
 TRAIN_STAGE="${TRAIN_STAGE:-stage1}"
 
 # Model paths for each stage
 # Stage1 defaults to the local offline cache path to avoid ModelScope hub resolution.
-# Default remains the local 3B cache path. For 7B, override STAGE1_MODEL_PATH
+# Default remains the local 3B cache path for Qwen2.5 and 2B for Qwen3.
+# For larger models, override STAGE1_MODEL_PATH
 # via env, e.g.:
 #   STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
-STAGE1_MODEL_PATH="${STAGE1_MODEL_PATH:-/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct}"
+STAGE1_MODEL_PATH="${STAGE1_MODEL_PATH:-$DEFAULT_STAGE1_MODEL_PATH}"
 STAGE2_MODEL_PATH="${STAGE2_MODEL_PATH:-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239}"
 
 # Select model path based on stage
@@ -465,7 +485,7 @@ if [ "$NUM_OVERLAP" -gt 0 ] && [ "$_OVERLAP_TAIL_WINDOW_ADJUST_ENABLED" != "true
     TAIL_WINDOW_SUFFIX="-notailadj"
 fi
 
-EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${TAIL_WINDOW_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${TAIL_WINDOW_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 OUTPUT_DIR="output/overlapvln/${EXP_NAME}"
 if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
     OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
@@ -508,7 +528,7 @@ SWANLAB_SECRET="${SWANLAB_SECRET:-}"
 # ============================================================================
 # Environment Setup
 # ============================================================================
-export PYTORCH_ALLOC_CONF=expandable_segments:True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export NCCL_DEBUG=ERROR
 export NCCL_TIMEOUT=1800
 export NCCL_SOCKET_IFNAME=^docker0,lo
@@ -532,6 +552,7 @@ fi
 echo "=========================================="
 echo "OverlapVLN Training"
 echo "=========================================="
+echo "Model Family: $MODEL_FAMILY"
 echo "Model: $MODEL_TYPE ($MODEL_PATH)"
 echo "Environment: $VLN_ENV_TYPE"
 echo "Data: $VLN_DATA_PATH"

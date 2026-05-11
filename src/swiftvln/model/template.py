@@ -20,7 +20,11 @@ import torch
 from swift.template import Template, register_template
 from swift.template.base import to_device
 from swift.template.template_inputs import StdTemplateInputs
-from swift.template.templates.qwen import Qwen2_5VLTemplate, QwenTemplateMeta
+from swift.template.templates.qwen import (
+    Qwen2_5VLTemplate,
+    Qwen3VLTemplate as SwiftQwen3VLTemplate,
+    QwenTemplateMeta,
+)
 from swift.template.utils import Context, findall
 
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
@@ -78,7 +82,7 @@ def _tensor_debug_stats(tensor: Optional[torch.Tensor], sample_limit: int = 4) -
     )
 
 
-class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
+class OverlapVLNTemplateMixin:
     """
     OverlapVLN Template with pluggable history processing.
     
@@ -665,10 +669,18 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
             inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
             return {'inputs_embeds': inputs_embeds}
         
-        # Get all image embeddings from visual encoder
+        # Get all image embeddings from visual encoder. Qwen3-VL visual returns
+        # a structure with pooler_output/deepstack_features; OverlapVLN consumes
+        # the same pooled visual tokens as the standard placeholder path.
         dtype = model.visual.dtype
         pixel_values = pixel_values.type(dtype)
-        all_image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
+        visual_res = model.visual(pixel_values, grid_thw=image_grid_thw)
+        if hasattr(visual_res, 'pooler_output'):
+            all_image_embeds = visual_res.pooler_output
+        elif isinstance(visual_res, tuple):
+            all_image_embeds = visual_res[0]
+        else:
+            all_image_embeds = visual_res
         
         # --- Embedding Enhancement Pipeline ---
         # Apply embedding enhancements (pixel, pose, etc.) to ALL images
@@ -1014,7 +1026,15 @@ class OverlapVLNQwen25VLTemplate(Qwen2_5VLTemplate):
         return res
 
 
-# Register the custom template
+class OverlapVLNQwen25VLTemplate(OverlapVLNTemplateMixin, Qwen2_5VLTemplate):
+    """OverlapVLN template for Qwen2.5-VL."""
+
+
+class OverlapVLNQwen3VLTemplate(OverlapVLNTemplateMixin, SwiftQwen3VLTemplate):
+    """OverlapVLN template for Qwen3-VL."""
+
+
+# Register the custom templates
 register_template(
     QwenTemplateMeta(
         'overlapvln_qwen2_5_vl',
@@ -1024,3 +1044,15 @@ register_template(
 )
 
 print("[OverlapVLNTemplate] Template 'overlapvln_qwen2_5_vl' registered successfully!")
+
+register_template(
+    QwenTemplateMeta(
+        'overlapvln_qwen3_vl',
+        template_cls=OverlapVLNQwen3VLTemplate,
+        default_system=None,
+        thinking_prefix='<think>\n',
+    ),
+    exist_ok=True,
+)
+
+print("[OverlapVLNTemplate] Template 'overlapvln_qwen3_vl' registered successfully!")

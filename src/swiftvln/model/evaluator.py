@@ -464,6 +464,15 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         new_h = max(new_h, 28)
         
         return image.resize((new_w, new_h), Image.BILINEAR)
+
+    @staticmethod
+    def _extract_visual_features(visual_res: Any) -> torch.Tensor:
+        """Normalize Qwen-family visual outputs to pooled visual tokens."""
+        if hasattr(visual_res, 'pooler_output'):
+            return visual_res.pooler_output
+        if isinstance(visual_res, tuple):
+            return visual_res[0]
+        return visual_res
     
     def _encode_frame(
         self,
@@ -487,7 +496,9 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         image_grid_thw = media_inputs['image_grid_thw'].to(self.device)
         
         with torch.no_grad():
-            vit_features = self.model.visual(pixel_values, grid_thw=image_grid_thw)
+            vit_features = self._extract_visual_features(
+                self.model.visual(pixel_values, grid_thw=image_grid_thw)
+            )
             
             # Apply embedding enhancement pipeline if enabled (auto-detected from checkpoint)
             if self.has_embed_enhance:
@@ -522,7 +533,9 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         image_grid_thw = media_inputs['image_grid_thw'].to(self.device)
         
         with torch.no_grad():
-            all_vit_features = self.model.visual(pixel_values, grid_thw=image_grid_thw)
+            all_vit_features = self._extract_visual_features(
+                self.model.visual(pixel_values, grid_thw=image_grid_thw)
+            )
         
         # Split features by image
         merge_length = self.merge_size ** 2

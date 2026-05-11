@@ -122,7 +122,7 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # ============================================================================
 # 新格式 (带 env_type 和 stage):
 # 注: qa 参数(混合训练比例)不影响 eval，解析时会被忽略
-# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}[-qwen3vl]-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (gtc):         overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 # OverlapVLN (segment_gtc): overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 #   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
@@ -157,6 +157,10 @@ parse_overlapvln_params() {
     # 注: -initial 是可选的，vanilla 模式下不显示（默认）
     
     local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
+    local model_family="qwen2_5_vl"
+    if [[ "$name" == *"-qwen3vl-"* ]]; then
+        model_family="qwen3_vl"
+    fi
     local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
     
     # 新格式: f{num_frames}s{num_future_steps} (不含 h)
@@ -259,6 +263,7 @@ parse_overlapvln_params() {
         use_pose_embed="false"
     fi
     
+    echo "MODEL_FAMILY=$model_family"
     echo "MODEL_SIZE=$model_size"
     echo "NUM_EPOCHS=$epochs"
     echo "NUM_FRAMES=$num_frames"
@@ -308,6 +313,7 @@ echo "=============================================="
 echo "模型架构:       ${MODEL_ARCH}"
 echo "模型名称:       ${MODEL_NAME}"
 echo "环境类型:       ${ENV_TYPE} (解析自模型名: ${PARSED_ENV_TYPE})"
+echo "模型族:         ${MODEL_FAMILY:-qwen2_5_vl}"
 echo "模型大小:       ${MODEL_SIZE:-N/A}"
 echo "训练轮数:       ${NUM_EPOCHS:-N/A}"
 
@@ -385,6 +391,7 @@ if [ "$CHECK_ONLY" == "true" ]; then
     echo "将传递给eval脚本的环境变量"
     echo "=============================================="
     echo "MODEL_PATH=<checkpoint_path>"
+    echo "MODEL_FAMILY=${MODEL_FAMILY:-qwen2_5_vl}"
     echo "ENV_TYPE=${ENV_TYPE}"
     echo "EVAL_SPLIT=${EVAL_SPLIT:-val_unseen}"
     echo "CUDA_DEVICES=${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
@@ -618,6 +625,7 @@ fi
 # ============================================================================
 export MODEL_PATH="$CHECKPOINT_PATH"
 export ENV_TYPE="$ENV_TYPE"  # 已在前面从模型名解析或使用用户指定值
+export MODEL_FAMILY="${MODEL_FAMILY:-qwen2_5_vl}"
 
 # 确定要评测的 split 列表
 # 若用户已显式设置 EVAL_SPLIT，仅跑该 split；否则 SatNav 默认同时跑两个 split，Habitat 默认 val_unseen
@@ -707,6 +715,7 @@ echo "=============================================="
 echo "模型架构:       ${MODEL_ARCH}"
 echo "模型名称:       ${MODEL_NAME}"
 echo "Checkpoint:     ${CHECKPOINT_PATH}"
+echo "模型族:         ${MODEL_FAMILY}"
 echo "环境类型:       ${ENV_TYPE}"
 echo "评估集:         ${EVAL_SPLITS_LIST}"
 echo "CUDA设备:       ${CUDA_DEVICES}"
