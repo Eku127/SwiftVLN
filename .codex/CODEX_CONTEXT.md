@@ -809,7 +809,7 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - active: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
   - backup(old): `/mnt/data3/jiangjiajun/dataset/satnav_datasets/old_scenes`
 
-### SatNav ver_260418 Snapshot (Updated: 2026-04-26)
+### SatNav ver_260418 Snapshot (Updated: 2026-05-01)
 
 - 当前主线 `OverlapVLN` 与 `baseline/*` 默认训练 / eval 版本已统一切到 `ver_260418`
 - 默认路径已同步到：
@@ -842,6 +842,25 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - `data/qa_swift.jsonl` 已重新生成，共 `273120` 行，图片路径版本计数为 `ver_260418: 273120`，缺图数为 `0`
   - `episodes/eval/val_unseen/{boundary,landmark,road}_episodes.json` 已从当前 `all_episodes.json` 定点重建
   - 注意：`merge_manifest.json` 仍是原始 merge 产物记录，不代表后续 0418 split 清理 / QA 路径修复后的当前状态
+- 2026-05-01 release 准备：
+  - episode-only release 目录：
+    `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-Episodes-v0.1`
+  - 该目录只保留 `episodes/`（含 `train/`, `eval/val_seen/`, `eval/val_unseen/`）以及 release 文档，不包含 `data/`, `trajectory_data/`, `raw_data/`, `check_trajectory_data/`
+  - `SatNav-Episodes-v0.1/episodes` 与 `ver_260418/episodes` 已同步更新 Boundary subtype 命名：
+    - 原缺失 `trajectory_subtype` -> `loop`
+    - `overlap` -> `extended`
+    - `arc` 保持不变
+  - 更新后 Boundary subtype 条目计数（跨 all/type 文件重复计数）：`loop=43340`, `extended=8826`, `arc=8814`；无缺失字段
+  - `SatNav-Episodes-v0.1/episodes` 与 `ver_260418/episodes` 已同步更新 LandmarkSet subtype 命名：
+    - `aux_info.turn_count=2` -> `trajectory_subtype=one_turn`
+    - `aux_info.turn_count=3` -> `trajectory_subtype=two_turn`
+  - 更新后 LandmarkSet subtype 条目计数（跨 all/type 文件重复计数）：`one_turn=73920`, `two_turn=15528`；无缺失字段
+  - `SatNav-Episodes-v0.1/episodes` 与 `ver_260418/episodes` 已同步更新 Road subtype 命名：
+    - `Highway` -> `road`
+    - `Multiway` -> `hybrid`
+    - `Waterway` -> `waterway`
+  - 更新后 Road subtype 条目计数（跨 all/type 文件重复计数）：`road=67936`, `hybrid=7398`, `waterway=11226`；无缺失字段
+  - `ver_260418/trajectory_data` 中未存储 `trajectory_type` / `trajectory_subtype` 字段，因此本次 subtype 命名不涉及 trajectory cache 内容改写
 
 ### SatNav ver_260403 Snapshot (Updated: 2026-04-03)
 
@@ -910,6 +929,15 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   `src/swiftvln/scripts/data_process/normalize_trajectory_types.py`
 - 默认入口 `src/swiftvln/scripts/data_process/run_all.py` 会先执行标准化，再生成 `episodes` 与 `qa_swift.jsonl`
 - 单独执行 `src/swiftvln/scripts/data_process/process_episodes.py` 时，也会自动先做同样的标准化
+- SwiftVLN 维护自己的 SatNav 轨迹生成配置：
+  `src/swiftvln/configs/satnav_trajectory_generation.yaml`
+  - 该文件用于调用 SatNav repo 的
+    `applications/trajectory_generation/generate_parallel.py`
+  - `satnav-data` skill 会基于该 YAML 生成临时配置，并只覆盖
+    `DATASET.DATA_PATH` 与 `DATASET.SCENES_DIR`
+  - 生产默认：`MAX_EPISODE_STEPS=500`、`FORWARD_STEP_SIZE=10`、
+    `TURN_ANGLE=15`、`RGB_SENSOR=448x448/HFOV90`、
+    `LandmarkSet SUCCESS_DISTANCE=3.0`
 - trajectory 生成默认并发（`generate_parallel.py`）为：
   `min(num_scenes, cpu_count//4, 72)`（2026-03-27 更新，原上限 24）
 - `episodes/train/*.json` 与 `episodes/eval/*.json` 输出会保留 `trajectory_subtype` 字段
