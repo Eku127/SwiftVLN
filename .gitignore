@@ -14,6 +14,7 @@ logs/
 output/
 results/
 reports/*.tmp
+road_data_checks/
 runtime/
 swanlog/
 /test_data/
@@ -45,6 +46,7 @@ baseline/*/output/
 baseline/*/logs/
 baseline/*/results/
 baseline/*/checkpoints/
+baseline/navila/doc/setup_env_log.txt
 
 # Baseline eval generated temp configs
 baseline/*/configs/.satnav_task_eval_*.yaml
