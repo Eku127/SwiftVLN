@@ -2,12 +2,74 @@
 
 本说明面向在 SwiftVLN 仓库内运行 StreamVLN baseline 的训练与评测流程。
 
-## 1. 环境如何准备
+- 上游仓库：默认通过 `$STREAMVLN_REPO` 指向本地 StreamVLN clone
+- 运行范围：当前集成面向 SatNav trajectory 数据训练和 SatNav 在线评测。
+- 训练/评测 skill：`.codex/skills/run-streamvln-baseline/SKILL.md`
 
-- 工作目录使用 SwiftVLN 仓库根目录：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN`。
-- 训练与评测统一使用 conda 环境：`streamvln-baseline`。
+## 1. 模型
 
-环境安装按以下顺序完成：
+StreamVLN 训练与评测依赖三个本地模型目录：
+
+| 模型 | 默认路径 | 用途 |
+|------|----------|------|
+| 官方 StreamVLN checkpoint | `baseline/streamvln/model/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln_v1_3` | `continue` 模式训练起点 |
+| LLaVA-Video-7B-Qwen2 | `baseline/streamvln/model/LLaVA-Video-7B-Qwen2` | `scratch` 模式训练起点；eval tokenizer fallback |
+| SigLIP vision tower | `baseline/streamvln/model/siglip-so400m-patch14-384` | 视觉塔 |
+
+下载默认官方 StreamVLN checkpoint：
+
+```bash
+bash baseline/streamvln/scripts/download_model.sh
+```
+
+下载 LLaVA-Video-7B-Qwen2：
+
+```bash
+bash baseline/streamvln/scripts/download_model.sh \
+  --repo lmms-lab/LLaVA-Video-7B-Qwen2 \
+  --source modelscope
+```
+
+下载 SigLIP vision tower：
+
+```bash
+bash baseline/streamvln/scripts/download_model.sh \
+  --repo google/siglip-so400m-patch14-384 \
+  --name siglip-so400m-patch14-384
+```
+
+下载策略建议：
+
+- 默认官方 checkpoint 优先从 HuggingFace hf-mirror 下载。
+- LLaVA-Video-7B-Qwen2 在国内网络通常优先 ModelScope。
+- 跨机器运行时需保证三个模型目录路径一致。
+
+## 2. 目录结构
+
+```text
+baseline/streamvln/
+├── configs/          # 训练/评测配置文件
+│   ├── satnav_task.yaml
+│   └── zero2.json
+├── model/            # 模型权重存放目录
+│   ├── StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln_v1_3/
+│   ├── LLaVA-Video-7B-Qwen2/
+│   └── siglip-so400m-patch14-384/
+├── scripts/          # 启动脚本
+│   ├── download_model.sh
+│   ├── train_satnav.sh
+│   ├── train_eval_satnav.sh
+│   └── eval_satnav.sh
+├── src/              # 训练/评测 Python 代码
+│   ├── train_satnav.py
+│   └── eval_satnav.py
+├── requirements.txt
+└── README.md
+```
+
+## 3. 环境准备
+
+StreamVLN 训练与评测统一使用 conda 环境：`streamvln-baseline`。
 
 ```bash
 # Step 1: 创建 conda 环境
@@ -18,99 +80,118 @@ conda activate streamvln-baseline
 pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
 
 # Step 3: 安装 flash_attn（从预编译 whl，须匹配 torch+CUDA+Python 版本）
-pip install /mnt/data1/home/jiangjiajun/flash_attn-2.8.3+cu12torch2.5cxx11abiFALSE-cp39-cp39-linux_x86_64.whl
+pip install "$FLASH_ATTN_WHL"
 
 # Step 4: 安装其余依赖
 pip install -r baseline/streamvln/requirements.txt
 
 # Step 5: 安装 SatNav（评测必需，editable install）
-pip install -e /mnt/data1/home/jiangjiajun/workspace/SatNav
+pip install -e "$SATNAV_REPO"
 ```
 
-补充说明：
+关键说明：
 
 - 若通过 ModelScope 下载模型，需额外安装 `modelscope`。
-- 确保本机可访问 `/mnt/data1/home/jiangjiajun/workspace/StreamVLN` 源码目录（训练脚本通过 `PYTHONPATH` 依赖该目录下的 `llava/streamvln/trl`）。
-- 检查数据根目录 `/mnt/data3/jiangjiajun/dataset/satnav_datasets`，并确认目标 `ver_xxxxxx` 版本完整。
+- 训练脚本会把 `$STREAMVLN_REPO` 加入 `PYTHONPATH`，因此该上游源码目录必须存在。
+- 目标 SatNav 数据版本需包含 `trajectory_data` 和 `episodes/eval`。
+- H100 上如需编译 CUDA op，可设置 `CUDA_HOME` 指向支持 `sm_90` 的 CUDA Toolkit。
 
-环境可用判定标准：
+## 4. 训练
 
-- `streamvln-baseline` 能正常导入训练依赖（`torch`、`transformers`、`deepspeed`、`flash_attn`）；
-- `satnav` 可导入；
-- `StreamVLN` 源码目录存在且可被 `PYTHONPATH` 解析；
-- 目标数据版本存在训练轨迹和评测 episodes 文件。
+SatNav 训练入口：
 
-## 2. 三个模型如何下载
+```bash
+bash baseline/streamvln/scripts/train_satnav.sh [continue|scratch]
+```
 
-训练与评测依赖以下三个模型目录：
+训练模式约定：
 
-- 官方 StreamVLN checkpoint（continue 模式）：
-  `baseline/streamvln/model/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln_v1_3`
-- LLaVA-Video-7B-Qwen2（scratch 模式与 tokenizer fallback）：
-  `baseline/streamvln/model/LLaVA-Video-7B-Qwen2`
-- SigLIP vision tower：
-  `baseline/streamvln/model/siglip-so400m-patch14-384`
+- `continue`：从官方 StreamVLN checkpoint 继续训练，默认模式。
+- `scratch`：从 `baseline/streamvln/model/LLaVA-Video-7B-Qwen2` 起训。
 
-推荐使用统一下载入口：`baseline/streamvln/scripts/download_model.sh`。
+示例：
 
-下载策略建议：
+```bash
+# 默认 continue
+bash baseline/streamvln/scripts/train_satnav.sh
 
-- 官方 StreamVLN checkpoint：
-  默认从 HuggingFace（通过 `hf-mirror`）下载；网络受限时可切换到 ModelScope。
-- LLaVA-Video-7B-Qwen2：
-  可从 HuggingFace 或 ModelScope 下载；在国内网络通常优先 ModelScope。
-- SigLIP vision tower：
-  优先 HuggingFace；若目标环境访问 HF 不稳定，建议使用同名可用镜像源并保持目录名不变。
-- 推荐顺序：先官方 checkpoint，再 LLaVA-Video-7B-Qwen2，最后 SigLIP。
-- 下载完成后，检查上述三个目录均存在且内容完整；跨机器运行时需保证各机器路径一致。
+# 显式 continue
+bash baseline/streamvln/scripts/train_satnav.sh continue
 
-## 3. 训练 skill 如何启动
+# 显式 scratch
+bash baseline/streamvln/scripts/train_satnav.sh scratch
+```
 
-本仓库已定义 baseline 训练/评测专用 skill：
+常用覆盖项：
 
-- `.codex/skills/run-streamvln-baseline/SKILL.md`
+```bash
+SATNAV_VERSION=ver_260418 \
+GPUS_PER_NODE=8 \
+BATCH_SIZE=3 \
+GRAD_ACCUM=2 \
+NUM_EPOCHS=1 \
+LEARNING_RATE=2e-5 \
+bash baseline/streamvln/scripts/train_satnav.sh continue
+```
 
-启动方式说明：
+当前默认训练配置：
 
-- 在 Codex 会话中明确提出“运行 StreamVLN baseline 训练（SatNav）”。
-- 同时给出关键参数：训练模式（continue 或 scratch）、目标服务器（98/73/17）、数据版本（可默认最新）。
-- 若希望训练后自动评测，说明使用 train+eval 串行流程。
-- 若只做训练，需在请求中明确“只训练不评测”。
+- `SATNAV_VERSION=ver_260418`
+- `NUM_FRAMES=32`
+- `NUM_HISTORY=8`
+- `NUM_FUTURE_STEPS=4`
+- `BATCH_SIZE=3`
+- `GRAD_ACCUM=2`
+- `GPUS_PER_NODE=8`
+- `LEARNING_RATE=2e-5`
+- `SAVE_STRATEGY=epoch`
+- `SAVE_TOTAL_LIMIT=1`
+- `USE_SWANLAB=false`
 
-该 skill 的执行约定：
+训练日志与产物约定：
 
-- 使用 `streamvln-baseline` 环境。
-- 训练输出写入 `output/streamvln-baseline/<EXP_NAME>/`。
-- 训练日志保存在对应输出目录内。
+- 普通训练输出：`output/streamvln-baseline/<EXP_NAME>/`
+- smoke 输出：`output/streamvln-baseline/smoketest/<EXP_NAME>/`
+- 默认实验名格式：`streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
 
-## 4. Eval 如何启动
+实现方式：
 
-可通过以下两种方式启动评测：
+- 训练脚本使用上游 StreamVLN/LLaVA 代码路径，不在本仓库复制完整模型实现。
+- `baseline/streamvln/src/train_satnav.py` 负责 SatNav trajectory 数据接入。
+- 默认使用 `baseline/streamvln/configs/zero2.json` 做 DeepSpeed 训练。
+- 可通过 `USE_SWANLAB=true` 开启 SwanLab；`USE_WXWORK_NOTIFICATION=true` 可打开企业微信通知。
 
-- baseline 直接评测入口：`baseline/streamvln/scripts/eval_satnav.sh`
-- 通过训练 skill 的 train+eval 串行流程自动触发评测。
+## 5. 评测
 
-评测输入支持两类：
+SatNav 评测入口：
 
-- 按实验名评测（推荐）：使用训练产出的 `EXP_NAME`。
-- 按 checkpoint 路径评测：用于兼容历史目录或手工路径。
+```bash
+bash baseline/streamvln/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
+```
+
+支持两种模式：
+
+- 按实验名评测：从 `output/streamvln-baseline/<EXP_NAME>/` 自动解析最新 checkpoint。
+- 按 checkpoint 路径评测：直接传入绝对路径，用于兼容历史目录或手工路径。
 
 SatNav 评测 split 约定：
 
-- `bash baseline/streamvln/scripts/eval_satnav.sh <exp_or_ckpt>`：
-  默认顺序运行 `val_seen` 和 `val_unseen`
-- `bash baseline/streamvln/scripts/eval_satnav.sh <exp_or_ckpt> val_seen`：
-  只跑 `val_seen`
-- `bash baseline/streamvln/scripts/eval_satnav.sh <exp_or_ckpt> val_unseen`：
-  只跑 `val_unseen`
+- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
+- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
 
-评测输出位置：
+常用覆盖项：
 
-- `results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
-- 评测日志与 summary 写在同一结果目录下。
+```bash
+SATNAV_VERSION=ver_260418 \
+bash baseline/streamvln/scripts/eval_satnav.sh \
+  streamvln-baseline-continue-1ep-f32h8s4-data260418-bs48-lr2e-5-<timestamp> \
+  val_seen 8
+```
 
-评测前建议检查：
+评测实现约定：
 
-- 目标 checkpoint 是否存在。
-- 对应 SatNav 数据版本是否可用。
-- 三个模型目录是否完整（尤其是 tokenizer fallback 所需基座模型）。
+- 输出目录：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
+- 评测日志：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/eval.log`
+- eval by name 会从实验名中的 `data{ver}` 自动解析 `SATNAV_VERSION`；也可用环境变量显式覆盖。
+- 若 checkpoint 缺少 tokenizer，评测脚本会回退到 `baseline/streamvln/model/LLaVA-Video-7B-Qwen2`。
+- 评测固定使用 `num_frames=32`、`num_history=8`、`num_future_steps=4`、`model_max_length=32768`。

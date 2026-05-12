@@ -1,129 +1,205 @@
-# OpenFly Baseline
+# OpenFly Baseline（SatNav）
 
-SatNav-only baseline integration for OpenFly.
+本说明面向在 SwiftVLN 仓库内运行 OpenFly baseline 的训练与评测流程。
 
-## Layout
+- 上游模型：`IPEC-COMMUNITY/openfly-agent-7b`
+- 运行范围：当前集成是 SatNav-only baseline，不依赖外部 `OpenFly-Platform` repo。
+- 配置历史：详见 `baseline/openfly/doc/config_history.md`
 
-- `scripts/train_satnav.sh`: launch training on SatNav trajectory data
-- `scripts/eval_satnav.sh`: evaluate on SatNav `val_seen` / `val_unseen`
-- `scripts/setup_env.sh`: create `openfly-baseline` conda env
-- `src/dataset/satnav_dataset.py`: SatNav step-wise dataset loader
-- `src/train_satnav.py`: Transformers Trainer entrypoint
-- `src/eval_satnav.py`: SatNav evaluator
-- `src/prompting.py`: prompt builder with action-history support
+## 1. 模型
 
-## Evaluation Results (val_seen, ver_260404)
+OpenFly 当前支持两种起训后端：
+
+| 后端 | 默认模型路径 | 用途 |
+|------|--------------|------|
+| `continue` | `baseline/openfly/model/openfly-agent-7b` | 从 HF OpenFly checkpoint 继续训练 |
+| `scratch` | `baseline/openfly/model/openvlaopenvla-7b-prismatic` | 从原始 OpenVLA Prismatic `.pt` checkpoint 初始化，再接入 HF/Trainer 流程 |
+
+`scratch` 模式还需要一个 HF processor/tokenizer/image preprocessor 来源，默认使用：
+
+```text
+baseline/openfly/model/openfly-agent-7b
+```
+
+下载默认 OpenFly HF 模型：
+
+```bash
+bash baseline/openfly/scripts/download_model.sh
+```
+
+自定义模型来源或保存目录：
+
+```bash
+MODEL_ID=IPEC-COMMUNITY/openfly-agent-7b \
+TARGET_DIR=baseline/openfly/model/openfly-agent-7b \
+bash baseline/openfly/scripts/download_model.sh
+```
+
+## 2. 目录结构
+
+```text
+baseline/openfly/
+├── configs/          # 训练/评测配置文件
+│   ├── satnav_task.yaml
+│   ├── zero1.json
+│   └── zero2.json
+├── doc/              # 环境与配置演进说明
+├── model/            # 模型权重存放目录
+│   ├── openfly-agent-7b/
+│   └── openvlaopenvla-7b-prismatic/
+├── scripts/          # 启动脚本
+│   ├── download_model.sh
+│   ├── setup_env.sh
+│   ├── train_satnav.sh
+│   └── eval_satnav.sh
+├── src/              # 训练/评测 Python 代码
+│   ├── dataset/satnav_dataset.py
+│   ├── train_satnav.py
+│   ├── eval_satnav.py
+│   └── prompting.py
+└── README.md
+```
+
+## 3. 环境准备
+
+OpenFly 训练与评测统一使用 conda 环境：`openfly-baseline`。
+
+```bash
+bash baseline/openfly/scripts/setup_env.sh
+conda activate openfly-baseline
+```
+
+该脚本会创建 Python 3.10 环境，并安装 PyTorch 2.3.0、FlashAttention 2.5.8、Transformers 4.48.1、DeepSpeed 0.14.4、SatNav editable install 等依赖。
+
+关键说明：
+
+- 评测只依赖 SatNav，不需要 AirSim / UnrealCV / ROS2 / TFDS。
+- `continue` 后端需要 `baseline/openfly/model/openfly-agent-7b` 是正常 HF 模型目录。
+- `scratch` 后端还需要本地 Prismatic/OpenVLA checkpoint 目录；native `.pt` 到 HF safetensors 的转换会使用本地 cache，可通过 `OPENFLY_NATIVE_HF_CACHE_DIR` 覆盖 cache 根目录。
+
+## 4. 训练
+
+SatNav 训练入口：
+
+```bash
+bash baseline/openfly/scripts/train_satnav.sh
+```
+
+训练模式约定：
+
+- `continue`：从 `baseline/openfly/model/openfly-agent-7b` 继续训练，默认后端。
+- `scratch`：从 `baseline/openfly/model/openvlaopenvla-7b-prismatic` 初始化，并使用 `openfly-agent-7b` 作为 processor/tokenizer 来源。
+- 后端通过环境变量选择：`OPENFLY_BACKEND=continue|scratch`
+
+示例：
+
+```bash
+# 默认 continue
+bash baseline/openfly/scripts/train_satnav.sh
+
+# 显式 continue
+OPENFLY_BACKEND=continue \
+bash baseline/openfly/scripts/train_satnav.sh
+
+# 显式 scratch
+OPENFLY_BACKEND=scratch \
+bash baseline/openfly/scripts/train_satnav.sh
+```
+
+常用覆盖项：
+
+```bash
+DATA_PATH=$SATNAV_DATA_ROOT/ver_260418/trajectory_data/annotations.json \
+IMAGE_FOLDER=$SATNAV_DATA_ROOT/ver_260418/trajectory_data \
+NUM_GPUS=8 \
+TRAIN_BSZ=12 \
+GRAD_ACCUM=1 \
+LEARNING_RATE=2e-5 \
+bash baseline/openfly/scripts/train_satnav.sh
+```
+
+当前默认训练配置：
+
+- `OPENFLY_ACTION_FORMAT=compact`
+- `OPENFLY_ACTION_HISTORY_LIMIT=16`
+- `TRAIN_BSZ=12`
+- `GRAD_ACCUM=1`
+- `TORCH_DTYPE=bfloat16`
+- `DEEPSPEED_MODE=zero2`
+- `USE_FLASH_ATTENTION_2=true`
+- `LEARNING_RATE=2e-5`
+- `SAVE_STEPS=10000`
+- `REPORT_TO=none`
+
+当前默认 SatNav 采样策略：
+
+- `SATNAV_HEAD_KEEP=7`
+- `SATNAV_SAMPLE_STRIDE=3`
+- `SATNAV_STOP_REPEAT=2`
+- `SATNAV_STOP_WINDOW=0`
+- `SATNAV_TAIL_KEEP=5`
+- `SATNAV_STOP_HISTORY_AUG=1`
+
+训练日志与产物约定：
+
+- 输出目录：`output/openfly-baseline/<EXP_NAME>/`
+- checkpoint：`output/openfly-baseline/<EXP_NAME>/checkpoint-*`
+- 默认实验名包含后端、动作格式、采样策略、有效 batch size 和学习率。
+- `scratch` 后端会写出 `backend_meta.json`，记录 checkpoint 来源。
+
+实现方式：
+
+- `baseline/openfly/src/dataset/satnav_dataset.py` 将 SatNav trajectory 展开成 step-wise 训练样本。
+- `baseline/openfly/src/prompting.py` 构造带 action history 的 prompt。
+- `baseline/openfly/src/train_satnav.py` 使用 Transformers Trainer 执行训练。
+- `compact` 动作格式只监督 `stop / forward / left / right` 四类文本动作。
+- `original` 动作格式保留 OpenFly-style 8D action vector token，但当前 SatNav 只启用前 4 个合法动作维度。
+
+## 5. 评测
+
+SatNav 评测入口：
+
+```bash
+bash baseline/openfly/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
+```
+
+支持两种模式：
+
+- 按实验名评测：从 `output/openfly-baseline/<EXP_NAME>/` 自动解析最新 checkpoint。
+- 按 checkpoint 路径评测：直接传入绝对路径。
+
+SatNav 评测 split 约定：
+
+- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
+- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
+
+常用覆盖项：
+
+```bash
+SATNAV_VERSION=ver_260418 \
+OPENFLY_ACTION_HISTORY_LIMIT=16 \
+bash baseline/openfly/scripts/eval_satnav.sh \
+  openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-<timestamp> \
+  val_seen 8
+```
+
+评测实现约定：
+
+- 输出目录：`results/openfly-baseline/<EXP_NAME>/<split>/`
+- `result.jsonl` 会记录 `action`、`parsed_action`、`generated_text` 和 `action_trace`。
+- eval 会捕获 simulator out-of-bounds 错误，并将对应 episode 记为失败，不中断整轮评测。
+- train 与 eval 使用同一个 `OPENFLY_ACTION_HISTORY_LIMIT`，默认是 `16`。
+
+当前已记录结果（`val_seen`, `ver_260404`）：
 
 | Config | Ckpt | Overall SR | Boundary SR | Road SR | LandmarkSet SR | OS |
 |---|---|---|---|---|---|---|
-| original format, stop_window=2, no hist | 33430 | 0.0% | 0.0% | — | — | 18.8% |
+| original format, stop_window=2, no hist | 33430 | 0.0% | 0.0% | - | - | 18.8% |
 | **compact + stop_window=0 + hist16** | **8000** | **12.3%** | **17.4%** | **18.1%** | **5.2%** | **23.3%** |
 | compact + stop_window=0 + hist16 | 6000 | 11.9% | 15.3% | 18.2% | 5.6% | 22.8% |
 
-The key recipe change that broke the SR=0 deadlock:
-1. Switch action format from `original` to `compact` (removes 8D vector noise)
-2. Set `SATNAV_STOP_WINDOW=0` (teach stop only at the true trajectory end)
-3. Add action history to prompt (`OPENFLY_ACTION_HISTORY_LIMIT=16`)
+关键有效改动：
 
-## Notes
-
-- Prompt format: `What action should the robot take to ...? Past actions: forward, forward, left, ...`
-- Supported action formats:
-  - `compact`: 4 text actions `stop / forward / left / right`
-  - `original`: OpenFly-style action tokens over an 8D action vector
-- Supported backends:
-  - `continue`: load an existing HF OpenFly checkpoint (`openfly-agent-7b`) and continue training
-  - `scratch`: initialize from the original OpenVLA Prismatic `.pt` checkpoint and train from scratch (w.r.t. VLN task), using HF/Trainer pipeline
-- Select the backend with `OPENFLY_BACKEND=continue|scratch`
-- Both backends support both `compact` and `original` action formats
-- `scratch` backend defaults:
-  - `MODEL_PATH=baseline/openfly/model/openvlaopenvla-7b-prismatic`
-  - `PROCESSOR_PATH=baseline/openfly/model/openfly-agent-7b`
-  - The processor/tokenizer/image preprocessor come from `PROCESSOR_PATH`
-  - The model weights come from the OpenVLA Prismatic checkpoint under `MODEL_PATH`
-- `scratch` backend output is still a normal HF checkpoint layout under `output/openfly-baseline/.../checkpoint-*`
-  so `scripts/eval_satnav.sh` keeps reusing the existing HF eval path
-- `original` SatNav templates only enable 4 legal actions:
-  - `stop -> [1, 0, 0, 0, 0, 0, 0, 0]`
-  - `forward -> [0, 10, 0, 0, 0, 0, 0, 0]`
-  - `left -> [0, 0, 15, 0, 0, 0, 0, 0]`
-  - `right -> [0, 0, 0, 15, 0, 0, 0, 0]`
-- Select the mode with `OPENFLY_ACTION_FORMAT=compact|original`
-- Default experiment names always include the action mode suffix:
-  - `-actcompact`
-  - `-actoriginal`
-- Experiment names also include the backend suffix:
-  - `-bkcontinue`
-  - `-bkscratch`
-- Default train names also include the SatNav sampling tag:
-  - `-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16`
-- Training defaults do not use Weights & Biases:
-  - `--report_to none`
-  - `WANDB_DISABLED=true`
-  - `WANDB_MODE=disabled`
-- Current default train config is tuned for 8xH100 SatNav runs:
-  - `TRAIN_BSZ=12`
-  - `GRAD_ACCUM=1`
-  - `TORCH_DTYPE=bfloat16`
-  - `USE_FLASH_ATTENTION_2=true`
-  - `LEARNING_RATE=2e-5`
-  - `SAVE_STEPS=10000`
-  - `LR_SCHEDULER_TYPE=linear`
-  - `WEIGHT_DECAY=0.0`
-- Current default sample policy is global and training-only:
-  - `SATNAV_HEAD_KEEP=7`
-  - `SATNAV_SAMPLE_STRIDE=3`
-  - `SATNAV_STOP_REPEAT=2`
-  - `SATNAV_STOP_WINDOW=0`  ← disabled to avoid premature-stop bias
-  - `SATNAV_TAIL_KEEP=5`
-  - `SATNAV_STOP_HISTORY_AUG=1`
-  - semantics:
-    - keep the first `7` steps
-    - keep all turns
-    - keep every 3rd forward inside each consecutive forward run
-    - always preserve a near-goal tail before the final stop
-    - stop window disabled: only the true final step is supervised as `stop`
-    - keep stop-history augmentation at `1x`
-  - On 0404 with `stop_window=0` this yields about `3.825M` samples:
-    - `stop=209,908` (`5.49%`)
-    - `forward=2,212,744` (`57.85%`)
-    - `left=730,805` (`19.10%`)
-    - `right=671,062` (`17.54%`)
-  - With the latest measured 8xH100 throughput on 98, 1 epoch is about `8.8h`
-    and should be budgeted as roughly `9.0-9.5h` including save overhead
-- Action history prompt (new in v2):
-  - `OPENFLY_ACTION_HISTORY_LIMIT=16` controls how many past actions appear in the prompt
-  - Past actions are appended as: `Past actions (N so far): forward, forward, left, ...`
-  - At step 0 (no prior actions taken), the clause reads: `Past actions: none.`
-  - Both train and eval use the same limit; the variable is exported by both `train_satnav.sh` and `eval_satnav.sh`
-- `original` action-token supervision is trimmed to the first 4 active action-dimension tokens, and those
-  4 positions use a weighted CE profile by default:
-  - `OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS=0.4,1.2,1.2,1.2`
-  - This down-weights the first action token and up-weights the later three, reducing the structural bias where
-    `stop` is decided by the first supervised token position
-  - The trailing invariant inactive-dimension tokens and final `eos` no longer contribute to CE loss
-- `train_satnav.sh` also exposes system / optimizer knobs for H100 tuning:
-  - `USE_FLASH_ATTENTION_2=true|false`
-  - `WEIGHT_DECAY`
-  - `WARMUP_RATIO`
-  - `LR_SCHEDULER_TYPE`
-  - `MAX_GRAD_NORM`
-  - `DATALOADER_NUM_WORKERS`
-  - `REPORT_TO`
-  - `SATNAV_HEAD_KEEP`
-  - `SATNAV_SAMPLE_STRIDE`
-  - `SATNAV_STOP_REPEAT`
-  - `SATNAV_STOP_WINDOW`
-  - `SATNAV_TAIL_KEEP`
-  - `SATNAV_STOP_HISTORY_AUG`
-  - `OPENFLY_ACTION_HISTORY_LIMIT`
-  - `OPENFLY_ORIGINAL_DIM_LOSS_WEIGHTS`
-- Eval outputs record explicit action fields in `result.jsonl`:
-  - `action`: final action id
-  - `parsed_action`: final action name
-  - `generated_text`: final decoded output
-  - `action_trace`: per-step action ids / names / raw outputs
-- Eval is robust to simulator out-of-bounds errors; such steps are recorded as episode failures
-  rather than crashing the full evaluation run
-- This baseline does not depend on the external `OpenFly-Platform` repo at runtime.
-- `scratch` backend writes `backend_meta.json` alongside training outputs and checkpoints so the checkpoint source stays traceable.
+1. 将动作格式从 `original` 切到 `compact`，去掉 8D vector 噪声。
+2. 设置 `SATNAV_STOP_WINDOW=0`，只在真实轨迹终点监督 `stop`，降低 premature-stop bias。
+3. 在 prompt 中加入历史动作：`OPENFLY_ACTION_HISTORY_LIMIT=16`。
