@@ -65,7 +65,7 @@ baseline/uninavid/
 │   ├── zero1.json
 │   ├── zero2.json
 │   └── zero2_safe.json
-├── doc/              # 环境、数据格式、训练评测约定与问题分析
+├── doc/              # 环境、训练评测约定、排障与历史归档
 ├── model/            # 模型权重存放目录
 │   ├── eva_vit_g.pth
 │   ├── Uni-Navid/
@@ -102,7 +102,7 @@ conda activate uninavid-baseline
 - 环境不包含 Habitat 依赖；评测使用 SatNav 环境。
 - 评测需要 SatNav editable install：`pip install -e "$SATNAV_REPO"`
 - 训练脚本依赖上游 Uni-NaVid 源码目录：`$UNINAVID_REPO`
-- 当前默认 DeepSpeed 配置为 `baseline/uninavid/configs/zero1.json`；ZeRO-2 存在 NaN 风险，详见 `baseline/uninavid/doc/deepspeed_zero2_nan_analysis.md`。
+- 当前默认 DeepSpeed 配置为 `baseline/uninavid/configs/zero1.json`；ZeRO-2 相关注意事项见 `baseline/uninavid/doc/troubleshooting.md`。
 
 ## 4. 训练
 
@@ -173,8 +173,7 @@ bash baseline/uninavid/scripts/train_satnav.sh continue
 
 - `baseline/uninavid/src/train_satnav.py` 接入 SatNav trajectory 数据。
 - 训练目标是结构化四步动作文本，例如 `1. forward 2. left 3. right 4. stop`。
-- `train_satnav.py` 会额外记录 `loss_raw`，用于区分真实异常和日志四舍五入显示。
-- 默认关闭 `GROUP_BY_MODALITY_LENGTH`，避免 SatNav 长度分组导致大量易样本连续出现。
+- 默认关闭 `GROUP_BY_MODALITY_LENGTH`，用于保持 SatNav 样本顺序更稳定。
 
 ## 5. 评测
 
@@ -209,5 +208,5 @@ bash baseline/uninavid/scripts/eval_satnav.sh \
 - 评测日志：`results/uninavid-baseline/<EXP_NAME_or_subpath>/<split>/eval.log`
 - eval by name 会从实验名中的 `data{ver}` 自动解析 `SATNAV_VERSION`；也可用环境变量显式覆盖。
 - `MODEL_BASE` 可用于 adapter-only checkpoint 的底座模型路径。
-- `LOCAL_CACHE_DIR` 可用于指定本地 checkpoint cache；在 checkpoint 位于 NFS 时会缓存模型权重，避免 8 进程同时读 NFS。
+- `LOCAL_CACHE_DIR` 可用于指定本地 checkpoint cache。
 - 评测默认使用确定性解码，prompt 语义是预测 next four actions，评测端按动作词正则提取并截断到最多 4 个动作。

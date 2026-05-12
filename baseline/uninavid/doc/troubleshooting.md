@@ -1,7 +1,9 @@
-# DeepSpeed ZeRO-2 Loss 崩溃根因分析
+# Uni-NaVid Troubleshooting
+
+## DeepSpeed ZeRO-2 Loss 崩溃根因分析
 
 > 日期：2026-03-12  
-> 环境：server 98，8× H100 80GB，transformers 4.34.1，deepspeed 0.18.7，BF16，gradient_checkpointing=True
+> 环境：8× H100 80GB，transformers 4.34.1，deepspeed 0.18.7，BF16，gradient_checkpointing=True
 
 ## 问题现象
 
