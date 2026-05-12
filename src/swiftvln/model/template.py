@@ -299,8 +299,9 @@ class SwiftVLNTemplateMixin:
         
         # Process images with differentiated compression
         if images:
+            # Let Qwen processors resize Habitat frames to patch/merge-aligned sizes.
             media_inputs = processor.image_processor(
-                images=images, return_tensors='pt', do_resize=False
+                images=images, return_tensors='pt'
             )
             image_grid_thw = media_inputs['image_grid_thw']
             
@@ -482,7 +483,7 @@ class SwiftVLNTemplateMixin:
                 processor_func = processor.image_processor
                 kwargs['images'] = None
             media_inputs = processor_func(
-                videos=videos, return_tensors='pt', do_resize=False, **kwargs
+                videos=videos, return_tensors='pt', **kwargs
             )
             video_grid_thw = media_inputs['video_grid_thw']
             merge_length = processor.image_processor.merge_size ** 2
