@@ -7,7 +7,7 @@ name = "swiftvln"
 version = "0.1.0"
 description = "SwiftVLN independent repository"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 
 [project.scripts]
 swiftvln = "swiftvln.cli:main"

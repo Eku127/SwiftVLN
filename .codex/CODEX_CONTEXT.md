@@ -1269,14 +1269,28 @@ Stage-A 当前验证状态（2026-04-03）：
   - 若动作队列在这张反馈图上耗尽，则立刻用该图再次推理
   - 若模型输出无法解析动作，fallback 为 `[STOP]`
 
-## ms-swift 4.x Adaptation (Updated: 2026-04-30)
+## ms-swift 4.x Adaptation (Updated: 2026-05-12)
 
 - 本仓库当前 `ms-swift-refactor` 分支正在适配最新 ms-swift。
 - 保护约定：
   - 不修改旧环境 `swift-vln-train` / `swift-vln-eval`
   - 不修改旧仓库 `/mnt/data1/home/jiangjiajun/workspace/ms-swift`
   - 仅使用 update 环境：`swift-vln-train-update` / `swift-vln-eval-update`
-- update 环境当前从旧 train/eval 环境克隆后安装：
+- `README.md` 现在是 train/eval 两套 from-scratch 安装文档，不再要求从旧环境 clone：
+  - conda 基础层：`environment-train.yml`
+  - pip 训练依赖：`requirements-train.txt`
+  - PyTorch CUDA 12.8 与 `flash-attn` 在 README 中单独按顺序安装
+    - 若在 `/tmp` 等不同挂载点构建 `flash-attn` 遇到 `Invalid cross-device link`，
+      需把 `TMPDIR` 与 `PIP_CACHE_DIR` 放到同一文件系统后重试
+  - 当前目标训练环境仍是 `swift-vln-train-update`
+  - eval conda 基础层：`environment-eval.yml`
+  - eval pip 依赖：`requirements-eval.txt`
+    - 包含 `qwen-vl-utils==0.0.14`，与 README 的 Qwen-VL 验证口径一致
+  - 当前目标 eval 环境仍是 `swift-vln-eval-update`
+  - eval 从零安装 `SwiftVLN` / `ms-swift-lateset` / `SatNav` / `habitat-lab-0.2.4`
+  - eval 使用 Python `3.9` + Habitat `0.2.4` stack；不能直接复用 train 的 Python `3.10` 环境
+  - `pyproject.toml` 的 `requires-python` 已放宽到 `>=3.9`，以支持 eval 环境 `pip install -e .`
+- update 环境当前使用：
   - `/mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset`
   - 版本：`ms-swift 4.2.0.dev0`
   - commit：`ad7d5c515 [docs] fix docs (#9244)`
