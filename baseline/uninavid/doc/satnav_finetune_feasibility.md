@@ -203,7 +203,7 @@ satnav_uninavid_data/
 ```bash
 conda create -n uninavid python=3.10 -y
 conda activate uninavid
-cd /mnt/data1/home/jiangjiajun/workspace/Uni-NaVid
+cd "$UNINAVID_REPO"
 pip install --upgrade pip
 pip install -e .
 pip install flash-attn==2.5.9.post1
@@ -214,7 +214,7 @@ pip install flash-attn==2.5.9.post1
 ### 步骤 2：模型下载（~1 小时）
 
 ```bash
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd "$SWIFTVLN_ROOT"
 bash baseline/uninavid/scripts/download_uninavid_models.sh --all
 ```
 
@@ -228,8 +228,8 @@ bash baseline/uninavid/scripts/download_uninavid_models.sh --all
 编写 `baseline/uninavid/src/convert_satnav_to_uninavid.py`：
 
 **输入**：
-- SatNav `annotations.json`：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data/annotations.json`
-- SatNav 帧图像：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data/images/`
+- SatNav `annotations.json`：`$SATNAV_DATA_ROOT/ver_260306/trajectory_data/annotations.json`
+- SatNav 帧图像：`$SATNAV_DATA_ROOT/ver_260306/trajectory_data/images/`
 
 **输出**：
 - 窗口化训练 JSON（Uni-NaVid 格式）
@@ -250,13 +250,13 @@ bash baseline/uninavid/scripts/download_uninavid_models.sh --all
 # 只转换前 100 个 episode
 python baseline/uninavid/src/convert_satnav_to_uninavid.py \
   --max-episodes 100 \
-  --output-dir /mnt/data3/jiangjiajun/dataset/satnav_uninavid_data/smoke
+  --output-dir "$UNINAVID_DATA_ROOT/smoke"
 
 # 单卡或少卡训练几步，确认 loss 正常下降
 deepspeed uninavid/train/train_mem.py \
   --model_name_or_path baseline/uninavid/model/uninavid-7b-full-224-video-fps-1-grid-2 \
-  --data_path /mnt/data3/jiangjiajun/dataset/satnav_uninavid_data/smoke/satnav_uninavid_train.json \
-  --video_folder /mnt/data3/jiangjiajun/dataset/satnav_uninavid_data/smoke \
+  --data_path "$UNINAVID_DATA_ROOT/smoke/satnav_uninavid_train.json" \
+  --video_folder "$UNINAVID_DATA_ROOT/smoke" \
   --num_train_epochs 1 \
   --per_device_train_batch_size 2 \
   ...
@@ -286,12 +286,12 @@ deepspeed uninavid/train/train_mem.py \
 ```bash
 # stage_2 style: 基于已训练的 Uni-NaVid
 PREV_MODEL="baseline/uninavid/model/uninavid-7b-full-224-video-fps-1-grid-2"
-DATA_PATH="/mnt/data3/jiangjiajun/dataset/satnav_uninavid_data/full/satnav_uninavid_train.json"
+DATA_PATH="$UNINAVID_DATA_ROOT/full/satnav_uninavid_train.json"
 
 deepspeed uninavid/train/train_mem.py \
   --model_name_or_path $PREV_MODEL \
   --data_path $DATA_PATH \
-  --video_folder /mnt/data3/jiangjiajun/dataset/satnav_uninavid_data/full \
+  --video_folder "$UNINAVID_DATA_ROOT/full" \
   --tune_vision_encoder True \
   ...
 ```
@@ -317,10 +317,10 @@ PREV_MODEL="baseline/uninavid/model/vicuna-7b-v1.5"
 
 | 数据 | 路径 |
 |------|------|
-| SatNav 训练标注 | `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data/annotations.json` |
+| SatNav 训练标注 | `$SATNAV_DATA_ROOT/ver_260306/trajectory_data/annotations.json` |
 | SatNav 训练帧 | `.../trajectory_data/images/{episode_id}/rgb/` |
 | SatNav 评测 episodes | `.../ver_260306/episodes/eval/all_episodes.json` |
-| Uni-NaVid 仓库 | `/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid` |
+| Uni-NaVid 仓库 | `$UNINAVID_REPO` |
 | Uni-NaVid 模型（SwiftVLN 内） | `baseline/uninavid/model/` |
 | EVA-CLIP processor | `Uni-NaVid/uninavid/processor/clip-patch14-224` |
 

@@ -8,7 +8,7 @@
 
 | 数据 | 路径 |
 |------|------|
-| SatNav 标注 | `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data/annotations.json` |
+| SatNav 标注 | `$SATNAV_DATA_ROOT/ver_260306/trajectory_data/annotations.json` |
 | SatNav 帧图像 | `.../trajectory_data/images/{episode_video}/rgb/{NNN}.jpg` |
 
 SatNav annotations.json 单条示例：
@@ -191,9 +191,9 @@ baseline/uninavid/src/convert_satnav_to_uninavid.py
 
 用法:
   python convert_satnav_to_uninavid.py \
-    --annotations /path/to/annotations.json \
-    --image-root /path/to/trajectory_data \
-    --output-dir /path/to/output \
+    --annotations "$SATNAV_DATA_ROOT/ver_260306/trajectory_data/annotations.json" \
+    --image-root "$SATNAV_DATA_ROOT/ver_260306/trajectory_data" \
+    --output-dir "$UNINAVID_DATA_ROOT/smoke" \
     [--max-episodes N]        # 限制转换 episode 数（用于 smoke test）
     [--window-size 4]         # 动作窗口大小（默认 4）
     [--video-fps 1]           # 合成视频帧率（默认 1）
