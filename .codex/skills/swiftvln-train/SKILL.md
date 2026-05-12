@@ -16,7 +16,7 @@ Related skills:
 - 主训练脚本当前 baseline 默认值：
   - `MAX_SAMPLES=0`（显式全量）
   - `NUM_OVERLAP=0`
-  - `OVERLAP_TAIL_WINDOW_ADJUST=false`（只要设置 `NUM_OVERLAP>0`，默认就是 no-tail-adjust；legacy tail 回挪必须显式设为 `true`）
+  - `NUM_OVERLAP>0` 时固定使用 stride-aligned tail window，不再提供 tail-adjust 控制参数
   - `SAVE_STEPS=1000`
   - `SAVE_TOTAL_LIMIT=1`
   - SatNav 默认训练数据：`ver_260418`
@@ -39,7 +39,6 @@ Related skills:
     - `NUM_HISTORY`
     - `HISTORY_PROCESSOR_TYPE`
     - `NUM_OVERLAP`
-    - `OVERLAP_TAIL_WINDOW_ADJUST`
 - 已在 `17` 上做过 `Qwen2.5-VL-7B` baseline 实测：
   - `8卡`
   - `per_frame + history + overlap=0`
@@ -101,11 +100,10 @@ Before starting, confirm with the user:
 | Parameter | Default | Notes |
 |---|---|---|
 | Model(s) | `swiftvln` | `baseline`/ambiguous → `swiftvln` |
-| Stage | — | `stage1` or `stage2` |
 | Environment | — | `satnav` or `habitat` |
 | Server(s) | — | One or more of: `98`, `73`, `17` |
 | QA mixed training | — | Whether to mix QA data |
-| Stage1 base model path | `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct` | Default script path; use this absolute local cache path to avoid ModelScope hub resolution |
+| Base model path | `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct` | Default script path; use this absolute local cache path to avoid ModelScope hub resolution |
 
 ---
 
@@ -114,8 +112,8 @@ Before starting, confirm with the user:
 1. Read current scripts:
    - `src/swiftvln/scripts/train/train_queue.sh`
    - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
-2. Produce **run checklist**: model set, stage, environment, data version, offline model path, launch mode, expected output naming.
-   For `stage1`, confirm the resolved path is the absolute local cache path above, not `Qwen/Qwen2.5-VL-3B-Instruct`.
+2. Produce **run checklist**: model set, environment, offline model path, launch mode, expected output naming.
+   Confirm the resolved base model path is the absolute local cache path above, not `Qwen/Qwen2.5-VL-3B-Instruct`.
    If `MEMORY_METHOD=map`, checklist 里必须额外确认：
    - `global/local/render/mask`
    - 约束 `satnav + per_frame + no ToMe`

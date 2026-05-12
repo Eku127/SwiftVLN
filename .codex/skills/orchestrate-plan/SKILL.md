@@ -26,7 +26,7 @@ This skill coordinates the existing `swiftvln-train` and `swiftvln-eval` skills 
 When Codex generates the EXPERIMENTS bash file, each array entry must follow this exact pipe-separated format:
 
 ```
-model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
+model|config|changes|ds_names|ds_paths|reserved|qa_ratio
 ```
 
 | Field | Description | Example |
@@ -36,7 +36,7 @@ model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
 | `changes` | Human-readable description of non-default params | `defaults` or `NUM_OVERLAP=32 BATCH_SIZE=8` |
 | `ds_names` | Dataset name(s), comma-separated | `SatNav` |
 | `ds_paths` | Trajectory data path(s), comma-separated | `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data` |
-| `stage2_path` | Stage2 base checkpoint path (empty for stage1) | `` |
+| `reserved` | Reserved, leave empty | `` |
 | `qa_ratio` | QA mixing ratio: `0` = no QA, `0.15` = 15% | `0` or `0.15` |
 
 **Default SatNav paths (ver_260317):**
@@ -50,7 +50,6 @@ model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
 1. Read the plan file specified by the user (e.g. `runtime/plans/my_plan.md`).
 2. Extract the following from natural language:
    - **Model**: `swiftvln` (default: `swiftvln`)
-   - **Stage**: `stage1` or `stage2` (default: `stage1`)
    - **Env**: `satnav` or `habitat` (default: `satnav`)
    - **Data version**: e.g. `ver_260317` (default: latest in `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_*`)
    - **Experiment list**: each experiment's name/id, `qa_ratio`, and any non-default hyperparameter overrides
@@ -75,7 +74,7 @@ model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
 
 **Example interpretation:**
 
-> "跑 swiftvln stage1 satnav 四组实验：纯 baseline，15% QA，30% QA，以及 15% QA + overlap=32"
+> "跑 swiftvln satnav 四组实验：纯 baseline，15% QA，30% QA，以及 15% QA + overlap=32"
 
 此例描述完整，直接解析为：
 ```
@@ -108,7 +107,7 @@ If there is **any ambiguity** in the plan (see Step 1 rules above), ask the clar
 
 Example output after clarification:
 ```
-我理解你要跑以下 4 个实验（swiftvln, stage1, satnav, ver_260317）：
+我理解你要跑以下 4 个实验（swiftvln, satnav, ver_260317）：
 
  #  | exp_id          | qa_ratio | 超参覆盖
 ----|-----------------|----------|----------
@@ -167,7 +166,6 @@ Use the Write tool to create `/tmp/train_experiments_<server>_<HHMMSS>.sh`. Cont
 # Plan: <plan_file_path>
 # Generated: <timestamp>
 
-TRAIN_STAGE="stage1"
 ENV_TYPE="satnav"
 USE_SWANLAB="false"
 SWANLAB_PROJECT=""
@@ -179,7 +177,7 @@ DATASET_CONFIGS=("SatNav|${_SATNAV_TRAJ}")
 # QA dataset path (used when qa_ratio > 0)
 QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl"
 
-# EXPERIMENTS array: model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
+# EXPERIMENTS array: model|config|changes|ds_names|ds_paths|reserved|qa_ratio
 EXPERIMENTS=(
   "swiftvln|default|defaults|SatNav|${_SATNAV_TRAJ}||0"
   "swiftvln|default|defaults|SatNav|${_SATNAV_TRAJ}||0.15"
@@ -190,7 +188,7 @@ Rules:
 - One file per server, placed in `/tmp/` (or `runtime/plans/generated/` for persistence).
 - `config` field: `default` for all-default, or comma-separated overrides like `NUM_OVERLAP=32,BATCH_SIZE=8`.
 - `changes` field: human-readable, e.g. `NUM_OVERLAP=32` or `defaults`.
-- `stage2_path` field: empty string for stage1.
+- `reserved` field: keep it empty.
 - `qa_ratio`: `0` means no QA mixing; `0.15` means 15% QA.
 - `USE_QA_MIXED_TRAINING` is NOT set in the file — `train_queue.sh` infers it from `qa_ratio > 0` per-experiment automatically.
 
@@ -335,7 +333,6 @@ EXPERIMENTS=(
 
 ### Multi-experiment file example (4 experiments across one server)
 ```bash
-TRAIN_STAGE="stage1"
 ENV_TYPE="satnav"
 USE_SWANLAB="false"
 SWANLAB_PROJECT=""
