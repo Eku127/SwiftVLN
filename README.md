@@ -1,7 +1,7 @@
 # SwiftVLN Environment Setup
 
 This repository uses the `ms-swift` 4.x API. Do not use the old
-`swift-vln-train` / `swift-vln-eval` environments for current OverlapVLN work.
+`swift-vln-train` / `swift-vln-eval` environments for current SwiftVLN work.
 
 ## Train Environment
 
@@ -85,7 +85,7 @@ cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 MODEL_FAMILY=qwen2_5_vl VLN_ENV_TYPE=satnav \
 MAX_SAMPLES=16 MAX_STEPS=2 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
 USE_SWANLAB=false USE_WXWORK_NOTIFICATION=false TRAIN_NUM_GPUS=2 \
-bash src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh
+bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh
 ```
 
 Qwen3-VL 8B train smoke:
@@ -100,7 +100,7 @@ STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/
 VLN_ENV_TYPE=satnav NUM_FRAMES=8 NUM_HISTORY=2 NUM_FUTURE_STEPS=2 \
 MAX_SAMPLES=8 MAX_STEPS=1 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
 USE_SWANLAB=false USE_WXWORK_NOTIFICATION=false TRAIN_NUM_GPUS=8 \
-bash src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh
+bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh
 ```
 
 Eval smoke for either model:
@@ -112,7 +112,7 @@ cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 
 MODEL_FAMILY=<qwen2_5_vl_or_qwen3_vl> ENV_TYPE=satnav EVAL_SPLIT=val_seen \
 MAX_EPISODES=2 CUDA_DEVICES=0,1 \
-bash src/swiftvln/scripts/eval/eval_by_name.sh <overlapvln_exp_name>
+bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_exp_name>
 ```
 
 For the Qwen3-VL 8B smoke above, keep eval parameters aligned with training:
@@ -121,7 +121,7 @@ For the Qwen3-VL 8B smoke above, keep eval parameters aligned with training:
 MODEL_FAMILY=qwen3_vl ENV_TYPE=satnav EVAL_SPLIT=val_seen \
 NUM_FRAMES=8 NUM_HISTORY=2 NUM_FUTURE_STEPS=2 MAX_EPISODES=1 CUDA_DEVICES=0,1 \
 MODEL_PATH=<checkpoint_path> \
-bash src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh
+bash src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh
 ```
 
 Qwen3.5 is not supported by these update environments. Use a separate

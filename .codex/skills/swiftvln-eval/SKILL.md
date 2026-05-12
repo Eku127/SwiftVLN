@@ -1,14 +1,14 @@
 ---
-name: overlapvln-eval
+name: swiftvln-eval
 description: "Run and supervise VLN evaluation with tmux-based async execution, watchdog monitoring, and Codex callback via `codex exec resume`. Supports queue consumption, auto-recovery, webhook notifications, and CSV result collection."
 ---
 
-# OverlapVLN Eval Skill
+# SwiftVLN Eval Skill
 
 Evaluate trained VLN models by name or via a persistent queue. Codex acts as a **launch operator**: pick an eval host, launch eval in tmux, register a watchdog for async completion callback, and optionally stay for initial health checks. When the watchdog detects eval completion or failure, it resumes the Codex session for intelligent result reporting or error recovery.
 
 Related skills:
-- **`overlapvln-train`**: upstream producer — trains models and enqueues them to `eval_todo.txt`.
+- **`swiftvln-train`**: upstream producer — trains models and enqueues them to `eval_todo.txt`.
 - **`server-train-eval-monitor`**: cluster-wide status overview across 98/73/17.
 
 ---
@@ -39,7 +39,7 @@ Watchdog (background, nohup):
 Servers `98`, `73`, and `17` all mount the same workspace at:
 
 ```
-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 ```
 
 - **Queue files**, eval outputs, scripts, and CSVs are **locally accessible from every host**.
@@ -73,9 +73,9 @@ Before starting, confirm the following with the user:
 | Low-level queue runner | `eval_queue.sh` | Internal queue engine, usually invoked by worker/monitor |
 | Async completion monitor | `eval_watchdog.sh` | Background watchdog, triggers Codex callback |
 
-## Map-Memory Parsing Notes (OverlapVLN)
+## Map-Memory Parsing Notes (SwiftVLN)
 
-- `eval_by_name.sh` 现在支持从 OverlapVLN 实验名里直接解析 map memory 配置。
+- `eval_by_name.sh` 现在支持从 SwiftVLN 实验名里直接解析 map memory 配置。
 - 约定命名块：
   - `map-g{global}-l{local}-r{render}-{mask}-s{compress_stride}`
   - 例：`map-g1000-l400-r384-d20-s2`
@@ -171,7 +171,7 @@ For parsing validation before real eval:
 CHECK_ONLY=true bash src/swiftvln/scripts/eval/eval_by_name.sh <model_name>
 ```
 
-如果是 OverlapVLN map 实验，必须确认 `CHECK_ONLY` 输出中包含：
+如果是 SwiftVLN map 实验，必须确认 `CHECK_ONLY` 输出中包含：
 - `MEMORY_METHOD: map`
 - `MAP_GLOBAL_SIDE_M`
 - `MAP_LOCAL_SIDE_M`
@@ -207,8 +207,8 @@ tmux new-session -d -s "${session_name}" \
 ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
   'source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
    conda activate swift-vln-eval && \
-   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/eval/eval_queue.sh 2>&1 | \
-   tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}'"
+   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/src/swiftvln/scripts/eval/eval_queue.sh 2>&1 | \
+   tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/${run_log}'"
 ```
 
 **Record**: tmux session name, start time, log path, eval host.
@@ -243,7 +243,7 @@ Watchdog 必须运行在**与 tmux session 相同的服务器上**（才能检�
 **eval 在 98 上：**
 
 ```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
+SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
 nohup bash "${SWIFTVLN_ROOT}/src/swiftvln/scripts/eval/eval_watchdog.sh" \
   --tmux-session "${session_name}" \
   --eval-log "${run_log}" \
@@ -256,7 +256,7 @@ echo "Watchdog PID=${WATCHDOG_PID}"
 **eval 在 73 上（SSH 启动）：**
 
 ```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
+SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
 ssh 10.246.152.73 "cd ${SWIFTVLN_ROOT} && \
   nohup bash src/swiftvln/scripts/eval/eval_watchdog.sh \
     --tmux-session '${session_name}' \

@@ -1,4 +1,0 @@
-interface:
-  display_name: "OverlapVLN Eval"
-  short_description: "队列式VLN评估流程：98/73双机消费 + 交互式监控 + 自动修复 + webhook通知 + CSV收集"
-  default_prompt: "Use $overlapvln-eval to evaluate VLN models by name or queue on servers 98/73, with human-like session supervision, auto-recovery, and result collection."

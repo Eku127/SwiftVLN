@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-UAV adapter enhancement for OverlapVLN.
+UAV adapter enhancement for SwiftVLN.
 
 This module wraps the Stage-A sim-to-real adapter so it can be inserted into
-the existing embed_enhance pipeline during OverlapVLN inference or finetuning.
+the existing embed_enhance pipeline during SwiftVLN inference or finetuning.
 """
 
 from __future__ import annotations

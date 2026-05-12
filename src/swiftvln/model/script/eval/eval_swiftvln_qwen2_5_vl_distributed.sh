@@ -1,14 +1,14 @@
 #!/bin/bash
-# OverlapVLN Distributed Evaluation Script - Qwen VL families (ms-swift)
+# SwiftVLN Distributed Evaluation Script - Qwen VL families (ms-swift)
 # 
 # Usage:
 #   # Habitat evaluation (default)
-#   ENV_TYPE=habitat MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh
+#   ENV_TYPE=habitat MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh
 #
 #   # SatNav evaluation
-#   ENV_TYPE=satnav MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh
+#   ENV_TYPE=satnav MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh
 #
-# This script runs distributed OverlapVLN evaluation with history frame compression.
+# This script runs distributed SwiftVLN evaluation with history frame compression.
 
 set -e  # Exit on error
 
@@ -41,13 +41,13 @@ MODEL_FAMILY="${MODEL_FAMILY:-qwen2_5_vl}"  # qwen2_5_vl | qwen3_vl
 case "$MODEL_FAMILY" in
     qwen2_5_vl|qwen25|qwen2.5)
         MODEL_FAMILY="qwen2_5_vl"
-        DEFAULT_MODEL_TYPE="overlapvln_qwen2_5_vl"
-        DEFAULT_TEMPLATE_TYPE="overlapvln_qwen2_5_vl"
+        DEFAULT_MODEL_TYPE="swiftvln_qwen2_5_vl"
+        DEFAULT_TEMPLATE_TYPE="swiftvln_qwen2_5_vl"
         ;;
     qwen3_vl|qwen3)
         MODEL_FAMILY="qwen3_vl"
-        DEFAULT_MODEL_TYPE="overlapvln_qwen3_vl"
-        DEFAULT_TEMPLATE_TYPE="overlapvln_qwen3_vl"
+        DEFAULT_MODEL_TYPE="swiftvln_qwen3_vl"
+        DEFAULT_TEMPLATE_TYPE="swiftvln_qwen3_vl"
         ;;
     *)
         echo "[ERROR] Unknown MODEL_FAMILY: $MODEL_FAMILY. Available: qwen2_5_vl, qwen3_vl."
@@ -92,7 +92,7 @@ NUM_HISTORY="${NUM_HISTORY:-8}"
 NUM_FUTURE_STEPS="${NUM_FUTURE_STEPS:-4}"
 
 # ============================================================================
-# OverlapVLN-Specific Parameters
+# SwiftVLN-Specific Parameters
 # ============================================================================
 NUM_OVERLAP="${NUM_OVERLAP:-0}"  # Number of overlapping actions between windows
 
@@ -154,9 +154,9 @@ SATNAV_DEBUG_RANK="${SATNAV_DEBUG_RANK:--1}"
 # ============================================================================
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 # Extract model name from MODEL_PATH
-MODEL_NAME=$(echo "$MODEL_PATH" | sed -n 's|.*/output/overlapvln/\([^/]*\)/.*|\1|p')
+MODEL_NAME=$(echo "$MODEL_PATH" | sed -n 's|.*/output/swiftvln/\([^/]*\)/.*|\1|p')
 MODEL_NAME="${MODEL_NAME:-unknown_model}"
-OUTPUT_DIR="${OUTPUT_DIR:-./results/eval/overlapvln/${MODEL_NAME}/${EVAL_SPLIT}/${TIMESTAMP}}"
+OUTPUT_DIR="${OUTPUT_DIR:-./results/eval/swiftvln/${MODEL_NAME}/${EVAL_SPLIT}/${TIMESTAMP}}"
 
 # ============================================================================
 # Video Options
@@ -176,12 +176,12 @@ export NCCL_MAX_NCHANNELS=4
 export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
 
 # Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
-# OVERLAPVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (derive
+# SWIFTVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (derive
 # {dataset_root}/map_cache from habitat DATA_PATH); explicit paths or "off"-
 # family sentinels are passed through verbatim.
 if [ "$MEMORY_METHOD" = "map" ]; then
     if [ -n "$MAP_CACHE_DIR" ] && [ "$MAP_CACHE_DIR" != "auto" ]; then
-        export OVERLAPVLN_MAP_CACHE_DIR="$MAP_CACHE_DIR"
+        export SWIFTVLN_MAP_CACHE_DIR="$MAP_CACHE_DIR"
     fi
 fi
 
@@ -205,7 +205,7 @@ VLN_DIR="${SWIFTVLN_ROOT}/src/swiftvln"
 # Print Configuration
 # ============================================================================
 echo "=============================================="
-echo "OverlapVLN Distributed Evaluation"
+echo "SwiftVLN Distributed Evaluation"
 echo "=============================================="
 echo "Environment:     ${ENV_TYPE}"
 echo "Model Family:    ${MODEL_FAMILY}"
@@ -221,7 +221,7 @@ echo "Num Overlap:     ${NUM_OVERLAP}"
 echo "Memory Method:   ${MEMORY_METHOD}"
 if [ "$MEMORY_METHOD" = "map" ]; then
     echo "  Map: global=${MAP_GLOBAL_SIDE_M}m, local=${MAP_LOCAL_SIDE_M}m, render=${MAP_RENDER_PX}px, mask=${MAP_MASK_METHOD}"
-    echo "  Render cache: MAP_CACHE_DIR=${MAP_CACHE_DIR} (env OVERLAPVLN_MAP_CACHE_DIR=${OVERLAPVLN_MAP_CACHE_DIR:-<unset, will derive from DATA_PATH>})"
+    echo "  Render cache: MAP_CACHE_DIR=${MAP_CACHE_DIR} (env SWIFTVLN_MAP_CACHE_DIR=${SWIFTVLN_MAP_CACHE_DIR:-<unset, will derive from DATA_PATH>})"
     echo "  Compression: stride=${COMPRESS_STRIDE}, method=pool"
 else
     echo "History Processor: ${HISTORY_PROCESSOR_TYPE}"
@@ -311,7 +311,7 @@ export HABITAT_SIM_LOG=quiet
 export MAGNUM_LOG=quiet
 export GLOG_minloglevel=2
 
-echo "[INFO] Starting OverlapVLN distributed evaluation on ${NUM_GPUS} GPUs..."
+echo "[INFO] Starting SwiftVLN distributed evaluation on ${NUM_GPUS} GPUs..."
 
 # Build video arguments
 VIDEO_ARGS=""
@@ -405,6 +405,6 @@ fi
 "${EVAL_CMD[@]}"
 
 echo "=============================================="
-echo "OverlapVLN Evaluation Complete!"
+echo "SwiftVLN Evaluation Complete!"
 echo "Results saved to: ${OUTPUT_DIR}"
 echo "=============================================="

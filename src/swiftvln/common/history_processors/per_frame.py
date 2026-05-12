@@ -33,7 +33,7 @@ def sample_per_frame_history_indices(
     """
     Sample sorted indices from the history prefix [0, num_frames).
 
-    This helper intentionally mirrors the OverlapVLN train/eval per-frame
+    This helper intentionally mirrors the SwiftVLN train/eval per-frame
     sampling logic so both sides stay behaviorally aligned.
     """
     num_frames = int(num_frames)

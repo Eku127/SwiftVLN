@@ -29,7 +29,7 @@ IDLE_GPU_UTIL_MAX="${IDLE_GPU_UTIL_MAX:-5}"
 IDLE_GPU_MEM_MAX_MIB="${IDLE_GPU_MEM_MAX_MIB:-1024}"
 
 # Heuristic process patterns indicating active training.
-TRAIN_REGEX="${TRAIN_REGEX:-train_queue\\.sh|train_overlapvln|deepspeed|swift sft|swift pt|torchrun.*src/swiftvln|python.*src/swiftvln.*train}"
+TRAIN_REGEX="${TRAIN_REGEX:-train_queue\\.sh|train_swiftvln|deepspeed|swift sft|swift pt|torchrun.*src/swiftvln|python.*src/swiftvln.*train}"
 
 log() {
     echo "[eval-monitor] $(date '+%Y-%m-%d %H:%M:%S') $*"

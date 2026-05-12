@@ -1,6 +1,6 @@
-# OverlapVLN Deployment
+# SwiftVLN Deployment
 
-This package provides a local deployment entrypoint for the `overlapvln` baseline.
+This package provides a local deployment entrypoint for the `swiftvln` baseline.
 The current implementation is a single-process, single-session JSONL stdin/stdout server.
 By default it auto-selects one idle local H100. If `CUDA_VISIBLE_DEVICES` is already set,
 the deployment server uses the existing visible device set.
@@ -18,7 +18,7 @@ conda activate swift-vln-eval
 If you do not pass `--model-name` or `model_name`, deployment defaults to:
 
 ```text
-output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050
+output/swiftvln/swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050
 ```
 
 This is the current baseline deploy default.
@@ -29,7 +29,7 @@ Long-running server:
 
 ```bash
 conda activate swift-vln-eval
-bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh
+bash src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh
 ```
 
 One-shot session:
@@ -42,7 +42,7 @@ bash src/swiftvln/scripts/deploy/run_deploy_session.sh /abs/path/to/requests.jso
 Override the default model only when needed:
 
 ```bash
-bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh <EXP_NAME>
+bash src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh <EXP_NAME>
 ```
 
 ### One-Shot Session
@@ -79,14 +79,14 @@ This is the simplest way to smoke or manually validate the deployment pipeline.
 Start the deploy server:
 
 ```bash
-bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh
+bash src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh
 ```
 
 If you want to override the default model:
 
 ```bash
-bash src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh \
-  overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456
+bash src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh \
+  swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456
 ```
 
 After the process prints a `ready` JSON line, keep the process alive and continue writing JSON commands to its stdin.
@@ -95,14 +95,14 @@ After the process prints a `ready` JSON line, keep the process alive and continu
 
 ```bash
 python -m swiftvln deploy \
-  --model overlapvln
+  --model swiftvln
 ```
 
 Optional session root:
 
 ```bash
 python -m swiftvln deploy \
-  --model overlapvln \
+  --model swiftvln \
   --session-root runtime/deploy/sessions
 ```
 
@@ -110,7 +110,7 @@ Optional explicit model:
 
 ```bash
 python -m swiftvln deploy \
-  --model overlapvln \
+  --model swiftvln \
   --model-name <EXP_NAME> \
   --session-root runtime/deploy/sessions
 ```
@@ -120,7 +120,7 @@ python -m swiftvln deploy \
 The practical flow is:
 
 1. Activate `swift-vln-eval`.
-2. Start the server with `start_overlapvln_deploy.sh`, or run a one-shot session with `run_deploy_session.sh`.
+2. Start the server with `start_swiftvln_deploy.sh`, or run a one-shot session with `run_deploy_session.sh`.
 3. Send `start` once with the task instruction.
 4. Send the first `image`; the model returns one action sequence.
 5. After the robot finishes one action, send the returned image back as the next `image` command.
@@ -150,7 +150,7 @@ Behavior:
 Minimal raw example:
 
 ```bash
-python -m swiftvln deploy --model overlapvln <<'EOF'
+python -m swiftvln deploy --model swiftvln <<'EOF'
 {"type":"start","instruction":"Drive to the bank.","session_id":"demo"}
 {"type":"image","image_path":"/abs/path/to/frame_0001.jpg"}
 {"type":"image","image_path":"/abs/path/to/frame_0002.jpg"}
@@ -178,7 +178,7 @@ Input images are copied into `images/` with numbered names, for example:
 
 ## Current Limits
 
-- Only the `overlapvln` baseline per-frame/pool/noembed path is supported.
+- Only the `swiftvln` baseline per-frame/pool/noembed path is supported.
 - The parser currently handles baseline sampling settings and `num_overlap` only.
 - `map`, `gtc`, `segment_gtc`, `tome`, `initial`, and embedding enhancement variants are rejected.
 - Only single-session local CLI deployment is supported. There is no HTTP server.
@@ -186,7 +186,7 @@ Input images are copied into `images/` with numbered names, for example:
 
 ## Helper Scripts
 
-- `src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh`
+- `src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh`
   - Long-running deploy server wrapper. Defaults to the baseline model above when `model_name` is omitted.
 - `src/swiftvln/scripts/deploy/run_deploy_session.sh`
   - One-shot wrapper that reads a JSONL request file and runs a full session. Defaults to the baseline model above when `model_name` is omitted.

@@ -3,35 +3,35 @@
 # Unified VLN Model Evaluation Script
 # ============================================================================
 # 
-# 支持的模型架构: overlapvln
+# 支持的模型架构: swiftvln
 #
 # 使用方法:
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh <overlapvln_model_name> [options]
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_model_name> [options]
 #
 # 示例:
-#   # OverlapVLN 评估 (per_frame, no embedding)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456
+#   # SwiftVLN 评估 (per_frame, no embedding)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456
 #
-#   # OverlapVLN 评估 (per_frame with random history sampling)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456
+#   # SwiftVLN 评估 (per_frame with random history sampling)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456
 #   
-#   # OverlapVLN 评估 (per_frame with tome, no embedding)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-noembed-bs64-lr2e-5-20260204-123456
+#   # SwiftVLN 评估 (per_frame with tome, no embedding)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-noembed-bs64-lr2e-5-20260204-123456
 #   
-#   # OverlapVLN 评估 (GTC, no embedding)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-20260204-123456
+#   # SwiftVLN 评估 (GTC, no embedding)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-20260204-123456
 #
-#   # OverlapVLN 评估 (Pixel Embed)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-initial-pixel-bs64-lr2e-5-20260212-123456
+#   # SwiftVLN 评估 (Pixel Embed)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-initial-pixel-bs64-lr2e-5-20260212-123456
 #
-#   # OverlapVLN 评估 (Pose Embed, additive)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pose-bs64-lr2e-5-20260302-123456
+#   # SwiftVLN 评估 (Pose Embed, additive)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pose-bs64-lr2e-5-20260302-123456
 #
-#   # OverlapVLN 评估 (Pixel + Pose Embed)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pixel+pose-bs64-lr2e-5-20260302-123456
+#   # SwiftVLN 评估 (Pixel + Pose Embed)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pixel+pose-bs64-lr2e-5-20260302-123456
 #
-#   # OverlapVLN 评估 (SegmentGTC, no embedding)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-20260204-123456
+#   # SwiftVLN 评估 (SegmentGTC, no embedding)
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-20260204-123456
 #
 # 环境变量:
 #   ENV_TYPE     - habitat (默认) 或 satnav (如果模型名包含 env_type，会自动解析)
@@ -78,7 +78,7 @@ if [ $# -lt 1 ]; then
     echo "使用方法: bash $0 <model_name> [options]"
     echo ""
     echo "示例:"
-    echo "  bash $0 overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456"
+    echo "  bash $0 swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456"
     exit 1
 fi
 
@@ -100,8 +100,8 @@ fi
 parse_model_arch() {
     local name="$1"
     
-    if [[ "$name" == overlapvln-* ]]; then
-        echo "overlapvln"
+    if [[ "$name" == swiftvln-* ]]; then
+        echo "swiftvln"
     else
         echo ""
     fi
@@ -110,7 +110,7 @@ parse_model_arch() {
 MODEL_ARCH=$(parse_model_arch "$MODEL_NAME")
 
 if [ -z "$MODEL_ARCH" ]; then
-    print_error "无法解析模型架构! 模型名称必须以 overlapvln- 开头"
+    print_error "无法解析模型架构! 模型名称必须以 swiftvln- 开头"
     print_error "输入的模型名称: $MODEL_NAME"
     exit 1
 fi
@@ -122,9 +122,9 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # ============================================================================
 # 新格式 (带 env_type 和 stage):
 # 注: qa 参数(混合训练比例)不影响 eval，解析时会被忽略
-# OverlapVLN (per_frame):   overlapvln-{env_type}-{stage}[-qwen3vl]-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-# OverlapVLN (gtc):         overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-# OverlapVLN (segment_gtc): overlapvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# SwiftVLN (per_frame):   swiftvln-{env_type}-{stage}[-qwen3vl]-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# SwiftVLN (gtc):         swiftvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# SwiftVLN (segment_gtc): swiftvln-{env_type}-{stage}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
 #   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
 
 # ============================================================================
@@ -145,14 +145,14 @@ parse_env_type() {
     fi
 }
 
-parse_overlapvln_params() {
+parse_swiftvln_params() {
     local name="$1"
-    # 新格式 (map):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-map-g1000-l400-r448-d20-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
-    # 新格式 (per_frame):   overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
-    # random 示例:          overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260418-123456
-    # no-memory 示例:       overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
-    # 新格式 (gtc):         overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
-    # 新格式 (segment_gtc): overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # 新格式 (map):         swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-map-g1000-l400-r448-d20-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # 新格式 (per_frame):   swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # random 示例:          swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260418-123456
+    # no-memory 示例:       swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # 新格式 (gtc):         swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
+    # 新格式 (segment_gtc): swiftvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-20260204-123456
     # embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
     # 注: -initial 是可选的，vanilla 模式下不显示（默认）
     
@@ -289,8 +289,8 @@ parse_overlapvln_params() {
     echo "LEARNING_RATE=$learning_rate"
 }
 
-# 解析 overlapvln 参数
-eval "$(parse_overlapvln_params "$MODEL_NAME")"
+# 解析 swiftvln 参数
+eval "$(parse_swiftvln_params "$MODEL_NAME")"
 
 # 解析环境类型 (从模型名中提取，如果用户没有指定 ENV_TYPE)
 PARSED_ENV_TYPE=$(parse_env_type "$MODEL_NAME" "$MODEL_ARCH")
@@ -321,8 +321,8 @@ echo "NUM_FRAMES:     ${NUM_FRAMES:-N/A}"
 echo "NUM_HISTORY:    ${NUM_HISTORY:-N/A}"
 echo "NUM_FUTURE_STEPS: ${NUM_FUTURE_STEPS:-N/A}"
 
-# OverlapVLN 特有参数
-if [ "$MODEL_ARCH" == "overlapvln" ]; then
+# SwiftVLN 特有参数
+if [ "$MODEL_ARCH" == "swiftvln" ]; then
     echo "NUM_OVERLAP:    ${NUM_OVERLAP:-N/A}"
     echo "MEMORY_METHOD:  ${MEMORY_METHOD:-history}"
     if [ "${MEMORY_METHOD:-history}" == "map" ]; then
@@ -378,7 +378,7 @@ if [ "$CHECK_ONLY" == "true" ]; then
     print_info "预期模型目录: $MODEL_DIR"
     
     # 检查eval脚本是否存在
-    EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh"
+    EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh"
     if [ ! -f "$EVAL_SCRIPT" ]; then
         print_error "找不到eval脚本: $EVAL_SCRIPT"
         exit 1
@@ -408,7 +408,7 @@ if [ "$CHECK_ONLY" == "true" ]; then
     if [ -n "$COMPRESS_STRIDE" ]; then
         echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
     fi
-    # OverlapVLN 特有参数
+    # SwiftVLN 特有参数
     if [ -n "$NUM_OVERLAP" ]; then
         echo "NUM_OVERLAP=${NUM_OVERLAP}"
     fi
@@ -454,10 +454,10 @@ if [ "$CHECK_ONLY" == "true" ]; then
     if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
         echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
     fi
-    if [ "$MODEL_ARCH" == "overlapvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
+    if [ "$MODEL_ARCH" == "swiftvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
         echo "USE_PIXEL_EMBED=${USE_PIXEL_EMBED}"
     fi
-    if [ "$MODEL_ARCH" == "overlapvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+    if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
         echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
         echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
     fi
@@ -558,7 +558,7 @@ print_success "Checkpoint完整性检查通过"
 # ============================================================================
 # 确定eval脚本路径
 # ============================================================================
-EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh"
+EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh"
 
 if [ ! -f "$EVAL_SCRIPT" ]; then
     print_error "找不到eval脚本: $EVAL_SCRIPT"
@@ -659,7 +659,7 @@ fi
 if [ -n "$MAX_EPISODES" ]; then
     export MAX_EPISODES
 fi
-# OverlapVLN 特有参数
+# SwiftVLN 特有参数
 if [ -n "$NUM_OVERLAP" ]; then
     export NUM_OVERLAP
 fi
@@ -693,14 +693,14 @@ else
         export USE_TOME
     fi
 fi
-# OverlapVLN system prompt setting
+# SwiftVLN system prompt setting
 if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
     export SYSTEM_PROMPT_SETTING
 fi
-if [ "$MODEL_ARCH" == "overlapvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
+if [ "$MODEL_ARCH" == "swiftvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
     export USE_PIXEL_EMBED
 fi
-if [ "$MODEL_ARCH" == "overlapvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
     export USE_POSE_EMBED
     export POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
 fi
@@ -723,9 +723,9 @@ echo "保存视频:       ${SAVE_VIDEO}"
 if [ -n "$MAX_EPISODES" ]; then
     echo "最大Episodes:   ${MAX_EPISODES}"
 fi
-# OverlapVLN 特有参数
-if [ "$MODEL_ARCH" == "overlapvln" ]; then
-    echo "--- OverlapVLN Parameters ---"
+# SwiftVLN 特有参数
+if [ "$MODEL_ARCH" == "swiftvln" ]; then
+    echo "--- SwiftVLN Parameters ---"
     echo "NUM_OVERLAP:        ${NUM_OVERLAP:-N/A}"
     echo "MEMORY_METHOD:      ${MEMORY_METHOD:-history}"
     if [ "${MEMORY_METHOD:-history}" == "map" ]; then

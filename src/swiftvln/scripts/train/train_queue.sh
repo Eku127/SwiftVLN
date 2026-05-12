@@ -13,7 +13,7 @@
 # 使用方法:
 #   bash src/swiftvln/scripts/train/train_queue.sh
 #
-# 支持的模型: overlapvln
+# 支持的模型: swiftvln
 #
 # ============================================================================
 
@@ -83,7 +83,7 @@ QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_sw
 
 # Stage2 默认基础模型路径
 declare -A STAGE2_DEFAULT_MODELS=(
-    [overlapvln]="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239"
+    [swiftvln]="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/output/swiftvln/swiftvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239"
 )
 
 send_webhook() {
@@ -346,9 +346,9 @@ get_default_config() {
     local model="$1"
     
     case "$model" in
-        overlapvln)
+        swiftvln)
             cat << 'EOF'
-# OverlapVLN 可配置参数 (代号=默认值) - 滑动窗口重叠压缩
+# SwiftVLN 可配置参数 (代号=默认值) - 滑动窗口重叠压缩
 a) NUM_FRAMES=32           # 视频帧数
 b) NUM_HISTORY=8           # 历史帧数 (per_frame模式有效)
 c) NUM_FUTURE_STEPS=4      # 预测动作步数
@@ -369,7 +369,7 @@ q) USE_PIXEL_EMBED=false      # 像素坐标增强: true(开启) 或 false(关�
 r) USE_POSE_EMBED=false       # Pose增强: true(开启) 或 false(关闭)
 s) POSE_FUSION_METHOD=additive  # Pose融合方式: additive(默认) 或 film
 t) OVERLAP_TAIL_WINDOW_ADJUST=false  # overlap>0 时默认不回挪尾窗；true 为历史 legacy 行为
-# 说明: OverlapVLN 没有单独的 USE_MEMORY 开关；如需 no-memory，请用
+# 说明: SwiftVLN 没有单独的 USE_MEMORY 开关；如需 no-memory，请用
 #       HISTORY_PROCESSOR_TYPE=per_frame + NUM_HISTORY=0
 EOF
             ;;
@@ -392,7 +392,7 @@ expand_shortcodes() {
     # 定义映射
     declare -A mapping
     case "$model" in
-        overlapvln)
+        swiftvln)
             mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="COMPRESS_STRIDE" [e]="NUM_OVERLAP" [f]="NUM_EPOCHS" [g]="LEARNING_RATE" [h]="BATCH_SIZE" [i]="FREEZE_VIT" [j]="FREEZE_LLM" [k]="FREEZE_ALIGNER" [l]="USE_TOME" [m]="HISTORY_PROCESSOR_TYPE" [n]="GTC_OUTPUT_TOKENS" [o]="LOG_BASE" [p]="SYSTEM_PROMPT_SETTING" [q]="USE_PIXEL_EMBED" [r]="USE_POSE_EMBED" [s]="POSE_FUSION_METHOD" [t]="OVERLAP_TAIL_WINDOW_ADJUST")
             ;;
     esac
@@ -451,7 +451,7 @@ parse_stage1_config() {
     local frames=$(echo "$model_name" | grep -oP 'f\d+s' | sed 's/f//' | sed 's/s//')
     local steps=$(echo "$model_name" | grep -oP 'f\d+s\d+' | grep -oP 's\d+' | sed 's/s//')
     
-    # 解析 overlap (overlapvln)
+    # 解析 overlap (swiftvln)
     local overlap=$(echo "$model_name" | sed -n 's/.*overlap\([0-9]*\).*/\1/p')
     local overlap_tail_window_adjust="false"
     if [[ "$overlap" =~ ^[1-9][0-9]*$ && "$model_name" != *"-notailadj"* ]]; then
@@ -672,9 +672,9 @@ interactive_setup() {
     # 2. 选择模型
     print_header "🤖 Step 2: 选择训练模型"
     echo "可选模型:"
-    echo "  a) overlapvln"
+    echo "  a) swiftvln"
     echo ""
-    echo "示例: a 或 overlapvln"
+    echo "示例: a 或 swiftvln"
     read -p "请选择模型 [a]: " models_input
     models_input=${models_input:-a}
     
@@ -684,14 +684,14 @@ interactive_setup() {
     fi
     
     # 展开模型代号
-    declare -A model_mapping=([a]="overlapvln")
+    declare -A model_mapping=([a]="swiftvln")
     SELECTED_MODELS=()
     IFS=',' read -ra model_codes <<< "$models_input"
     for code in "${model_codes[@]}"; do
         code=$(echo "$code" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
         if [[ -n "${model_mapping[$code]}" ]]; then
             SELECTED_MODELS+=("${model_mapping[$code]}")
-        elif [[ "$code" =~ ^(overlapvln)$ ]]; then
+        elif [[ "$code" =~ ^(swiftvln)$ ]]; then
             # 也支持直接输入模型名
             SELECTED_MODELS+=("$code")
         else
@@ -1241,8 +1241,8 @@ run_experiment() {
     local stage2_path=$7
     local qa_ratio=$8
 
-    if [[ "$model" != "overlapvln" ]]; then
-        print_error "当前主线 train_queue 仅支持 overlapvln，收到不受支持的模型: $model"
+    if [[ "$model" != "swiftvln" ]]; then
+        print_error "当前主线 train_queue 仅支持 swiftvln，收到不受支持的模型: $model"
         return 1
     fi
     
@@ -1269,7 +1269,7 @@ run_experiment() {
     echo ""
     
     # 获取训练脚本路径
-    local train_script="${VLN_ROOT}/model/script/train/train_overlapvln_qwen2_5_vl.sh"
+    local train_script="${VLN_ROOT}/model/script/train/train_swiftvln_qwen2_5_vl.sh"
     
     if [[ ! -f "$train_script" ]]; then
         print_error "找不到训练脚本: $train_script"

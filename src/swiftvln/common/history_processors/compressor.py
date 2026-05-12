@@ -9,7 +9,7 @@ Navigation tasks. Supports multiple compression strategies:
 
 Each method has its own token count calculation, allowing flexible compression ratios.
 
-Used by: MonoVLN, CompressVLN, OverlapVLN
+Used by: MonoVLN, CompressVLN, SwiftVLN
 """
 
 import torch

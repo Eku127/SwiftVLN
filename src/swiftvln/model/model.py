@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-OverlapVLN models based on Qwen VL families.
+SwiftVLN models based on Qwen VL families.
 
-This module provides OverlapVLN model wrappers for Qwen2.5-VL and Qwen3-VL.
+This module provides SwiftVLN model wrappers for Qwen2.5-VL and Qwen3-VL.
 The key additions are registering custom special tokens for differentiated
 image compression and attaching optional embedding enhancements:
 - <history_image>: For history frames (will be compressed)
@@ -23,12 +23,12 @@ from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
 
 # Special tokens (must match dataset.py and template.py)
 HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
-OVERLAPVLN_SPECIAL_TOKENS = [HISTORY_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
+SWIFTVLN_SPECIAL_TOKENS = [HISTORY_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
 
 
-class OverlapVLNStreamingMixin:
+class SwiftVLNStreamingMixin:
     """
-    KV-cache state management shared by OverlapVLN Qwen-family wrappers.
+    KV-cache state management shared by SwiftVLN Qwen-family wrappers.
     """
 
     def reset(self, env_num: int = 1):
@@ -114,42 +114,42 @@ class OverlapVLNStreamingMixin:
         return 0
 
 
-class OverlapVLNQwen25VLConfig(Qwen2_5_VLConfig):
-    """Configuration for OverlapVLN model based on Qwen2.5-VL."""
+class SwiftVLNQwen25VLConfig(Qwen2_5_VLConfig):
+    """Configuration for SwiftVLN model based on Qwen2.5-VL."""
 
-    model_type = "overlapvln_qwen2_5_vl"
+    model_type = "swiftvln_qwen2_5_vl"
 
 
-class OverlapVLNQwen25VLForConditionalGeneration(
-    OverlapVLNStreamingMixin,
+class SwiftVLNQwen25VLForConditionalGeneration(
+    SwiftVLNStreamingMixin,
     Qwen2_5_VLForConditionalGeneration,
 ):
-    """OverlapVLN model wrapper for Qwen2.5-VL."""
+    """SwiftVLN model wrapper for Qwen2.5-VL."""
 
-    config_class = OverlapVLNQwen25VLConfig
-
-
-class OverlapVLNQwen3VLConfig(Qwen3VLConfig):
-    """Configuration for OverlapVLN model based on Qwen3-VL."""
-
-    model_type = "overlapvln_qwen3_vl"
+    config_class = SwiftVLNQwen25VLConfig
 
 
-class OverlapVLNQwen3VLForConditionalGeneration(
-    OverlapVLNStreamingMixin,
+class SwiftVLNQwen3VLConfig(Qwen3VLConfig):
+    """Configuration for SwiftVLN model based on Qwen3-VL."""
+
+    model_type = "swiftvln_qwen3_vl"
+
+
+class SwiftVLNQwen3VLForConditionalGeneration(
+    SwiftVLNStreamingMixin,
     Qwen3VLForConditionalGeneration,
 ):
-    """OverlapVLN model wrapper for Qwen3-VL."""
+    """SwiftVLN model wrapper for Qwen3-VL."""
 
-    config_class = OverlapVLNQwen3VLConfig
+    config_class = SwiftVLNQwen3VLConfig
 
 
 def _patch_qwen3_inputs_embeds_only_forward(qwen3_model) -> None:
     """
-    Support the OverlapVLN path where visual features have already been injected
+    Support the SwiftVLN path where visual features have already been injected
     into inputs_embeds before the Qwen3-VL submodel forward.
     """
-    if getattr(qwen3_model, '_overlapvln_inputs_embeds_only_patch', False):
+    if getattr(qwen3_model, '_swiftvln_inputs_embeds_only_patch', False):
         return
 
     from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLModelOutputWithPast
@@ -170,13 +170,13 @@ def _patch_qwen3_inputs_embeds_only_forward(qwen3_model) -> None:
         cache_position=None,
         **kwargs,
     ):
-        overlapvln_embeds_only = (
+        swiftvln_embeds_only = (
             inputs_embeds is not None
             and input_ids is None
             and pixel_values is None
             and pixel_values_videos is None
         )
-        if not overlapvln_embeds_only:
+        if not swiftvln_embeds_only:
             return origin_forward(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -238,20 +238,20 @@ def _patch_qwen3_inputs_embeds_only_forward(qwen3_model) -> None:
             rope_deltas=self.rope_deltas,
         )
 
-    qwen3_model._overlapvln_origin_forward = origin_forward
+    qwen3_model._swiftvln_origin_forward = origin_forward
     qwen3_model.forward = MethodType(forward, qwen3_model)
-    qwen3_model._overlapvln_inputs_embeds_only_patch = True
+    qwen3_model._swiftvln_inputs_embeds_only_patch = True
 
 
 # Register model for auto loading with transformers
 try:
     from transformers import AutoModel, AutoModelForCausalLM, AutoConfig
-    AutoConfig.register("overlapvln_qwen2_5_vl", OverlapVLNQwen25VLConfig)
-    AutoModel.register(OverlapVLNQwen25VLConfig, OverlapVLNQwen25VLForConditionalGeneration)
-    AutoModelForCausalLM.register(OverlapVLNQwen25VLConfig, OverlapVLNQwen25VLForConditionalGeneration)
-    AutoConfig.register("overlapvln_qwen3_vl", OverlapVLNQwen3VLConfig)
-    AutoModel.register(OverlapVLNQwen3VLConfig, OverlapVLNQwen3VLForConditionalGeneration)
-    AutoModelForCausalLM.register(OverlapVLNQwen3VLConfig, OverlapVLNQwen3VLForConditionalGeneration)
+    AutoConfig.register("swiftvln_qwen2_5_vl", SwiftVLNQwen25VLConfig)
+    AutoModel.register(SwiftVLNQwen25VLConfig, SwiftVLNQwen25VLForConditionalGeneration)
+    AutoModelForCausalLM.register(SwiftVLNQwen25VLConfig, SwiftVLNQwen25VLForConditionalGeneration)
+    AutoConfig.register("swiftvln_qwen3_vl", SwiftVLNQwen3VLConfig)
+    AutoModel.register(SwiftVLNQwen3VLConfig, SwiftVLNQwen3VLForConditionalGeneration)
+    AutoModelForCausalLM.register(SwiftVLNQwen3VLConfig, SwiftVLNQwen3VLForConditionalGeneration)
 except Exception:
     pass
 
@@ -324,10 +324,10 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
             uav_adapter_path,
             strict=True,
         )
-        print(f"[OverlapVLN] Loaded external UAV adapter from: {resolved_path}")
+        print(f"[SwiftVLN] Loaded external UAV adapter from: {resolved_path}")
 
     if not model.embed_enhance.is_empty:
-        print(f"[OverlapVLN] Embedding enhancement pipeline: {model.embed_enhance}")
+        print(f"[SwiftVLN] Embedding enhancement pipeline: {model.embed_enhance}")
         print(f"  - embed_dim: {embed_dim}")
         print(f"  - Enhancements: {model.embed_enhance.enhancement_names}")
         print(f"  - Module will be trained and saved with checkpoints")
@@ -352,50 +352,50 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
         _set_alias('uav_adapter', None)
 
 
-class OverlapVLNQwen25VLLoader(Qwen2_5VLLoader):
-    """ms-swift 4.x loader for the OverlapVLN Qwen2.5-VL model."""
+class SwiftVLNQwen25VLLoader(Qwen2_5VLLoader):
+    """ms-swift 4.x loader for the SwiftVLN Qwen2.5-VL model."""
 
     def __init__(self, *args, **kwargs):
-        self._overlapvln_embedding_options = _pop_embedding_options(kwargs)
+        self._swiftvln_embedding_options = _pop_embedding_options(kwargs)
         new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
-        for token in OVERLAPVLN_SPECIAL_TOKENS:
+        for token in SWIFTVLN_SPECIAL_TOKENS:
             if token not in new_special_tokens:
                 new_special_tokens.append(token)
         kwargs['new_special_tokens'] = new_special_tokens
         super().__init__(*args, **kwargs)
 
     def get_model(self, model_dir: str, *args, **kwargs):
-        self.auto_model_cls = self.auto_model_cls or OverlapVLNQwen25VLForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or SwiftVLNQwen25VLForConditionalGeneration
         model = super().get_model(model_dir, *args, **kwargs)
         _attach_embedding_enhancement(
             model,
             model_dir,
-            **self._overlapvln_embedding_options,
+            **self._swiftvln_embedding_options,
         )
         return model
 
 
-class OverlapVLNQwen3VLLoader(Qwen3VLLoader):
-    """ms-swift 4.x loader for the OverlapVLN Qwen3-VL model."""
+class SwiftVLNQwen3VLLoader(Qwen3VLLoader):
+    """ms-swift 4.x loader for the SwiftVLN Qwen3-VL model."""
 
     def __init__(self, *args, **kwargs):
-        self._overlapvln_embedding_options = _pop_embedding_options(kwargs)
+        self._swiftvln_embedding_options = _pop_embedding_options(kwargs)
         new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
-        for token in OVERLAPVLN_SPECIAL_TOKENS:
+        for token in SWIFTVLN_SPECIAL_TOKENS:
             if token not in new_special_tokens:
                 new_special_tokens.append(token)
         kwargs['new_special_tokens'] = new_special_tokens
         super().__init__(*args, **kwargs)
 
     def get_model(self, model_dir: str, *args, **kwargs):
-        self.auto_model_cls = self.auto_model_cls or OverlapVLNQwen3VLForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or SwiftVLNQwen3VLForConditionalGeneration
         model = super().get_model(model_dir, *args, **kwargs)
         if model is not None and hasattr(model, 'model'):
             _patch_qwen3_inputs_embeds_only_forward(model.model)
         _attach_embedding_enhancement(
             model,
             model_dir,
-            **self._overlapvln_embedding_options,
+            **self._swiftvln_embedding_options,
         )
         return model
 
@@ -427,7 +427,7 @@ def _restore_enhancement_weights(model, model_dir: str):
                 if name.startswith(prefix)
             })
         except Exception as e:
-            print(f"[OverlapVLN] Warning: failed to parse {index_path}: {e}")
+            print(f"[SwiftVLN] Warning: failed to parse {index_path}: {e}")
     elif os.path.isfile(os.path.join(model_dir, 'model.safetensors')):
         shard_files = ['model.safetensors']
     
@@ -441,7 +441,7 @@ def _restore_enhancement_weights(model, model_dir: str):
                         if key.startswith(prefix):
                             enhancement_sd[key.replace(prefix, '', 1)] = f.get_tensor(key)
         except Exception as e:
-            print(f"[OverlapVLN] Warning: failed to read embed_enhance weights from safetensors: {e}")
+            print(f"[SwiftVLN] Warning: failed to read embed_enhance weights from safetensors: {e}")
     
     # Also try legacy keys (pixel_embed.*) for backward compatibility with old checkpoints
     if not enhancement_sd:
@@ -473,17 +473,17 @@ def _restore_enhancement_weights(model, model_dir: str):
                                 new_key = 'enhancements.pixel.' + key.replace(legacy_prefix, '', 1)
                                 enhancement_sd[new_key] = f.get_tensor(key)
                 if enhancement_sd:
-                    print(f"[OverlapVLN] Found legacy pixel_embed.* keys, remapping to embed_enhance.*")
+                    print(f"[SwiftVLN] Found legacy pixel_embed.* keys, remapping to embed_enhance.*")
             except Exception as e:
-                print(f"[OverlapVLN] Warning: failed to read legacy pixel_embed weights: {e}")
+                print(f"[SwiftVLN] Warning: failed to read legacy pixel_embed weights: {e}")
     
     if enhancement_sd:
         missing, unexpected = model.embed_enhance.load_state_dict(enhancement_sd, strict=False)
         if missing or unexpected:
-            print(f"[OverlapVLN] embed_enhance load_state_dict warnings:")
+            print(f"[SwiftVLN] embed_enhance load_state_dict warnings:")
             if missing:
                 print(f"  - missing_keys: {missing}")
             if unexpected:
                 print(f"  - unexpected_keys: {unexpected}")
         else:
-            print(f"[OverlapVLN] Restored embed_enhance weights from checkpoint ({len(enhancement_sd)} tensors)")
+            print(f"[SwiftVLN] Restored embed_enhance weights from checkpoint ({len(enhancement_sd)} tensors)")

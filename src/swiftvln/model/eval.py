@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-OverlapVLN Multi-Environment Evaluation Entry Point
+SwiftVLN Multi-Environment Evaluation Entry Point
 
-This script runs VLN evaluation using the trained OverlapVLN model
+This script runs VLN evaluation using the trained SwiftVLN model
 with history frame compression in multiple environments (Habitat or SatNav).
 
 Key difference from StreamVLN:
-- Uses OverlapVLN model and template with history compression
+- Uses SwiftVLN model and template with history compression
 - Compression applies during inference as well
 
 Usage:
@@ -35,23 +35,23 @@ import torch
 from swiftvln.common import BaseVLNEval
 
 
-class OverlapVLNEval(BaseVLNEval):
-    """OverlapVLN evaluation implementation."""
+class SwiftVLNEval(BaseVLNEval):
+    """SwiftVLN evaluation implementation."""
     
-    model_type = 'overlapvln_qwen2_5_vl'
-    template_type = 'overlapvln_qwen2_5_vl'
-    model_description = 'OverlapVLN'
+    model_type = 'swiftvln_qwen2_5_vl'
+    template_type = 'swiftvln_qwen2_5_vl'
+    model_description = 'SwiftVLN'
     uses_compression = True
     uses_num_frames = True
     
     def add_model_specific_args(self, parser):
-        """Add OverlapVLN-specific arguments."""
+        """Add SwiftVLN-specific arguments."""
         parser.add_argument("--model_type", type=str, default=self.model_type,
-                            choices=["overlapvln_qwen2_5_vl", "overlapvln_qwen3_vl"],
-                            help="Registered OverlapVLN model type")
+                            choices=["swiftvln_qwen2_5_vl", "swiftvln_qwen3_vl"],
+                            help="Registered SwiftVLN model type")
         parser.add_argument("--template_type", type=str, default=self.template_type,
-                            choices=["overlapvln_qwen2_5_vl", "overlapvln_qwen3_vl"],
-                            help="Registered OverlapVLN template type")
+                            choices=["swiftvln_qwen2_5_vl", "swiftvln_qwen3_vl"],
+                            help="Registered SwiftVLN template type")
         parser.add_argument("--num_overlap", type=int, default=0,
                             help="Number of overlapping actions between windows")
         parser.add_argument("--use_tome", action="store_true",
@@ -115,7 +115,7 @@ class OverlapVLNEval(BaseVLNEval):
                             help="tanh normalization scale for pose position components")
     
     def get_summary_extras(self):
-        """Add OverlapVLN-specific summary fields."""
+        """Add SwiftVLN-specific summary fields."""
         extras = super().get_summary_extras()
         if hasattr(self.args, 'model_type'):
             extras['model_type'] = self.args.model_type
@@ -170,7 +170,7 @@ class OverlapVLNEval(BaseVLNEval):
         return extras
     
     def register_module(self):
-        """Import OverlapVLN module to register model."""
+        """Import SwiftVLN module to register model."""
         try:
             import swiftvln.model
         except ImportError:
@@ -204,7 +204,7 @@ class OverlapVLNEval(BaseVLNEval):
         return model, processor
     
     def load_template(self, processor):
-        """Load OverlapVLN template."""
+        """Load SwiftVLN template."""
         from swift.template import get_template
         
         template = get_template(
@@ -217,12 +217,12 @@ class OverlapVLNEval(BaseVLNEval):
     @property
     def evaluator_class(self):
         """Lazy load evaluator class to avoid circular imports."""
-        from swiftvln.model.evaluator import OverlapVLNEvaluator
-        return OverlapVLNEvaluator
+        from swiftvln.model.evaluator import SwiftVLNEvaluator
+        return SwiftVLNEvaluator
 
 
 def main():
-    eval_runner = OverlapVLNEval()
+    eval_runner = SwiftVLNEval()
     eval_runner.run()
 
 

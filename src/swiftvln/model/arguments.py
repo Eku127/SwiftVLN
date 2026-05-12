@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-OverlapVLN Training Arguments
+SwiftVLN Training Arguments
 
 Extends StreamVLN training arguments with overlap and compression parameters.
 QA mixed training parameters are inherited from BaseVLNTrainArguments.
@@ -12,9 +12,9 @@ from swiftvln.common.training.arguments import BaseVLNTrainArguments
 
 
 @dataclass
-class OverlapVLNTrainArguments(BaseVLNTrainArguments):
+class SwiftVLNTrainArguments(BaseVLNTrainArguments):
     """
-    OverlapVLN training arguments.
+    SwiftVLN training arguments.
     
     Extends BaseVLNTrainArguments with:
     - History processor parameters (processor_type, compress_stride, etc.)

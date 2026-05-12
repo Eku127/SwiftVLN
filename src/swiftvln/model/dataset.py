@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-OverlapVLN Dataset for Visual Language Navigation
+SwiftVLN Dataset for Visual Language Navigation
 
-This dataset provides the OverlapVLN-specific data flow with:
+This dataset provides the SwiftVLN-specific data flow with:
 1. Sliding window sampling with configurable overlap
 2. Loss masking for overlap turns (using ms-swift's message.loss field)
 
@@ -37,7 +37,7 @@ from swiftvln.model.map_memory import (
 
 
 def _debug_enabled() -> bool:
-    return os.environ.get('OVERLAPVLN_DEBUG', '') != ''
+    return os.environ.get('SWIFTVLN_DEBUG', '') != ''
 
 
 def _debug_rank() -> int:
@@ -67,9 +67,9 @@ def _coerce_bool(value: Any, name: str) -> bool:
     raise ValueError(f"{name} must be a boolean value, got {value!r}")
 
 
-class OverlapVLNDataset(Dataset):
+class SwiftVLNDataset(Dataset):
     """
-    OverlapVLN Dataset with sliding window overlap and loss masking.
+    SwiftVLN Dataset with sliding window overlap and loss masking.
     
     Features:
     - Sliding window sampling with configurable overlap
@@ -174,7 +174,7 @@ class OverlapVLNDataset(Dataset):
                 scenes_dir = os.path.abspath(map_resolver.scenes_dir)
                 if self.map_builder is None:
                     # Default cache next to the dataset version (e.g.
-                    # ver_260404/map_cache). Env var OVERLAPVLN_MAP_CACHE_DIR
+                    # ver_260404/map_cache). Env var SWIFTVLN_MAP_CACHE_DIR
                     # overrides this, and the sentinel value "off" disables
                     # caching entirely. See map_memory._resolve_cache_dir.
                     default_cache_dir = os.path.join(
@@ -269,22 +269,22 @@ class OverlapVLNDataset(Dataset):
         
         # Log overlap configuration
         if self.num_overlap > 0:
-            print(f"[OverlapVLN] Sliding window: num_frames={num_frames}, "
+            print(f"[SwiftVLN] Sliding window: num_frames={num_frames}, "
                   f"num_overlap={num_overlap}, stride={self.stride}")
-            print(f"[OverlapVLN] Loss masking: first {num_overlap // num_future_steps} turns "
+            print(f"[SwiftVLN] Loss masking: first {num_overlap // num_future_steps} turns "
                   f"will have loss=0.0 for samples with start_idx > 0")
-            print(f"[OverlapVLN] Tail window adjustment: {self.overlap_tail_window_adjust}")
+            print(f"[SwiftVLN] Tail window adjustment: {self.overlap_tail_window_adjust}")
             if adjusted_samples > 0:
-                print(f"[OverlapVLN] Adjusted {adjusted_samples} end-of-episode samples "
+                print(f"[SwiftVLN] Adjusted {adjusted_samples} end-of-episode samples "
                       f"to ensure STOP data is trained")
             if skipped_redundant_samples > 0:
-                print(f"[OverlapVLN] Skipped {skipped_redundant_samples} redundant samples "
+                print(f"[SwiftVLN] Skipped {skipped_redundant_samples} redundant samples "
                       f"(already covered by previous sample)")
             if skipped_no_new_samples > 0:
-                print(f"[OverlapVLN] Skipped {skipped_no_new_samples} samples "
+                print(f"[SwiftVLN] Skipped {skipped_no_new_samples} samples "
                       f"with no new trainable actions after overlap")
         else:
-            print(f"[OverlapVLN] No overlap (stride={self.stride})")
+            print(f"[SwiftVLN] No overlap (stride={self.stride})")
         
         # Limit samples if max_samples is specified
         if self.max_samples is None:
@@ -305,9 +305,9 @@ class OverlapVLNDataset(Dataset):
                 self.data_list = _rng.sample(self.data_list, self.max_samples)
                 # Sort by (ep_id, ins_id, start_idx) to maintain temporal order within episodes
                 self.data_list.sort()
-                print(f"[OverlapVLN] Random sampled {self.max_samples} from {original_len} samples (seed=42)")
+                print(f"[SwiftVLN] Random sampled {self.max_samples} from {original_len} samples (seed=42)")
             else:
-                print(f"[OverlapVLN] Requested max_samples={self.max_samples} >= available {original_len}, using all samples")
+                print(f"[SwiftVLN] Requested max_samples={self.max_samples} >= available {original_len}, using all samples")
         
         # Action vocabulary / prompt conjunctions
         self.idx2actions = DEFAULT_ACTION_MAP.copy()
@@ -317,13 +317,13 @@ class OverlapVLNDataset(Dataset):
         if self.num_overlap > 0:
             first_samples = sum(1 for _, _, start_idx in self.data_list if start_idx == 0)
             overlap_samples = len(self.data_list) - first_samples
-            print(f"[OverlapVLN] Sample breakdown: {first_samples} first (full loss), "
+            print(f"[SwiftVLN] Sample breakdown: {first_samples} first (full loss), "
                   f"{overlap_samples} overlap (partial loss)")
         
         # Debug counter for initial strategy verification
         self._debug_initial_count = 0
         
-        print(f"OverlapVLNDataset initialized: {len(self.data_list)} samples from {len(self.nav_data)} episodes")
+        print(f"SwiftVLNDataset initialized: {len(self.data_list)} samples from {len(self.nav_data)} episodes")
         print(f"  env_type={self.env_type}, forward_distance={self.forward_distance}")
 
     def __len__(self) -> int:
@@ -347,12 +347,12 @@ class OverlapVLNDataset(Dataset):
                 f"  map: global={self.map_global_side_m:.0f}m, local={self.map_local_side_m:.0f}m, "
                 f"render={self.map_render_px}px, mask={self.map_mask_method}"
             )
-            if os.environ.get('OVERLAPVLN_DEBUG'):
+            if os.environ.get('SWIFTVLN_DEBUG'):
                 print(f"  [MAP DEBUG] scenes_dir={self._map_scenes_dir}")
         if self.history_processor_type == 'per_frame':
             print(f"  history: per_frame (h={self.num_history}, log_base={self.log_base})")
             # Debug: show sampling distribution
-            if os.environ.get('OVERLAPVLN_DEBUG'):
+            if os.environ.get('SWIFTVLN_DEBUG'):
                 import math
                 print(f"  [DEBUG] Sampling distribution preview (for 32 history frames -> {self.num_history} samples):")
                 num_frames = 32
@@ -425,9 +425,9 @@ class OverlapVLNDataset(Dataset):
             )
 
             # Debug output (only for first few samples)
-            if os.environ.get('OVERLAPVLN_DEBUG') and not hasattr(self, '_debug_sample_count'):
+            if os.environ.get('SWIFTVLN_DEBUG') and not hasattr(self, '_debug_sample_count'):
                 self._debug_sample_count = 0
-            if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_sample_count < 3:
+            if os.environ.get('SWIFTVLN_DEBUG') and self._debug_sample_count < 3:
                 sampling_mode = "random" if self.use_random else f"log_base={self.log_base}"
                 print(f"  [DEBUG SAMPLE {self._debug_sample_count}] History sampling:")
                 print(f"    -> Available frames: 0-{num_frames-1} ({num_frames} total)")

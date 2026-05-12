@@ -535,7 +535,7 @@ trigger_eval_for_completed_models() {
 训练已完成，以下模型已自动入队 runtime/eval_queue/eval_todo.txt：
 ${models}
 
-请按照 overlapvln-eval skill 的流程执行评测。具体步骤：
+请按照 swiftvln-eval skill 的流程执行评测。具体步骤：
 
 1. 检查服务器 98 和 73 的 GPU 可用性（nvidia-smi，检查是否有 torchrun/train 进程）
 2. 如果找到空闲服务器（8 卡均空闲）：

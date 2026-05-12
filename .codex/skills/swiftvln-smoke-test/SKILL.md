@@ -1,6 +1,6 @@
 ---
 name: swiftvln-smoke-test
-description: "Run SwiftVLN overlapvln SatNav multi-GPU smoke tests, verifying train -> checkpoint -> eval end to end."
+description: "Run SwiftVLN swiftvln SatNav multi-GPU smoke tests, verifying train -> checkpoint -> eval end to end."
 ---
 
 # SwiftVLN Smoke Test Skill
@@ -9,7 +9,7 @@ Use this skill when the user asks for主线 SwiftVLN 的 smoke test / 冒烟测�
 
 ## Scope
 
-- 主线模型仅限：`overlapvln`
+- 主线模型仅限：`swiftvln`
 - 环境仅限：`SatNav`
 - 目标：最小代价验证当前代码仍能
   - 启动训练
@@ -21,7 +21,7 @@ Use this skill when the user asks for主线 SwiftVLN 的 smoke test / 冒烟测�
 
 | Purpose | Path |
 |---|---|
-| OverlapVLN train | `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh` |
+| SwiftVLN train | `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh` |
 | Eval entry | `src/swiftvln/scripts/eval/eval_by_name.sh` |
 | Eval queue | `src/swiftvln/scripts/eval/eval_queue.sh` |
 | Enqueue eval | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
@@ -34,7 +34,7 @@ Use this skill when the user asks for主线 SwiftVLN 的 smoke test / 冒烟测�
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate swift-vln-train
 conda activate swift-vln-eval
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 ```
 
 ## Preflight
@@ -51,7 +51,7 @@ If any item fails, stop and report the exact missing path / dependency.
 
 ## Smoke Values
 
-`train_overlapvln_qwen2_5_vl.sh` 的仓库默认值是正式训练口径；smoke 必须显式覆盖为下面这些值：
+`train_swiftvln_qwen2_5_vl.sh` 的仓库默认值是正式训练口径；smoke 必须显式覆盖为下面这些值：
 
 | Variable | Smoke Value |
 |---|---|
@@ -69,18 +69,18 @@ If any item fails, stop and report the exact missing path / dependency.
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate swift-vln-train
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 
 MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
 USE_SWANLAB=false USE_WXWORK_NOTIFICATION=false \
 TRAIN_NUM_GPUS=2 \
-  bash src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh \
-  2>&1 | tee /tmp/smoke_overlapvln_train.log
+  bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh \
+  2>&1 | tee /tmp/smoke_swiftvln_train.log
 ```
 
 训练完成后确认：
 
-- `output/overlapvln/<exp_name>/v0-*/checkpoint-*` 存在
+- `output/swiftvln/<exp_name>/v0-*/checkpoint-*` 存在
 - checkpoint 下至少有 `config.json`
 - 且存在 `.safetensors` 或 `.bin`
 - 日志中没有 `Traceback` / `RuntimeError` / `torchrun` 启动失败
@@ -92,17 +92,17 @@ TRAIN_NUM_GPUS=2 \
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate swift-vln-eval
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 
 MAX_EPISODES=10 ENV_TYPE=satnav CUDA_DEVICES=0,1 \
-  bash src/swiftvln/scripts/eval/eval_by_name.sh <overlapvln_exp_name> \
-  2>&1 | tee /tmp/smoke_overlapvln_eval.log
+  bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_exp_name> \
+  2>&1 | tee /tmp/smoke_swiftvln_eval.log
 ```
 
 确认结果：
 
-- `results/eval/overlapvln/<exp_name>/val_seen/<timestamp>/evaluation_summary.json`
-- `results/eval/overlapvln/<exp_name>/val_unseen/<timestamp>/evaluation_summary.json`
+- `results/eval/swiftvln/<exp_name>/val_seen/<timestamp>/evaluation_summary.json`
+- `results/eval/swiftvln/<exp_name>/val_unseen/<timestamp>/evaluation_summary.json`
 - eval log 无 fatal error
 
 ## Cleanup
@@ -110,8 +110,8 @@ MAX_EPISODES=10 ENV_TYPE=satnav CUDA_DEVICES=0,1 \
 仅在用户明确要求清理 smoke 产物时执行，且只删除本次 smoke 对应目录：
 
 ```bash
-rm -rf output/overlapvln/<smoke_exp_name>
-rm -rf results/eval/overlapvln/<smoke_exp_name>
+rm -rf output/swiftvln/<smoke_exp_name>
+rm -rf results/eval/swiftvln/<smoke_exp_name>
 ```
 
 ## Report Checklist

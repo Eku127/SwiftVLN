@@ -1,6 +1,6 @@
-# OverlapVLN 样本格式说明
+# SwiftVLN 样本格式说明
 
-本文档描述 OverlapVLN 在训练和推理时如何构建样本，重点说明滑动窗口和 loss masking 机制。
+本文档描述 SwiftVLN 在训练和推理时如何构建样本，重点说明滑动窗口和 loss masking 机制。
 
 ---
 
@@ -255,7 +255,7 @@ inputs_embeds[0, positions[:1024]] = all_embeds
 
 ## 9. 与 CompressVLN 格式的区别
 
-| 维度 | CompressVLN | OverlapVLN |
+| 维度 | CompressVLN | SwiftVLN |
 |------|-------------|------------|
 | 窗口重叠 | 无 | num_overlap=16 |
 | Loss Masking | 无 | 前 overlap_turns 轮 |

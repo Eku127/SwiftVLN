@@ -2,7 +2,7 @@
 """
 Base VLN Training Arguments
 
-Provides common training arguments used across all VLN variants (StreamVLN, CompressVLN, OverlapVLN).
+Provides common training arguments used across all VLN variants (StreamVLN, CompressVLN, SwiftVLN).
 Includes QA mixed training parameters that can be shared.
 """
 

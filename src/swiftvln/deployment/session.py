@@ -10,8 +10,8 @@ from uuid import uuid4
 
 from PIL import Image
 
-from swiftvln.deployment.model_resolver import OverlapVLNDeploySpec
-from swiftvln.deployment.policy import OverlapVLNBaselinePolicy
+from swiftvln.deployment.model_resolver import SwiftVLNDeploySpec
+from swiftvln.deployment.policy import SwiftVLNBaselinePolicy
 
 
 def _utc_now() -> str:
@@ -31,11 +31,11 @@ class SessionPaths:
     summary_path: Path
 
 
-class OverlapVLNDeploySession:
+class SwiftVLNDeploySession:
     def __init__(
         self,
-        spec: OverlapVLNDeploySpec,
-        policy: OverlapVLNBaselinePolicy,
+        spec: SwiftVLNDeploySpec,
+        policy: SwiftVLNBaselinePolicy,
         session_root: str | Path,
         gpu_metadata: Optional[Dict[str, Any]] = None,
     ):

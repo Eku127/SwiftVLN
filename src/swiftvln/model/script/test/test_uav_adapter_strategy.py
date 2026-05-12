@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for OverlapVLN UAV adapter propagation and external loading."""
+"""Smoke test for SwiftVLN UAV adapter propagation and external loading."""
 
 import argparse
 import importlib.util
@@ -23,7 +23,7 @@ from swiftvln.s2r.model import Sim2RealAdapter
 
 def _load_overlap_model_module(repo_root: str):
     module_path = os.path.join(repo_root, 'src', 'swiftvln', 'model', 'model.py')
-    spec = importlib.util.spec_from_file_location('overlapvln_model_for_test', module_path)
+    spec = importlib.util.spec_from_file_location('swiftvln_model_for_test', module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f'Failed to load module spec from: {module_path}')
     module = importlib.util.module_from_spec(spec)
@@ -93,12 +93,12 @@ def main():
             checkpoint_path = _write_temp_stagea_checkpoint(Path(tmp) / 'best.pt')
             loaded_model, resolved_path = _run_case(module, checkpoint_path)
             _assert_loaded_model(loaded_model, resolved_path)
-            print('PASS: use_uav_adapter/uav_adapter_path are propagated to OverlapVLN model loader.')
+            print('PASS: use_uav_adapter/uav_adapter_path are propagated to SwiftVLN model loader.')
             return
 
     loaded_model, resolved_path = _run_case(module, checkpoint_path)
     _assert_loaded_model(loaded_model, resolved_path)
-    print('PASS: use_uav_adapter/uav_adapter_path are propagated to OverlapVLN model loader.')
+    print('PASS: use_uav_adapter/uav_adapter_path are propagated to SwiftVLN model loader.')
 
 
 def _assert_loaded_model(loaded_model, resolved_path: str):

@@ -1,14 +1,14 @@
 ---
-name: overlapvln-train
+name: swiftvln-train
 description: "Launch VLN training with tmux-based async execution and webhook watchdog monitoring. Supports multi-server parallel launch and webhook notifications on completion/failure/stall."
 ---
 
-# OverlapVLN Train Skill
+# SwiftVLN Train Skill
 
 Launch VLN training on one or more servers. Codex acts as a **launch operator**: confirm plan, pick hosts, start training in tmux, register watchdog, do quick health check, then exit. The watchdog runs in background and sends webhook notifications on key events.
 
 Related skills:
-- **`overlapvln-eval`**: run eval after training completes (triggered manually or by user).
+- **`swiftvln-eval`**: run eval after training completes (triggered manually or by user).
 - **`server-train-eval-monitor`**: cluster-wide status overview.
 
 ## Current Baseline Defaults
@@ -50,9 +50,9 @@ Related skills:
   - `DATALOADER_PIN_MEMORY=false`
   - 并优先使用更保守的 `BATCH_SIZE=10`
 
-## No-Memory Convention (OverlapVLN)
+## No-Memory Convention (SwiftVLN)
 
-- OverlapVLN 没有单独的 `USE_MEMORY=false` 开关。
+- SwiftVLN 没有单独的 `USE_MEMORY=false` 开关。
 - 当前仓库约定的 **effective no-memory** 配置是：
   - `HISTORY_PROCESSOR_TYPE=per_frame`
   - `NUM_HISTORY=0`
@@ -61,9 +61,9 @@ Related skills:
 - `log_base` / `use_random` 仍可保留在配置中，但在 `NUM_HISTORY=0` 时不会实际影响采样。
 - `gtc` / `segment_gtc` 不适用这套 no-memory 约定；它们的历史采样逻辑不依赖 `NUM_HISTORY`。
 
-## Map-Memory Convention (OverlapVLN)
+## Map-Memory Convention (SwiftVLN)
 
-- OverlapVLN 现在支持 `MEMORY_METHOD=map`，表示用 `global map + local map` 替换历史帧 memory。
+- SwiftVLN 现在支持 `MEMORY_METHOD=map`，表示用 `global map + local map` 替换历史帧 memory。
 - 当前约束：
   - `VLN_ENV_TYPE=satnav`
   - `HISTORY_PROCESSOR_TYPE=per_frame`
@@ -78,7 +78,7 @@ Related skills:
   - `MAP_RENDER_PX`
   - `MAP_MASK_METHOD`
 - `train_queue.sh` 会透传并覆写这些变量；如需入队训练 map memory，必须把这几个变量一起明确写进配置。
-- 当前推荐把 `OVERLAPVLN_DEBUG=1` 一并透传，用于检查 dataset prompt、template tokenize、history token 注入是否符合预期。
+- 当前推荐把 `SWIFTVLN_DEBUG=1` 一并透传，用于检查 dataset prompt、template tokenize、history token 注入是否符合预期。
 
 ---
 
@@ -87,7 +87,7 @@ Related skills:
 Servers `98`, `73`, and `17` all mount:
 
 ```
-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 ```
 
 Queue files, outputs, logs are all local file operations. SSH only for GPU checks and remote tmux launch.
@@ -100,7 +100,7 @@ Before starting, confirm with the user:
 
 | Parameter | Default | Notes |
 |---|---|---|
-| Model(s) | `overlapvln` | `baseline`/ambiguous → `overlapvln` |
+| Model(s) | `swiftvln` | `baseline`/ambiguous → `swiftvln` |
 | Stage | — | `stage1` or `stage2` |
 | Environment | — | `satnav` or `habitat` |
 | Server(s) | — | One or more of: `98`, `73`, `17` |
@@ -113,14 +113,14 @@ Before starting, confirm with the user:
 
 1. Read current scripts:
    - `src/swiftvln/scripts/train/train_queue.sh`
-   - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+   - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
 2. Produce **run checklist**: model set, stage, environment, data version, offline model path, launch mode, expected output naming.
    For `stage1`, confirm the resolved path is the absolute local cache path above, not `Qwen/Qwen2.5-VL-3B-Instruct`.
    If `MEMORY_METHOD=map`, checklist 里必须额外确认：
    - `global/local/render/mask`
    - 约束 `satnav + per_frame + no ToMe`
    - 预期实验名中是否包含 `map-g...-l...-r...-...-s...`
-3. Apply default model rule: `baseline`/unspecified → `overlapvln`.
+3. Apply default model rule: `baseline`/unspecified → `swiftvln`.
 4. **Wait for user confirmation**.
 
 ## Step 2 → Check Servers & Pick Host(s)
@@ -180,8 +180,8 @@ ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
    conda activate swift-vln-train && \
    TRAIN_NUM_GPUS=${TRAIN_NUM_GPUS:-} \
    TRAIN_CUDA_DEVICES=${TRAIN_CUDA_DEVICES:-} \
-   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
-   tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}'"
+   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
+   tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/${run_log}'"
 ```
 
 ### Launch pattern (remote server 17 with Docker)
@@ -193,8 +193,8 @@ ssh 10.246.132.17 "docker exec -d streamvln-container bash -c \
      conda activate swift-vln-train && \
      TRAIN_NUM_GPUS=${TRAIN_NUM_GPUS:-} \
      TRAIN_CUDA_DEVICES=${TRAIN_CUDA_DEVICES:-} \
-     bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
-     tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}\"'"
+     bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
+     tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/${run_log}\"'"
 ```
 
 **Record**: tmux session name, host, log path, start time for each server.
@@ -211,7 +211,7 @@ Watchdog 必须运行在**与 tmux session 相同的服务器上**。
 **训练在 98 上（本地启动）：**
 
 ```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
+SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
 nohup bash "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/train_watchdog.sh" \
   --tmux-session "${session_name}" \
   --train-log "${run_log}" \
@@ -225,7 +225,7 @@ echo "Watchdog PID=${WATCHDOG_PID}"
 **训练在 73 或 17 上（SSH 到对应服务器启动）：**
 
 ```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
+SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
 ssh 10.246.152.73 "cd ${SWIFTVLN_ROOT} && \
   nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
     --tmux-session '${session_name}' \
@@ -288,7 +288,7 @@ Auto-cleanup: watchdog cleans dirs older than 7 days at startup.
 |---|---|
 | Training queue | `src/swiftvln/scripts/train/train_queue.sh` |
 | **Train watchdog** | `src/swiftvln/scripts/train/train_watchdog.sh` |
-| OverlapVLN single run | `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh` |
+| SwiftVLN single run | `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh` |
 | Eval todo queue | `runtime/eval_queue/eval_todo.txt` |
 | Eval enqueue helper | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
 

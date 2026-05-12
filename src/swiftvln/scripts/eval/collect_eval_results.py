@@ -39,7 +39,7 @@ def f2(v: Any) -> str:
 
 
 def parse_model_type(model_name: str) -> str:
-    for t in ("overlapvln", "streamvln", "navila", "uninavid", "openfly"):
+    for t in ("swiftvln", "streamvln", "navila", "uninavid", "openfly"):
         if model_name.startswith(f"{t}-"):
             return t
     return "unknown"
@@ -56,7 +56,7 @@ def parse_data_version(model_name: str, model_path: str) -> str:
 
 
 def infer_plan(model_name: str, model_type: str) -> str:
-    if model_type == "overlapvln":
+    if model_type == "swiftvln":
         # History processor type determines the base method
         if "-sgtc-k" in model_name:
             m = re.search(r"-sgtc-k(\d+)", model_name)
@@ -98,7 +98,7 @@ def infer_plan(model_name: str, model_type: str) -> str:
 
 def plan_rank(plan: str) -> int:
     order = {
-        # overlapvln variants (ascending complexity)
+        # swiftvln variants (ascending complexity)
         "baseline": 10,
         "baseline + random": 15,
         "baseline + tome": 20,
@@ -172,7 +172,7 @@ def sort_key(row: Dict[str, str]) -> tuple:
     model_type = row.get("model_type") or parse_model_type(model_name)
     data_version = parse_data_version(model_name, "")
 
-    if model_type == "overlapvln":
+    if model_type == "swiftvln":
         setting_key = normalize_overlap_setting_key(model_name)
         variant_rank = overlap_variant_rank(model_name)
         return (data_version, model_type, setting_key, variant_rank, model_name)

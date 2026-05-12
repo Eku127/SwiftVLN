@@ -33,7 +33,7 @@ REQUESTS_FILE="$TMP_ROOT/requests.jsonl"
 
 PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}" \
 python3 -m swiftvln.cli deploy \
-  --model overlapvln \
+  --model swiftvln \
   --model-name "$MODEL_NAME" \
   --session-root "$TMP_ROOT/sessions" \
   < "$REQUESTS_FILE" \

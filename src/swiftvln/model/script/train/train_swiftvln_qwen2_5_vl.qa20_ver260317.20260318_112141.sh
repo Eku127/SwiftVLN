@@ -1,10 +1,10 @@
 #!/bin/bash
-# OverlapVLN Training Script - Qwen2.5-VL (ms-swift)
+# SwiftVLN Training Script - Qwen2.5-VL (ms-swift)
 # 
 # Usage:
-#   bash src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh
+#   bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh
 #
-# This script trains OverlapVLN with history frame compression.
+# This script trains SwiftVLN with history frame compression.
 # Key difference from StreamVLN: adds compress_stride parameter
 
 set -e  # Exit on error
@@ -27,14 +27,14 @@ GPUS_PER_NODE=$(echo "$CUDA_DEVICES" | tr ',' '\n' | wc -l)
 # ============================================================================
 # Model Configuration
 # ============================================================================
-MODEL_TYPE="overlapvln_qwen2_5_vl"
+MODEL_TYPE="swiftvln_qwen2_5_vl"
 
 # Training stage: "stage1" (from base Qwen) or "stage2" (from trained VLN model)
 TRAIN_STAGE="stage1"
 
 # Model paths for each stage
 STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
-STAGE2_MODEL_PATH="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/overlapvln/overlapvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239"
+STAGE2_MODEL_PATH="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/output/swiftvln/swiftvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239"
 
 # Select model path based on stage
 if [ "$TRAIN_STAGE" == "stage1" ]; then
@@ -88,11 +88,11 @@ MAX_SAMPLES="600000"  # Max samples cap (0 = use all). If actual < this, uses al
 # Set USE_QA_MIXED_TRAINING=true to enable mixed training with VLN + QA data
 USE_QA_MIXED_TRAINING=true
 QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl"
-QA_RATIO=0.10
+QA_RATIO=0.20
 QA_MAX_SAMPLES=0          # Max QA samples (0 = use all available)
 
 # ============================================================================
-# OverlapVLN-Specific Parameters
+# SwiftVLN-Specific Parameters
 # ============================================================================
 # History Processor Type: "per_frame", "gtc", or "segment_gtc"
 # - per_frame: Per-frame compression (default), each frame compressed independently
@@ -188,7 +188,7 @@ ATTN_IMPL="flash_attn"
 # ============================================================================
 # Performance Acceleration
 # ============================================================================
-# NOTE: padding_free must be FALSE for OverlapVLN (custom tokens incompatible)
+# NOTE: padding_free must be FALSE for SwiftVLN (custom tokens incompatible)
 PADDING_FREE=false
 
 USE_LIGER_KERNEL=true
@@ -262,8 +262,8 @@ if [ "$VLN_ENV_TYPE" = "satnav" ]; then
     fi
 fi
 
-EXP_NAME="overlapvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${HISTORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
-OUTPUT_DIR="output/overlapvln/${EXP_NAME}"
+EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${HISTORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+OUTPUT_DIR="output/swiftvln/${EXP_NAME}"
 
 # Checkpoint Management
 SAVE_STEPS=1000
@@ -309,7 +309,7 @@ export CUDA_VISIBLE_DEVICES=$CUDA_DEVICES
 # Print Configuration
 # ============================================================================
 echo "=========================================="
-echo "OverlapVLN Training"
+echo "SwiftVLN Training"
 echo "=========================================="
 echo "Model: $MODEL_TYPE ($MODEL_PATH)"
 echo "Environment: $VLN_ENV_TYPE"
@@ -359,7 +359,7 @@ echo "Freeze ViT: $FREEZE_VIT | LLM: $FREEZE_LLM | Aligner: $FREEZE_ALIGNER"
 echo "DeepSpeed: $USE_DEEPSPEED ($DEEPSPEED_CONFIG)"
 echo "------------------------------------------"
 echo "Acceleration:"
-echo "  padding_free: $PADDING_FREE (must be false for OverlapVLN)"
+echo "  padding_free: $PADDING_FREE (must be false for SwiftVLN)"
 echo "  use_liger_kernel: $USE_LIGER_KERNEL"
 echo "=========================================="
 

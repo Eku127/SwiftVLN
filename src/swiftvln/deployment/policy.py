@@ -20,7 +20,7 @@ from swiftvln.common.constants import (
 from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
 from swiftvln.common.history_processors import HistoryTokenCompressor
 from swiftvln.common.history_processors.per_frame import sample_per_frame_history_indices
-from swiftvln.deployment.model_resolver import OverlapVLNDeploySpec
+from swiftvln.deployment.model_resolver import SwiftVLNDeploySpec
 
 
 DEFAULT_DEPLOY_SEED = 42
@@ -47,10 +47,10 @@ class InferenceResult:
     conjunction: str
 
 
-class OverlapVLNBaselinePolicy:
-    """Baseline-only overlapvln deploy policy aligned with eval behavior."""
+class SwiftVLNBaselinePolicy:
+    """Baseline-only swiftvln deploy policy aligned with eval behavior."""
 
-    def __init__(self, model: Any, processor: Any, spec: OverlapVLNDeploySpec):
+    def __init__(self, model: Any, processor: Any, spec: SwiftVLNDeploySpec):
         self.model = model
         self.processor = processor
         self.spec = spec

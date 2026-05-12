@@ -2,7 +2,7 @@
 set -euo pipefail
 
 STATUS="${1:-SUCCESS}"
-EXP_NAME="${2:-overlapvln-train}"
+EXP_NAME="${2:-swiftvln-train}"
 DURATION="${3:-N/A}"
 SUCCESS_RATE="${4:-N/A}"
 OUTPUT_DIR="${5:-N/A}"

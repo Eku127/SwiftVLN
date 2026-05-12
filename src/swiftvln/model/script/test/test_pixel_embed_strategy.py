@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for OverlapVLN pixel embedding propagation."""
+"""Smoke test for SwiftVLN pixel embedding propagation."""
 
 import importlib.util
 import os
@@ -18,7 +18,7 @@ if str(SRC_ROOT) not in sys.path:
 
 def _load_overlap_model_module(repo_root: str):
     module_path = os.path.join(repo_root, 'src', 'swiftvln', 'model', 'model.py')
-    spec = importlib.util.spec_from_file_location('overlapvln_model_for_test', module_path)
+    spec = importlib.util.spec_from_file_location('swiftvln_model_for_test', module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f'Failed to load module spec from: {module_path}')
     module = importlib.util.module_from_spec(spec)
@@ -70,7 +70,7 @@ def main():
     assert getattr(model_without_pixel, 'pose_embed', None) is None, \
         'pose_embed should be None when use_pose_embed=False'
 
-    print('PASS: use_pixel_embed/use_pose_embed flags are propagated to OverlapVLN embedding attachment.')
+    print('PASS: use_pixel_embed/use_pose_embed flags are propagated to SwiftVLN embedding attachment.')
 
 
 if __name__ == '__main__':

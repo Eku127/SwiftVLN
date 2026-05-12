@@ -1,12 +1,19 @@
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from swiftvln.model.dataset import OverlapVLNDataset
+CURRENT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = CURRENT_DIR.parent
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from swiftvln.model.dataset import SwiftVLNDataset
 
 
-class TestOverlapVLNDatasetTailAdjust(unittest.TestCase):
+class TestSwiftVLNDatasetTailAdjust(unittest.TestCase):
     def _build_dataset_root(self, actions_len: int) -> Path:
         root = Path(self.tmpdir.name)
         (root / "rgb").mkdir()
@@ -25,7 +32,7 @@ class TestOverlapVLNDatasetTailAdjust(unittest.TestCase):
 
     def _starts(self, *, actions_len: int, num_overlap: int, tail_adjust: bool):
         root = self._build_dataset_root(actions_len)
-        dataset = OverlapVLNDataset(
+        dataset = SwiftVLNDataset(
             data_path=str(root),
             num_frames=32,
             num_history=0,

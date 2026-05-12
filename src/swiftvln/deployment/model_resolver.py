@@ -10,14 +10,14 @@ class DeploymentModelSpecError(ValueError):
     """Raised when a model name cannot be used for deployment."""
 
 
-DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME = (
-    "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-"
+DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME = (
+    "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-"
     "pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050"
 )
 
 
 _BASELINE_PATTERN = re.compile(
-    r"^overlapvln-"
+    r"^swiftvln-"
     r"(?:(?P<env_type>habitat|satnav)-)?"
     r"(?P<stage>stage\d+)-"
     r"(?P<model_size>\d+[bB])-"
@@ -43,7 +43,7 @@ _UNSUPPORTED_MARKERS = {
 
 
 @dataclass(frozen=True)
-class OverlapVLNDeploySpec:
+class SwiftVLNDeploySpec:
     model_name: str
     model_dir: str
     checkpoint_path: str
@@ -130,24 +130,24 @@ def _reject_unsupported_model_name(model_name: str) -> None:
             raise DeploymentModelSpecError(message)
 
 
-def resolve_overlapvln_deploy_spec(
+def resolve_swiftvln_deploy_spec(
     repo_root: str | Path,
     model_name: str,
     output_root: str | Path | None = None,
-) -> OverlapVLNDeploySpec:
+) -> SwiftVLNDeploySpec:
     repo_root = Path(repo_root).resolve()
     output_root = Path(output_root).resolve() if output_root is not None else repo_root / "output"
 
-    if not model_name.startswith("overlapvln-"):
+    if not model_name.startswith("swiftvln-"):
         raise DeploymentModelSpecError(
-            f"Unsupported model name: {model_name}. Expected overlapvln-*"
+            f"Unsupported model name: {model_name}. Expected swiftvln-*"
         )
 
     _reject_unsupported_model_name(model_name)
     match = _BASELINE_PATTERN.match(model_name)
     if match is None:
         raise DeploymentModelSpecError(
-            "Unsupported overlapvln deploy name. "
+            "Unsupported swiftvln deploy name. "
             "Only baseline per_frame names with pool/noembed are supported."
         )
 
@@ -181,14 +181,14 @@ def resolve_overlapvln_deploy_spec(
             "num_overlap must be divisible by num_future_steps for deployment."
         )
 
-    model_dir = output_root / "overlapvln" / model_name
+    model_dir = output_root / "swiftvln" / model_name
     if not model_dir.is_dir():
         raise DeploymentModelSpecError(f"Model directory does not exist: {model_dir}")
 
     checkpoint_path = _find_latest_checkpoint(model_dir)
     _check_checkpoint_integrity(checkpoint_path)
 
-    return OverlapVLNDeploySpec(
+    return SwiftVLNDeploySpec(
         model_name=model_name,
         model_dir=str(model_dir),
         checkpoint_path=str(checkpoint_path),

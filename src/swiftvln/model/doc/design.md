@@ -1,10 +1,10 @@
-下面我按“**你现有 OverlapVLN 方案 → 相关最新工作怎么做 history/memory → 针对 BEV SatNav 的可落地方向（不改 Qwen2.5‑VL‑3B 本体）→ 可以写成论文的创新点**”来给建议。
+下面我按“**你现有 SwiftVLN 方案 → 相关最新工作怎么做 history/memory → 针对 BEV SatNav 的可落地方向（不改 Qwen2.5‑VL‑3B 本体）→ 可以写成论文的创新点**”来给建议。
 
 ---
 
 ## 1) 我理解的你当前方案与痛点在哪里
 
-你现在的 OverlapVLN 核心是：
+你现在的 SwiftVLN 核心是：
 
 * **滑动窗口 + 重叠上下文（overlap_context）**来解决长序列上下文断裂（num_frames=32, overlap=16, future_steps=4）。
 * 额外再给一个**全局历史记忆块 `<history_memory>`**，目前有三种 history 处理：
@@ -238,7 +238,7 @@ NaVIDA 的核心是 inverse dynamics augmentation：用视觉变化监督动作�
 
 ---
 
-## 4) 我建议你优先做的 2 个“最像论文创新点”的组合（都能对着现有 OverlapVLN 改）
+## 4) 我建议你优先做的 2 个“最像论文创新点”的组合（都能对着现有 SwiftVLN 改）
 
 我给你两个“组合拳”，每个都可以写成一个完整方法：
 

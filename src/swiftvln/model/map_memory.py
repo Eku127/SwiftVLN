@@ -1,4 +1,4 @@
-"""SatNav explored-map memory builder for OverlapVLN."""
+"""SatNav explored-map memory builder for SwiftVLN."""
 
 from __future__ import annotations
 
@@ -59,11 +59,11 @@ def _normalize_episode_list(payload: Any) -> List[Dict[str, Any]]:
 
 
 def _map_debug_enabled() -> bool:
-    return os.environ.get("OVERLAPVLN_DEBUG", "") != ""
+    return os.environ.get("SWIFTVLN_DEBUG", "") != ""
 
 
 def _map_debug_limit(default: int = 6) -> int:
-    raw = os.environ.get("OVERLAPVLN_MAP_DEBUG_LIMIT", "").strip()
+    raw = os.environ.get("SWIFTVLN_MAP_DEBUG_LIMIT", "").strip()
     if not raw:
         return default
     try:
@@ -73,24 +73,24 @@ def _map_debug_limit(default: int = 6) -> int:
 
 
 def _map_debug_dir() -> Optional[str]:
-    raw = os.environ.get("OVERLAPVLN_MAP_DEBUG_DIR", "").strip()
+    raw = os.environ.get("SWIFTVLN_MAP_DEBUG_DIR", "").strip()
     if raw:
         return os.path.abspath(raw)
     if not _map_debug_enabled():
         return None
-    return os.path.abspath(os.path.join(os.getcwd(), "runtime", "debug", "overlapvln_map"))
+    return os.path.abspath(os.path.join(os.getcwd(), "runtime", "debug", "swiftvln_map"))
 
 
 def _resolve_cache_dir(cache_dir: Optional[str]) -> Optional[str]:
     """Resolve the effective on-disk cache directory.
 
     Precedence:
-      1. ``OVERLAPVLN_MAP_CACHE_DIR`` env var (sentinel values disable cache).
+      1. ``SWIFTVLN_MAP_CACHE_DIR`` env var (sentinel values disable cache).
       2. ``cache_dir`` argument supplied by the caller.
       3. ``None`` → cache disabled.
     """
 
-    env_override = os.environ.get("OVERLAPVLN_MAP_CACHE_DIR", "").strip()
+    env_override = os.environ.get("SWIFTVLN_MAP_CACHE_DIR", "").strip()
     if env_override:
         if env_override.lower() in _CACHE_DISABLE_SENTINELS:
             return None
@@ -349,7 +349,7 @@ class SatNavMapMemoryBuilder:
             return
         payload = {
             "note": (
-                "OverlapVLN map-memory render cache. Files are content-addressable "
+                "SwiftVLN map-memory render cache. Files are content-addressable "
                 "over render config + scene_id + window_start + poses prefix. Safe "
                 "to `rm -rf` at any time; will be lazily repopulated."
             ),

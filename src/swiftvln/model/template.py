@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-OverlapVLN Template with pluggable history processing.
+SwiftVLN Template with pluggable history processing.
 
 This template extends Qwen2.5-VL to support different history information
 processing strategies via the HistoryProcessor interface:
@@ -42,8 +42,8 @@ HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
 DEBUG_COMPRESSION = False
 # Debug flag - set to True to verify processor type in _encode
 DEBUG_PROCESSOR_TYPE = False
-# Debug flag - set via OVERLAPVLN_DEBUG env var to verify initial strategy
-DEBUG_INITIAL = os.environ.get('OVERLAPVLN_DEBUG', '') != ''
+# Debug flag - set via SWIFTVLN_DEBUG env var to verify initial strategy
+DEBUG_INITIAL = os.environ.get('SWIFTVLN_DEBUG', '') != ''
 
 
 def _debug_rank() -> int:
@@ -82,9 +82,9 @@ def _tensor_debug_stats(tensor: Optional[torch.Tensor], sample_limit: int = 4) -
     )
 
 
-class OverlapVLNTemplateMixin:
+class SwiftVLNTemplateMixin:
     """
-    OverlapVLN Template with pluggable history processing.
+    SwiftVLN Template with pluggable history processing.
     
     Features:
     - <history_memory>: Unified memory token for all history frames
@@ -172,7 +172,7 @@ class OverlapVLNTemplateMixin:
         
         # Verify tokens exist and print configuration
         if self.history_memory_token_id != processor.tokenizer.unk_token_id:
-            print(f"[OverlapVLNTemplate] Using special tokens (unified memory mode):")
+            print(f"[SwiftVLNTemplate] Using special tokens (unified memory mode):")
             print(f"  - {HISTORY_MEMORY_TOKEN}: {self.history_memory_token_id} (unified)")
             print(f"  - {HISTORY_IMAGE_TOKEN}: {self.history_image_token_id} (legacy)")
             print(f"  - {CURRENT_IMAGE_TOKEN}: {self.current_image_token_id}")
@@ -184,7 +184,7 @@ class OverlapVLNTemplateMixin:
                 method = "tome" if self.use_tome else "pool"
                 print(f"    └─ h={self.num_history}, b={self.log_base}, {method}, s={self.compress_stride}")
                 # Debug output
-                if os.environ.get('OVERLAPVLN_DEBUG'):
+                if os.environ.get('SWIFTVLN_DEBUG'):
                     print(f"    [DEBUG] PerFrameCompressor configuration:")
                     print(f"      -> num_history: {self.num_history}")
                     print(f"      -> log_base: {self.log_base} ({'UNIFORM' if self.log_base == 1.0 else 'LOGARITHMIC'})")
@@ -197,13 +197,13 @@ class OverlapVLNTemplateMixin:
         """
         Override packing_row to raise an error if padding_free=true is used.
         
-        OverlapVLN uses custom image tokens which are incompatible with
+        SwiftVLN uses custom image tokens which are incompatible with
         get_rope_index's expectation of standard <|image_pad|> tokens.
         """
         raise RuntimeError(
             "\n" + "="*70 + "\n"
-            "[OverlapVLNTemplate] ERROR: padding_free=true is NOT supported!\n\n"
-            "OverlapVLN uses custom tokens (<history_image>, <current_image>) which are\n"
+            "[SwiftVLNTemplate] ERROR: padding_free=true is NOT supported!\n\n"
+            "SwiftVLN uses custom tokens (<history_image>, <current_image>) which are\n"
             "incompatible with Qwen2.5-VL's get_rope_index function.\n\n"
             "Solution: Set padding_free=false in your training script.\n"
             "  - In shell script: PADDING_FREE=false\n"
@@ -322,7 +322,7 @@ class OverlapVLNTemplateMixin:
             
             # Validate
             if num_history + num_current != num_images:
-                print(f"[OverlapVLN] WARNING: Image count mismatch! "
+                print(f"[SwiftVLN] WARNING: Image count mismatch! "
                       f"num_history_images={num_history_images}, num_initial_images={num_initial_images}, "
                       f"current_tokens={num_current}, actual_images={num_images}")
                 # Adjust counts
@@ -654,7 +654,7 @@ class OverlapVLNTemplateMixin:
             num_images = image_grid_thw.shape[0]
             if total_history + total_current != num_images:
                 if DEBUG_COMPRESSION:
-                    print(f"[OverlapVLN] WARNING: Image count mismatch! "
+                    print(f"[SwiftVLN] WARNING: Image count mismatch! "
                           f"history={total_history}, current={total_current}, "
                           f"total={total_history + total_current}, actual={num_images}")
         
@@ -670,7 +670,7 @@ class OverlapVLNTemplateMixin:
             return {'inputs_embeds': inputs_embeds}
         
         # Get all image embeddings from visual encoder. Qwen3-VL visual returns
-        # a structure with pooler_output/deepstack_features; OverlapVLN consumes
+        # a structure with pooler_output/deepstack_features; SwiftVLN consumes
         # the same pooled visual tokens as the standard placeholder path.
         dtype = model.visual.dtype
         pixel_values = pixel_values.type(dtype)
@@ -717,7 +717,7 @@ class OverlapVLNTemplateMixin:
         
         if DEBUG_COMPRESSION:
             print("\n" + "="*70)
-            print("[DEBUG] OverlapVLN _post_encode: History Processing")
+            print("[DEBUG] SwiftVLN _post_encode: History Processing")
             print(f"  Batch size: {num_samples}")
             print(f"  Per-sample history counts: {history_counts}")
             print(f"  Per-sample current counts: {current_counts}")
@@ -845,7 +845,7 @@ class OverlapVLNTemplateMixin:
                     actual = processed_sample.shape[0]
                     if expected != actual:
                         if DEBUG_COMPRESSION:
-                            print(f"[OverlapVLN] DEBUG: Sample {sample_idx} (expected_idx={expected_idx}) token mismatch! "
+                            print(f"[SwiftVLN] DEBUG: Sample {sample_idx} (expected_idx={expected_idx}) token mismatch! "
                                   f"expected={expected}, actual={actual}, diff={expected - actual}")
                         # Pad or truncate to match expected count
                         if actual < expected:
@@ -892,7 +892,7 @@ class OverlapVLNTemplateMixin:
                 print(f"\n  [masked_scatter] History: mask_true={mask_true_count}, embeds={embeds_count}")
             injection_matched_before_fix = (mask_true_count == embeds_count)
             if mask_true_count != embeds_count:
-                print(f"[OverlapVLN] CRITICAL: History token count mismatch before masked_scatter!")
+                print(f"[SwiftVLN] CRITICAL: History token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
                 # Try to fix by padding or truncating
                 if embeds_count < mask_true_count:
@@ -946,7 +946,7 @@ class OverlapVLNTemplateMixin:
             if DEBUG_COMPRESSION:
                 print(f"  [masked_scatter] Current: mask_true={mask_true_count}, embeds={embeds_count}")
             if mask_true_count != embeds_count:
-                print(f"[OverlapVLN] CRITICAL: Current token count mismatch before masked_scatter!")
+                print(f"[SwiftVLN] CRITICAL: Current token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
             
             # ============================================================
@@ -1026,33 +1026,33 @@ class OverlapVLNTemplateMixin:
         return res
 
 
-class OverlapVLNQwen25VLTemplate(OverlapVLNTemplateMixin, Qwen2_5VLTemplate):
-    """OverlapVLN template for Qwen2.5-VL."""
+class SwiftVLNQwen25VLTemplate(SwiftVLNTemplateMixin, Qwen2_5VLTemplate):
+    """SwiftVLN template for Qwen2.5-VL."""
 
 
-class OverlapVLNQwen3VLTemplate(OverlapVLNTemplateMixin, SwiftQwen3VLTemplate):
-    """OverlapVLN template for Qwen3-VL."""
+class SwiftVLNQwen3VLTemplate(SwiftVLNTemplateMixin, SwiftQwen3VLTemplate):
+    """SwiftVLN template for Qwen3-VL."""
 
 
 # Register the custom templates
 register_template(
     QwenTemplateMeta(
-        'overlapvln_qwen2_5_vl',
-        template_cls=OverlapVLNQwen25VLTemplate,
+        'swiftvln_qwen2_5_vl',
+        template_cls=SwiftVLNQwen25VLTemplate,
     ),
     exist_ok=True,
 )
 
-print("[OverlapVLNTemplate] Template 'overlapvln_qwen2_5_vl' registered successfully!")
+print("[SwiftVLNTemplate] Template 'swiftvln_qwen2_5_vl' registered successfully!")
 
 register_template(
     QwenTemplateMeta(
-        'overlapvln_qwen3_vl',
-        template_cls=OverlapVLNQwen3VLTemplate,
+        'swiftvln_qwen3_vl',
+        template_cls=SwiftVLNQwen3VLTemplate,
         default_system=None,
         thinking_prefix='<think>\n',
     ),
     exist_ok=True,
 )
 
-print("[OverlapVLNTemplate] Template 'overlapvln_qwen3_vl' registered successfully!")
+print("[SwiftVLNTemplate] Template 'swiftvln_qwen3_vl' registered successfully!")

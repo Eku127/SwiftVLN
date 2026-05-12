@@ -11,7 +11,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from swiftvln.model.evaluator import OverlapVLNEvaluator, TurnContext
+from swiftvln.model.evaluator import SwiftVLNEvaluator, TurnContext
 
 
 def make_turn(index: int) -> TurnContext:
@@ -22,9 +22,9 @@ def make_turn(index: int) -> TurnContext:
     )
 
 
-class OverlapVLNEvalWindowingTest(unittest.TestCase):
+class SwiftVLNEvalWindowingTest(unittest.TestCase):
     def make_evaluator(self, overlap_turns: int, num_turns: int = 3):
-        evaluator = object.__new__(OverlapVLNEvaluator)
+        evaluator = object.__new__(SwiftVLNEvaluator)
         evaluator.overlap_turns = overlap_turns
         evaluator.window_turns = [make_turn(i) for i in range(num_turns)]
         evaluator.overlap_context = object()

@@ -29,8 +29,8 @@ def run_deploy(
 ) -> int:
     ensure_supported_model(model)
 
-    if model != "overlapvln":
-        raise ValueError("Deployment currently supports only overlapvln.")
+    if model != "swiftvln":
+        raise ValueError("Deployment currently supports only swiftvln.")
 
     try:
         _configure_deploy_gpu()

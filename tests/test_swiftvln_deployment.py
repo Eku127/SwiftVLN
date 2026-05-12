@@ -17,22 +17,22 @@ if str(SRC_ROOT) not in sys.path:
 
 from swiftvln.deployment.gpu import GPUInfo, mark_busy_gpus, select_idle_h100
 from swiftvln.deployment.model_resolver import (
-    DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME,
+    DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME,
     DeploymentModelSpecError,
-    OverlapVLNDeploySpec,
-    resolve_overlapvln_deploy_spec,
+    SwiftVLNDeploySpec,
+    resolve_swiftvln_deploy_spec,
 )
-from swiftvln.deployment.policy import OverlapVLNBaselinePolicy
+from swiftvln.deployment.policy import SwiftVLNBaselinePolicy
 from swiftvln.deployment.server import JsonlDeploymentServer
-from swiftvln.deployment.session import DeploymentSessionError, OverlapVLNDeploySession
+from swiftvln.deployment.session import DeploymentSessionError, SwiftVLNDeploySession
 
 
 ACTION_TEXT = {0: "STOP", 1: "↑", 2: "←", 3: "→"}
 
 
-def make_spec(root: Path) -> OverlapVLNDeploySpec:
-    return OverlapVLNDeploySpec(
-        model_name="overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456",
+def make_spec(root: Path) -> SwiftVLNDeploySpec:
+    return SwiftVLNDeploySpec(
+        model_name="swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456",
         model_dir=str(root / "model"),
         checkpoint_path=str(root / "checkpoint-100"),
         env_type="satnav",
@@ -138,22 +138,22 @@ class FakeModelForPolicy:
         return torch.tensor([[0, 0, 0, 0, 0, 7, 8]], dtype=torch.long)
 
 
-class OverlapVLNDeploymentResolverTest(unittest.TestCase):
+class SwiftVLNDeploymentResolverTest(unittest.TestCase):
     def test_default_deploy_model_name_is_baseline(self):
         self.assertEqual(
-            DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME,
-            "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-"
+            DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME,
+            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-"
             "pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050",
         )
 
     def test_resolve_supported_baseline_name(self):
         model_name = (
-            "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-"
+            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-"
             "pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456"
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            model_dir = root / "output" / "overlapvln" / model_name
+            model_dir = root / "output" / "swiftvln" / model_name
             checkpoint_dir = model_dir / "v2" / "checkpoint-70"
             checkpoint_dir.mkdir(parents=True)
             (checkpoint_dir / "config.json").write_text("{}\n", encoding="utf-8")
@@ -164,7 +164,7 @@ class OverlapVLNDeploymentResolverTest(unittest.TestCase):
             (older_checkpoint / "config.json").write_text("{}\n", encoding="utf-8")
             (older_checkpoint / "model.safetensors").write_text("weights\n", encoding="utf-8")
 
-            spec = resolve_overlapvln_deploy_spec(root, model_name, output_root=root / "output")
+            spec = resolve_swiftvln_deploy_spec(root, model_name, output_root=root / "output")
 
         self.assertEqual(spec.env_type, "satnav")
         self.assertTrue(spec.use_random)
@@ -174,20 +174,20 @@ class OverlapVLNDeploymentResolverTest(unittest.TestCase):
 
     def test_reject_unsupported_variants(self):
         cases = [
-            "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-map-g1000-l400-r448-d20-s2-noembed-bs64-lr2e-5-20260421-123456",
-            "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-gtc-k512-noembed-bs64-lr2e-5-20260421-123456",
-            "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-b1.0-tome-s2-noembed-bs64-lr2e-5-20260421-123456",
-            "overlapvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-b1.0-pool-s2-pixel-bs64-lr2e-5-20260421-123456",
+            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-map-g1000-l400-r448-d20-s2-noembed-bs64-lr2e-5-20260421-123456",
+            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-gtc-k512-noembed-bs64-lr2e-5-20260421-123456",
+            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-b1.0-tome-s2-noembed-bs64-lr2e-5-20260421-123456",
+            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-b1.0-pool-s2-pixel-bs64-lr2e-5-20260421-123456",
         ]
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             for model_name in cases:
                 with self.subTest(model_name=model_name):
                     with self.assertRaises(DeploymentModelSpecError):
-                        resolve_overlapvln_deploy_spec(root, model_name, output_root=root / "output")
+                        resolve_swiftvln_deploy_spec(root, model_name, output_root=root / "output")
 
 
-class OverlapVLNDeploymentGPUTest(unittest.TestCase):
+class SwiftVLNDeploymentGPUTest(unittest.TestCase):
     def test_select_idle_h100_prefers_lowest_memory_then_index(self):
         gpus = [
             GPUInfo(index=2, uuid="GPU-2", name="NVIDIA H100 80GB HBM3", memory_used_mib=512),
@@ -199,7 +199,7 @@ class OverlapVLNDeploymentGPUTest(unittest.TestCase):
         self.assertEqual(selected.index, 0)
 
 
-class OverlapVLNDeploymentSessionTest(unittest.TestCase):
+class SwiftVLNDeploymentSessionTest(unittest.TestCase):
     def _create_image(self, path: Path, color: tuple[int, int, int]):
         Image.new("RGB", (8, 8), color).save(path)
 
@@ -208,7 +208,7 @@ class OverlapVLNDeploymentSessionTest(unittest.TestCase):
             root = Path(tmpdir)
             spec = make_spec(root)
             policy = FakePolicy([[1, 2], [3]])
-            session = OverlapVLNDeploySession(spec, policy, root / "sessions")
+            session = SwiftVLNDeploySession(spec, policy, root / "sessions")
 
             img1 = root / "img1.jpg"
             img2 = root / "img2.jpg"
@@ -253,10 +253,10 @@ class OverlapVLNDeploymentSessionTest(unittest.TestCase):
                 session.handle_image(str(img1))
 
 
-class OverlapVLNDeploymentPolicyTest(unittest.TestCase):
+class SwiftVLNDeploymentPolicyTest(unittest.TestCase):
     def test_empty_parse_falls_back_to_stop(self):
         spec = make_spec(Path("/tmp"))
-        policy = OverlapVLNBaselinePolicy(FakeModelForPolicy(), FakeProcessor(), spec)
+        policy = SwiftVLNBaselinePolicy(FakeModelForPolicy(), FakeProcessor(), spec)
         policy._build_complete_prompt_embeds = lambda **kwargs: (
             torch.zeros((1, 5, 4), dtype=torch.float32),
             5,
@@ -271,7 +271,7 @@ class OverlapVLNDeploymentPolicyTest(unittest.TestCase):
         self.assertEqual(result.actions, [0])
 
 
-class OverlapVLNDeploymentServerTest(unittest.TestCase):
+class SwiftVLNDeploymentServerTest(unittest.TestCase):
     def _create_image(self, path: Path):
         Image.new("RGB", (8, 8), (255, 255, 255)).save(path)
 
@@ -280,7 +280,7 @@ class OverlapVLNDeploymentServerTest(unittest.TestCase):
             root = Path(tmpdir)
             spec = make_spec(root)
             policy = FakePolicy([[1]])
-            session = OverlapVLNDeploySession(spec, policy, root / "sessions")
+            session = SwiftVLNDeploySession(spec, policy, root / "sessions")
             server = JsonlDeploymentServer(session=session, spec=spec)
             try:
                 invalid_json = server._handle_line("not-json")
@@ -309,7 +309,7 @@ class OverlapVLNDeploymentServerTest(unittest.TestCase):
             root = Path(tmpdir)
             spec = make_spec(root)
             policy = FakePolicy([[0]])
-            session = OverlapVLNDeploySession(spec, policy, root / "sessions")
+            session = SwiftVLNDeploySession(spec, policy, root / "sessions")
             server = JsonlDeploymentServer(session=session, spec=spec)
 
             image_path = root / "frame.jpg"

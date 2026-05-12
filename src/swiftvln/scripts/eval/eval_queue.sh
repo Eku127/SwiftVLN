@@ -35,7 +35,7 @@
 #   TODO_POLL_INTERVAL - 空队列轮询间隔秒数 (default: 60)
 #
 # 注意: ENV_TYPE 现在自动从模型名中解析 (habitat/satnav)
-#       当前主线仅支持 overlapvln-* 模型名
+#       当前主线仅支持 swiftvln-* 模型名
 #
 # ============================================================================
 
@@ -198,11 +198,11 @@ parse_env_type_from_model() {
 }
 
 # ============================================================================
-# 从模型名解析 embedding 增强开关（和 overlapvln exp_name 保持一致）
+# 从模型名解析 embedding 增强开关（和 swiftvln exp_name 保持一致）
 # ============================================================================
 parse_embed_slot_from_model() {
     local name="$1"
-    if [[ "$name" != overlapvln-* ]]; then
+    if [[ "$name" != swiftvln-* ]]; then
         echo "-"
         return
     fi
@@ -364,13 +364,13 @@ interactive_setup() {
         echo "格式: 多个模型名用分号(;)分隔"
         echo ""
         echo "示例:"
-        echo "  overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-20260417-210520"
-        echo "  overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456  # per_frame, random"
-        echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456  # per_frame, no embed"
-        echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-20260204-123456  # initial + pose"
-        echo "  overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-20260204-123456  # pixel+pose"
-        echo "  overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-20260204-123456  # GTC, no embed"
-        echo "  overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-20260204-123456  # SegmentGTC"
+        echo "  swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-20260417-210520"
+        echo "  swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456  # per_frame, random"
+        echo "  swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456  # per_frame, no embed"
+        echo "  swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-20260204-123456  # initial + pose"
+        echo "  swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-20260204-123456  # pixel+pose"
+        echo "  swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-20260204-123456  # GTC, no embed"
+        echo "  swiftvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-20260204-123456  # SegmentGTC"
         echo ""
         read -p "请输入模型名称: " model_input
         
@@ -598,8 +598,8 @@ run_evaluation() {
     
     # 解析模型架构
     local model_arch=""
-    if [[ "$model" == overlapvln-* ]]; then
-        model_arch="overlapvln"
+    if [[ "$model" == swiftvln-* ]]; then
+        model_arch="swiftvln"
     fi
 
     # 确定本次实际评测的 split 列表（与 eval_by_name.sh 的逻辑保持一致）

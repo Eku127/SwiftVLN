@@ -68,10 +68,10 @@ MLP 最后一层权重和偏置 **零初始化**，确保训练开始时 `MLP(·
 | `common/embedding_enhancement/base.py` | BaseEmbeddingEnhancement 基类 |
 | `common/embedding_enhancement/pipeline.py` | EmbeddingEnhancementPipeline 容器 |
 | `common/embedding_enhancement/__init__.py` | pipeline 工厂函数 |
-| `overlapvln/arguments.py` | 训练参数定义 |
-| `overlapvln/model.py` | 模型加载时创建 pipeline |
-| `overlapvln/template.py` | 在 `_post_encode` 中逐图像应用 pipeline |
-| `overlapvln/trainer.py` | 确保 pipeline 正确初始化 |
+| `swiftvln/arguments.py` | 训练参数定义 |
+| `swiftvln/model.py` | 模型加载时创建 pipeline |
+| `swiftvln/template.py` | 在 `_post_encode` 中逐图像应用 pipeline |
+| `swiftvln/trainer.py` | 确保 pipeline 正确初始化 |
 
 ## 启用方式
 
