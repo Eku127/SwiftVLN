@@ -18,7 +18,7 @@ conda activate swift-vln-eval
 If you do not pass `--model-name` or `model_name`, deployment defaults to:
 
 ```text
-output/swiftvln/swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050
+output/swiftvln/swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-182323
 ```
 
 This is the current baseline deploy default.
@@ -86,7 +86,7 @@ If you want to override the default model:
 
 ```bash
 bash src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh \
-  swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456
+  swiftvln-satnav-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456
 ```
 
 After the process prints a `ready` JSON line, keep the process alive and continue writing JSON commands to its stdin.

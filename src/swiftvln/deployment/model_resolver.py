@@ -11,15 +11,14 @@ class DeploymentModelSpecError(ValueError):
 
 
 DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME = (
-    "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-"
-    "pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050"
+    "swiftvln-satnav-3b-1ep-f32s4-overlap0-"
+    "pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-182323"
 )
 
 
 _BASELINE_PATTERN = re.compile(
     r"^swiftvln-"
     r"(?:(?P<env_type>habitat|satnav)-)?"
-    r"(?P<stage>stage\d+)-"
     r"(?P<model_size>\d+[bB])-"
     r"(?P<num_epochs>\d+)ep-"
     r"f(?P<num_frames>\d+)s(?P<num_future_steps>\d+)-"
@@ -48,7 +47,6 @@ class SwiftVLNDeploySpec:
     model_dir: str
     checkpoint_path: str
     env_type: str
-    stage: str
     model_size: str
     num_epochs: int
     num_frames: int
@@ -193,7 +191,6 @@ def resolve_swiftvln_deploy_spec(
         model_dir=str(model_dir),
         checkpoint_path=str(checkpoint_path),
         env_type=env_type,
-        stage=values["stage"],
         model_size=values["model_size"].lower(),
         num_epochs=int(values["num_epochs"]),
         num_frames=num_frames,

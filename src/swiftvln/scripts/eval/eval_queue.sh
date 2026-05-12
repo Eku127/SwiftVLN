@@ -185,7 +185,7 @@ fi
 parse_env_type_from_model() {
     local name="$1"
     
-    # 新格式: {arch}-{env_type}-{stage}-{model_size}-...
+    # 新格式: {arch}-{env_type}-{model_size}-...
     # 检测第二个字段是否是 habitat 或 satnav
     local second_field=$(echo "$name" | cut -d'-' -f2)
     
@@ -364,13 +364,13 @@ interactive_setup() {
         echo "格式: 多个模型名用分号(;)分隔"
         echo ""
         echo "示例:"
-        echo "  swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-20260417-210520"
-        echo "  swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456  # per_frame, random"
-        echo "  swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260204-123456  # per_frame, no embed"
-        echo "  swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-20260204-123456  # initial + pose"
-        echo "  swiftvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-20260204-123456  # pixel+pose"
-        echo "  swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-20260204-123456  # GTC, no embed"
-        echo "  swiftvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-20260204-123456  # SegmentGTC"
+        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-123456"
+        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456  # per_frame, random"
+        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-123456  # per_frame, no embed"
+        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-123456  # initial + pose"
+        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-123456  # pixel+pose"
+        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-123456  # GTC, no embed"
+        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-123456  # SegmentGTC"
         echo ""
         read -p "请输入模型名称: " model_input
         

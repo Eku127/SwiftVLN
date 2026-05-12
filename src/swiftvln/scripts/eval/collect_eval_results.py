@@ -125,8 +125,8 @@ def plan_rank(plan: str) -> int:
 
 
 def strip_run_timestamp(model_name: str) -> str:
-    # e.g. ...-20260214-143037
-    return re.sub(r"-\d{8}-\d{6}$", "", model_name)
+    # e.g. current ...-143037, legacy ...-20260214-143037
+    return re.sub(r"-(?:\d{8}-)?\d{6}$", "", model_name)
 
 
 def overlap_variant_rank(model_name: str) -> int:

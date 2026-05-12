@@ -32,11 +32,10 @@ ACTION_TEXT = {0: "STOP", 1: "↑", 2: "←", 3: "→"}
 
 def make_spec(root: Path) -> SwiftVLNDeploySpec:
     return SwiftVLNDeploySpec(
-        model_name="swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456",
+        model_name="swiftvln-satnav-3b-1ep-f32s4-overlap8-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456",
         model_dir=str(root / "model"),
         checkpoint_path=str(root / "checkpoint-100"),
         env_type="satnav",
-        stage="stage1",
         model_size="3b",
         num_epochs=1,
         num_frames=32,
@@ -142,14 +141,14 @@ class SwiftVLNDeploymentResolverTest(unittest.TestCase):
     def test_default_deploy_model_name_is_baseline(self):
         self.assertEqual(
             DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME,
-            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap0-"
-            "pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050",
+            "swiftvln-satnav-3b-1ep-f32s4-overlap0-"
+            "pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-182323",
         )
 
     def test_resolve_supported_baseline_name(self):
         model_name = (
-            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-"
-            "pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-20260421-123456"
+            "swiftvln-satnav-3b-1ep-f32s4-overlap8-"
+            "pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456"
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -174,10 +173,10 @@ class SwiftVLNDeploymentResolverTest(unittest.TestCase):
 
     def test_reject_unsupported_variants(self):
         cases = [
-            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-map-g1000-l400-r448-d20-s2-noembed-bs64-lr2e-5-20260421-123456",
-            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-gtc-k512-noembed-bs64-lr2e-5-20260421-123456",
-            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-b1.0-tome-s2-noembed-bs64-lr2e-5-20260421-123456",
-            "swiftvln-satnav-stage1-3b-1ep-f32s4-overlap8-pf-h8-b1.0-pool-s2-pixel-bs64-lr2e-5-20260421-123456",
+            "swiftvln-satnav-3b-1ep-f32s4-overlap8-map-g1000-l400-r448-d20-s2-noembed-bs64-lr2e-5-123456",
+            "swiftvln-satnav-3b-1ep-f32s4-overlap8-gtc-k512-noembed-bs64-lr2e-5-123456",
+            "swiftvln-satnav-3b-1ep-f32s4-overlap8-pf-h8-b1.0-tome-s2-noembed-bs64-lr2e-5-123456",
+            "swiftvln-satnav-3b-1ep-f32s4-overlap8-pf-h8-b1.0-pool-s2-pixel-bs64-lr2e-5-123456",
         ]
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
