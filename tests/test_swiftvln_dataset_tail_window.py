@@ -13,7 +13,7 @@ if str(SRC_ROOT) not in sys.path:
 from swiftvln.model.dataset import SwiftVLNDataset
 
 
-class TestSwiftVLNDatasetTailAdjust(unittest.TestCase):
+class TestSwiftVLNDatasetTailWindow(unittest.TestCase):
     def _build_dataset_root(self, actions_len: int) -> Path:
         root = Path(self.tmpdir.name)
         (root / "rgb").mkdir()
@@ -30,7 +30,7 @@ class TestSwiftVLNDatasetTailAdjust(unittest.TestCase):
         (root / "annotations.json").write_text(json.dumps(annotations), encoding="utf-8")
         return root
 
-    def _starts(self, *, actions_len: int, num_overlap: int, tail_adjust: bool):
+    def _starts(self, *, actions_len: int, num_overlap: int):
         root = self._build_dataset_root(actions_len)
         dataset = SwiftVLNDataset(
             data_path=str(root),
@@ -38,7 +38,6 @@ class TestSwiftVLNDatasetTailAdjust(unittest.TestCase):
             num_history=0,
             num_future_steps=4,
             num_overlap=num_overlap,
-            overlap_tail_window_adjust=tail_adjust,
             env_type="satnav",
         )
         return [start_idx for _, _, start_idx in dataset.data_list]
@@ -49,21 +48,15 @@ class TestSwiftVLNDatasetTailAdjust(unittest.TestCase):
     def tearDown(self):
         self.tmpdir.cleanup()
 
-    def test_overlap_tail_adjust_false_keeps_stride_aligned_tail(self):
+    def test_overlap_keeps_stride_aligned_tail(self):
         self.assertEqual(
-            self._starts(actions_len=35, num_overlap=16, tail_adjust=False),
+            self._starts(actions_len=35, num_overlap=16),
             [0, 16],
         )
 
-    def test_overlap_tail_adjust_true_keeps_legacy_backward_adjustment(self):
+    def test_overlap_zero_keeps_tail_coverage(self):
         self.assertEqual(
-            self._starts(actions_len=35, num_overlap=16, tail_adjust=True),
-            [0, 3],
-        )
-
-    def test_overlap_zero_keeps_legacy_tail_adjustment(self):
-        self.assertEqual(
-            self._starts(actions_len=35, num_overlap=0, tail_adjust=False),
+            self._starts(actions_len=35, num_overlap=0),
             [0, 3],
         )
 

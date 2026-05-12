@@ -147,27 +147,14 @@ case "$MODEL_FAMILY" in
 esac
 MODEL_TYPE="${MODEL_TYPE:-$DEFAULT_MODEL_TYPE}"
 
-# Training stage: "stage1" (from base Qwen) or "stage2" (from trained VLN model)
-TRAIN_STAGE="${TRAIN_STAGE:-stage1}"
-
-# Model paths for each stage
-# Stage1 defaults to the local offline cache path to avoid ModelScope hub resolution.
+# Base model path
+# Defaults to the local offline cache path to avoid ModelScope hub resolution.
 # Default remains the local 3B cache path for Qwen2.5 and 2B for Qwen3.
-# For larger models, override STAGE1_MODEL_PATH
+# For larger models, override STAGE1_MODEL_PATH or MODEL_PATH
 # via env, e.g.:
 #   STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
 STAGE1_MODEL_PATH="${STAGE1_MODEL_PATH:-$DEFAULT_STAGE1_MODEL_PATH}"
-STAGE2_MODEL_PATH="${STAGE2_MODEL_PATH:-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/output/swiftvln/swiftvln-3b-1ep-f32h8s4-overlap16-stride2-bs64-lr2e-5-20260124-214153/v0-20260124-214234/checkpoint-2239}"
-
-# Select model path based on stage
-if [ "$TRAIN_STAGE" == "stage1" ]; then
-    MODEL_PATH="$STAGE1_MODEL_PATH"
-elif [ "$TRAIN_STAGE" == "stage2" ]; then
-    MODEL_PATH="$STAGE2_MODEL_PATH"
-else
-    echo "[ERROR] Unknown TRAIN_STAGE: $TRAIN_STAGE. Must be 'stage1' or 'stage2'."
-    exit 1
-fi
+MODEL_PATH="${MODEL_PATH:-$STAGE1_MODEL_PATH}"
 
 # Extract model size for experiment naming
 MODEL_SIZE=$(echo "$MODEL_PATH" | grep -oE '[0-9]+B' | tr '[:upper:]' '[:lower:]')
@@ -256,10 +243,6 @@ GTC_NUM_ITERATIONS="${GTC_NUM_ITERATIONS:-1}"
 # When num_overlap > 0, stride = num_frames - num_overlap
 # First (num_overlap / num_future_steps) turns in non-first samples have loss masked
 NUM_OVERLAP="${NUM_OVERLAP:-0}"
-# Legacy tail window adjustment for overlap training.
-# false: keep strict stride-aligned overlap windows (current default for overlap > 0)
-# true: move short tail windows backward to cover end-of-episode/STOP data
-OVERLAP_TAIL_WINDOW_ADJUST="${OVERLAP_TAIL_WINDOW_ADJUST:-false}"
 
 # ---------- System prompt setting ----------
 # System prompt strategy: "vanilla" (default, no initial view) or "initial"
@@ -349,6 +332,10 @@ ATTN_IMPL="${ATTN_IMPL:-flash_attn}"
 # NOTE: padding_free must be FALSE for SwiftVLN (custom tokens incompatible)
 PADDING_FREE="${PADDING_FREE:-false}"
 
+# Qwen3-VL note (2026-05-12): keep Liger enabled for the default Qwen2.5 path,
+# but set USE_LIGER_KERNEL=false for Qwen3-VL training/smoke. Qwen3 vision RoPE
+# can fail inside the Liger/Triton kernel with:
+#   ValueError('numel (...) exceeds triton maximum tensor numel (1048576)')
 USE_LIGER_KERNEL="${USE_LIGER_KERNEL:-true}"
 DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-8}"
 DATALOADER_PIN_MEMORY="${DATALOADER_PIN_MEMORY:-true}"
@@ -359,7 +346,7 @@ DATASET_NUM_PROC="${DATASET_NUM_PROC:-2}"
 # ============================================================================
 # Output Configuration
 # ============================================================================
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+TIMESTAMP=$(date +%H%M%S)
 EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM_STEPS * GPUS_PER_NODE))
 WINDOW_STRIDE=$((NUM_FRAMES - NUM_OVERLAP))
 
@@ -460,32 +447,7 @@ if [ ${#_EMBED_PARTS[@]} -gt 0 ]; then
     EMBED_SUFFIX="-$(IFS='+'; echo "${_EMBED_PARTS[*]}")"
 fi
 
-# Add data version suffix for SatNav (extract version from path, e.g., ver_260202 -> data260202)
-DATA_VERSION_SUFFIX=""
-if [ "$VLN_ENV_TYPE" = "satnav" ]; then
-    # Extract version from first selected SatNav data path (e.g., /path/ver_260202/... -> 260202)
-    VERSION_STR=$(echo "${VLN_DATA_PATHS[0]}" | grep -oP 'ver_\K\d+' | head -1)
-    if [ -n "$VERSION_STR" ] && [ ${#VERSION_STR} -eq 6 ]; then
-        DATA_VERSION_SUFFIX="-data${VERSION_STR}"
-    else
-        echo "[WARNING] SatNav data version not found in path: ${VLN_DATA_PATHS[0]}"
-    fi
-fi
-
-_OVERLAP_TAIL_WINDOW_ADJUST_NORMALIZED="$(echo "$OVERLAP_TAIL_WINDOW_ADJUST" | tr '[:upper:]' '[:lower:]')"
-_OVERLAP_TAIL_WINDOW_ADJUST_ENABLED=false
-case "$_OVERLAP_TAIL_WINDOW_ADJUST_NORMALIZED" in
-    true|1|yes|y|on)
-        _OVERLAP_TAIL_WINDOW_ADJUST_ENABLED=true
-        ;;
-esac
-
-TAIL_WINDOW_SUFFIX=""
-if [ "$NUM_OVERLAP" -gt 0 ] && [ "$_OVERLAP_TAIL_WINDOW_ADJUST_ENABLED" != "true" ]; then
-    TAIL_WINDOW_SUFFIX="-notailadj"
-fi
-
-EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${TRAIN_STAGE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${TAIL_WINDOW_SUFFIX}${DATA_VERSION_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 OUTPUT_DIR="output/swiftvln/${EXP_NAME}"
 if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
     OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
@@ -556,9 +518,6 @@ echo "Model Family: $MODEL_FAMILY"
 echo "Model: $MODEL_TYPE ($MODEL_PATH)"
 echo "Environment: $VLN_ENV_TYPE"
 echo "Data: $VLN_DATA_PATH"
-if [ "$VLN_ENV_TYPE" = "satnav" ]; then
-    echo "Data Version Tag: ${DATA_VERSION_SUFFIX:-[MISSING]}"
-fi
 echo "Output: $OUTPUT_DIR"
 echo "------------------------------------------"
 echo "GPUs: $GPUS_PER_NODE ($CUDA_DEVICES)"
@@ -606,7 +565,6 @@ elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc
 fi
 echo "Overlap: num_overlap=$NUM_OVERLAP, window_stride=$WINDOW_STRIDE"
 echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with start_idx > 0"
-echo "  Tail window adjust: $OVERLAP_TAIL_WINDOW_ADJUST"
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
 echo "Pixel Embed: $USE_PIXEL_EMBED"
 echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
@@ -770,7 +728,6 @@ torchrun \
     --vln_env_type $VLN_ENV_TYPE \
     --compress_stride $COMPRESS_STRIDE \
     --num_overlap $NUM_OVERLAP \
-    --overlap_tail_window_adjust $OVERLAP_TAIL_WINDOW_ADJUST \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
     $MEMORY_ARGS \
     --use_pixel_embed $USE_PIXEL_EMBED \

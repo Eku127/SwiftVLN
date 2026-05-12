@@ -11,8 +11,7 @@ Key features:
 - When num_overlap > 0, stride = num_frames - num_overlap
 - For samples where start_idx > 0, first (num_overlap / num_future_steps) turns 
   have loss=0.0 (masked), acting as pure context
-- overlap_tail_window_adjust: Legacy option to move short tail windows backward.
-  Defaults to False so overlap windows stay aligned with eval-time stride.
+- When num_overlap > 0, short tail windows stay aligned with eval-time stride.
 """
 
 import os
@@ -55,18 +54,6 @@ def _preview_text(text: str, limit: int = 220) -> str:
     return text[:limit] + '...'
 
 
-def _coerce_bool(value: Any, name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in ('1', 'true', 'yes', 'y', 'on'):
-            return True
-        if normalized in ('0', 'false', 'no', 'n', 'off'):
-            return False
-    raise ValueError(f"{name} must be a boolean value, got {value!r}")
-
-
 class SwiftVLNDataset(Dataset):
     """
     SwiftVLN Dataset with sliding window overlap and loss masking.
@@ -80,8 +67,6 @@ class SwiftVLNDataset(Dataset):
         num_overlap: Number of overlapping actions between windows (default: 16)
                     When > 0, stride = num_frames - num_overlap
                     Set to 0 to disable overlap (original behavior)
-        overlap_tail_window_adjust: When True, keep legacy tail-window adjustment
-                    for overlap training. When False, keep stride-aligned starts.
         env_type: Environment type - 'habitat' (forward=0.25m) or 'satnav' (forward=10m)
     """
     
@@ -94,7 +79,6 @@ class SwiftVLNDataset(Dataset):
         use_random: bool = False,
         max_samples: Optional[int] = None,
         num_overlap: int = 16,  # New parameter for overlap
-        overlap_tail_window_adjust: bool = False,
         env_type: str = "habitat",  # New parameter for environment type
         history_processor_type: str = "per_frame",  # History sampling strategy
         log_base: float = 1.0,  # Sampling distribution (1.0=uniform, >1.0=logarithmic)
@@ -108,10 +92,6 @@ class SwiftVLNDataset(Dataset):
         # Store num_overlap before calling super().__init__ 
         # because we need to override the data indexing logic
         self.num_overlap = num_overlap
-        self.overlap_tail_window_adjust = _coerce_bool(
-            overlap_tail_window_adjust,
-            "overlap_tail_window_adjust",
-        )
         
         # Don't call parent __init__ directly, replicate the logic with our modifications
         # This is necessary because parent builds data_list in __init__
@@ -243,11 +223,11 @@ class SwiftVLNDataset(Dataset):
                     
                     actual_start_idx = start_idx
                     
-                    # If effective actions too few, legacy mode adjusts start_idx to cover more.
-                    # For overlap training, strict mode keeps eval-aligned window starts and
-                    # allows a short final supervised turn instead of moving the window back.
+                    # If effective actions are too few, overlap training keeps eval-aligned
+                    # window starts and allows a short final supervised turn. Non-overlap
+                    # training keeps the original tail coverage behavior for STOP data.
                     if effective_actions < self.num_future_steps:
-                        if self.num_overlap > 0 and not self.overlap_tail_window_adjust:
+                        if self.num_overlap > 0:
                             if effective_actions <= 0:
                                 skipped_no_new_samples += 1
                                 continue
@@ -273,7 +253,6 @@ class SwiftVLNDataset(Dataset):
                   f"num_overlap={num_overlap}, stride={self.stride}")
             print(f"[SwiftVLN] Loss masking: first {num_overlap // num_future_steps} turns "
                   f"will have loss=0.0 for samples with start_idx > 0")
-            print(f"[SwiftVLN] Tail window adjustment: {self.overlap_tail_window_adjust}")
             if adjusted_samples > 0:
                 print(f"[SwiftVLN] Adjusted {adjusted_samples} end-of-episode samples "
                       f"to ensure STOP data is trained")
