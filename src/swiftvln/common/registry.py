@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 MODEL_TO_PACKAGE: Dict[str, str] = {
-    "overlapvln": "swiftvln.model",
+    "swiftvln": "swiftvln.model",
 }
 
 MODEL_TO_TRAINER: Dict[str, str] = {

@@ -6,8 +6,8 @@
 
 - `OPENFLY_BACKEND=continue`
 - `OPENFLY_ACTION_FORMAT=original`
-- `DATA_PATH=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data/annotations.json`
-- `IMAGE_FOLDER=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data`
+- `DATA_PATH=$SATNAV_DATA_ROOT/ver_260404/trajectory_data/annotations.json`
+- `IMAGE_FOLDER=$SATNAV_DATA_ROOT/ver_260404/trajectory_data`
 - `NUM_GPUS=8`
 - `TRAIN_BSZ=12`
 - `GRAD_ACCUM=1`
@@ -96,8 +96,8 @@ settings unless overridden via environment variables.
 
 - `OPENFLY_BACKEND=continue`
 - `OPENFLY_ACTION_FORMAT=compact`
-- `DATA_PATH=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data/annotations.json`
-- `IMAGE_FOLDER=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404/trajectory_data`
+- `DATA_PATH=$SATNAV_DATA_ROOT/ver_260404/trajectory_data/annotations.json`
+- `IMAGE_FOLDER=$SATNAV_DATA_ROOT/ver_260404/trajectory_data`
 - `NUM_GPUS=8`
 - `TRAIN_BSZ=12`
 - `GRAD_ACCUM=1`

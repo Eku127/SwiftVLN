@@ -3,7 +3,7 @@
 本说明面向在 SwiftVLN 仓库内运行 NaVILA baseline 的训练与评测流程。
 
 - 论文：[NaVILA: Legged Robot Vision-Language-Action Model for Navigation (RSS'25)](https://arxiv.org/abs/2412.04453)
-- 上游仓库：[NaVILA GitHub](https://github.com/a8cheng/NaVILA)（已 clone 至 `/mnt/data1/home/jiangjiajun/workspace/NaVILA`）
+- 上游仓库：[NaVILA GitHub](https://github.com/a8cheng/NaVILA)（默认通过 `$NAVILA_REPO` 指向本地 clone）
 
 ## 1. 模型
 
@@ -50,7 +50,7 @@ baseline/navila/
 NaVILA 训练环境（无需 Habitat）：
 
 ```bash
-cd /mnt/data1/home/jiangjiajun/workspace/NaVILA
+cd "$NAVILA_REPO"
 ./environment_setup.sh navila
 conda activate navila
 ```
@@ -88,8 +88,8 @@ bash baseline/navila/scripts/train_satnav.sh continue
 常用覆盖项：
 
 ```bash
-DATA_PATH=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data/annotations.json \
-IMAGE_FOLDER=/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260306/trajectory_data \
+DATA_PATH=$SATNAV_DATA_ROOT/ver_260306/trajectory_data/annotations.json \
+IMAGE_FOLDER=$SATNAV_DATA_ROOT/ver_260306/trajectory_data \
 NUM_GPUS=8 \
 TRAIN_BSZ=10 \
 GRAD_ACCUM=2 \
@@ -131,9 +131,9 @@ SatNav 评测 split 约定：
 
 ```bash
 SATNAV_VERSION=ver_260306 \
-MODEL_BASE=/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/baseline/navila/model/navila-siglip-llama3-8b-v1.5-pretrain \
+MODEL_BASE=baseline/navila/model/navila-siglip-llama3-8b-v1.5-pretrain \
 bash baseline/navila/scripts/eval_satnav.sh \
-  /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/baseline/navila/model/navila-llama3-8b-8f \
+  baseline/navila/model/navila-llama3-8b-8f \
   val_seen 1 10
 ```
 

@@ -1,0 +1,14 @@
+name: swift-vln-eval-update
+channels:
+  - aihabitat
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - cuda-toolkit=12.8
+  - habitat-sim=0.2.4=py3.9_headless_bullet_linux_*
+  - habitat-sim-mutex=*=headless_bullet
+  - headless
+  - withbullet

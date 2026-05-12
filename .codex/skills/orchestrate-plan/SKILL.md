@@ -7,14 +7,14 @@ description: "Read a natural-language experiment plan file, interpret the experi
 
 Codex acts as a **full-pipeline orchestrator**: read a natural-language plan → extract experiments → confirm → allocate servers → launch training non-interactively → wait for eval to complete → return results.
 
-This skill coordinates the existing `overlapvln-train` and `overlapvln-eval` skills without duplicating their internal steps. Follow each step in order.
+This skill coordinates the existing `swiftvln-train` and `swiftvln-eval` skills without duplicating their internal steps. Follow each step in order.
 
 ---
 
 ## Related Skills & Scripts
 
-- **Training**: `overlapvln-train` skill (Step 2/3/4/5 conventions reused here)
-- **Evaluation**: `overlapvln-eval` skill (eval launch, watchdog, results collection)
+- **Training**: `swiftvln-train` skill (Step 2/3/4/5 conventions reused here)
+- **Evaluation**: `swiftvln-eval` skill (eval launch, watchdog, results collection)
 - **Train queue**: `src/swiftvln/scripts/train/train_queue.sh` (non-interactive mode via `TRAIN_EXPERIMENTS_FILE`)
 - **Eval queue**: `runtime/eval_queue/eval_todo.txt` (auto-populated by train_queue after each training)
 - **Results**: `src/swiftvln/scripts/eval/collect_eval_results.py`
@@ -26,17 +26,17 @@ This skill coordinates the existing `overlapvln-train` and `overlapvln-eval` ski
 When Codex generates the EXPERIMENTS bash file, each array entry must follow this exact pipe-separated format:
 
 ```
-model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
+model|config|changes|ds_names|ds_paths|reserved|qa_ratio
 ```
 
 | Field | Description | Example |
 |---|---|---|
-| `model` | Model name | `overlapvln` |
+| `model` | Model name | `swiftvln` |
 | `config` | Param overrides (comma-separated) or `default` | `default` or `NUM_OVERLAP=32,BATCH_SIZE=8` |
 | `changes` | Human-readable description of non-default params | `defaults` or `NUM_OVERLAP=32 BATCH_SIZE=8` |
 | `ds_names` | Dataset name(s), comma-separated | `SatNav` |
 | `ds_paths` | Trajectory data path(s), comma-separated | `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data` |
-| `stage2_path` | Stage2 base checkpoint path (empty for stage1) | `` |
+| `reserved` | Reserved, leave empty | `` |
 | `qa_ratio` | QA mixing ratio: `0` = no QA, `0.15` = 15% | `0` or `0.15` |
 
 **Default SatNav paths (ver_260317):**
@@ -49,8 +49,7 @@ model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
 
 1. Read the plan file specified by the user (e.g. `runtime/plans/my_plan.md`).
 2. Extract the following from natural language:
-   - **Model**: `overlapvln` (default: `overlapvln`)
-   - **Stage**: `stage1` or `stage2` (default: `stage1`)
+   - **Model**: `swiftvln` (default: `swiftvln`)
    - **Env**: `satnav` or `habitat` (default: `satnav`)
    - **Data version**: e.g. `ver_260317` (default: latest in `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_*`)
    - **Experiment list**: each experiment's name/id, `qa_ratio`, and any non-default hyperparameter overrides
@@ -75,14 +74,14 @@ model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
 
 **Example interpretation:**
 
-> "跑 overlapvln stage1 satnav 四组实验：纯 baseline，15% QA，30% QA，以及 15% QA + overlap=32"
+> "跑 swiftvln satnav 四组实验：纯 baseline，15% QA，30% QA，以及 15% QA + overlap=32"
 
 此例描述完整，直接解析为：
 ```
-Experiment 1: exp_id=baseline,       model=overlapvln, config=default,        qa_ratio=0
-Experiment 2: exp_id=baseline-qa15,  model=overlapvln, config=default,        qa_ratio=0.15
-Experiment 3: exp_id=baseline-qa30,  model=overlapvln, config=default,        qa_ratio=0.30
-Experiment 4: exp_id=qa15-ovlp32,    model=overlapvln, config=NUM_OVERLAP=32, qa_ratio=0.15
+Experiment 1: exp_id=baseline,       model=swiftvln, config=default,        qa_ratio=0
+Experiment 2: exp_id=baseline-qa15,  model=swiftvln, config=default,        qa_ratio=0.15
+Experiment 3: exp_id=baseline-qa30,  model=swiftvln, config=default,        qa_ratio=0.30
+Experiment 4: exp_id=qa15-ovlp32,    model=swiftvln, config=NUM_OVERLAP=32, qa_ratio=0.15
 ```
 
 > "baseline 基础上 log base 改成 2.0 跑两组"
@@ -108,7 +107,7 @@ If there is **any ambiguity** in the plan (see Step 1 rules above), ask the clar
 
 Example output after clarification:
 ```
-我理解你要跑以下 4 个实验（overlapvln, stage1, satnav, ver_260317）：
+我理解你要跑以下 4 个实验（swiftvln, satnav, ver_260317）：
 
  #  | exp_id          | qa_ratio | 超参覆盖
 ----|-----------------|----------|----------
@@ -167,7 +166,6 @@ Use the Write tool to create `/tmp/train_experiments_<server>_<HHMMSS>.sh`. Cont
 # Plan: <plan_file_path>
 # Generated: <timestamp>
 
-TRAIN_STAGE="stage1"
 ENV_TYPE="satnav"
 USE_SWANLAB="false"
 SWANLAB_PROJECT=""
@@ -179,10 +177,10 @@ DATASET_CONFIGS=("SatNav|${_SATNAV_TRAJ}")
 # QA dataset path (used when qa_ratio > 0)
 QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl"
 
-# EXPERIMENTS array: model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio
+# EXPERIMENTS array: model|config|changes|ds_names|ds_paths|reserved|qa_ratio
 EXPERIMENTS=(
-  "overlapvln|default|defaults|SatNav|${_SATNAV_TRAJ}||0"
-  "overlapvln|default|defaults|SatNav|${_SATNAV_TRAJ}||0.15"
+  "swiftvln|default|defaults|SatNav|${_SATNAV_TRAJ}||0"
+  "swiftvln|default|defaults|SatNav|${_SATNAV_TRAJ}||0.15"
 )
 ```
 
@@ -190,7 +188,7 @@ Rules:
 - One file per server, placed in `/tmp/` (or `runtime/plans/generated/` for persistence).
 - `config` field: `default` for all-default, or comma-separated overrides like `NUM_OVERLAP=32,BATCH_SIZE=8`.
 - `changes` field: human-readable, e.g. `NUM_OVERLAP=32` or `defaults`.
-- `stage2_path` field: empty string for stage1.
+- `reserved` field: keep it empty.
 - `qa_ratio`: `0` means no QA mixing; `0.15` means 15% QA.
 - `USE_QA_MIXED_TRAINING` is NOT set in the file — `train_queue.sh` infers it from `qa_ratio > 0` per-experiment automatically.
 
@@ -225,8 +223,8 @@ ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
   'source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
    conda activate swift-vln-train && \
    TRAIN_EXPERIMENTS_FILE=\"/tmp/train_experiments_73_HHMMSS.sh\" \
-   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/train/train_queue.sh \
-   2>&1 | tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}'"
+   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/src/swiftvln/scripts/train/train_queue.sh \
+   2>&1 | tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/${run_log}'"
 ```
 
 ---
@@ -236,7 +234,7 @@ ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
 For each server, register a watchdog **immediately** after tmux launch. Must run on the same server as the tmux session.
 
 ```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
+SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
 nohup bash "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/train_watchdog.sh" \
   --tmux-session "${session_name}" \
   --train-log "${run_log}" \
@@ -250,7 +248,7 @@ kill -0 "$WATCHDOG_PID" 2>/dev/null && echo "Watchdog alive PID=${WATCHDOG_PID}"
 
 `--on-all-done eval` means: when training finishes on this server, the watchdog will automatically:
 1. Collect successful model names
-2. Trigger a new Codex session to start eval (via `overlapvln-eval` skill)
+2. Trigger a new Codex session to start eval (via `swiftvln-eval` skill)
 
 **Record per server**: tmux session name, host, log path, watchdog PID, start time.
 
@@ -284,7 +282,7 @@ Upon resume:
 2. Check `runtime/eval_queue/eval_failed_todo.txt` for any failures.
 3. Run CSV collection:
    ```bash
-   cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+   cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
    source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
    conda activate swift-vln-eval
    python src/swiftvln/scripts/eval/collect_eval_results.py
@@ -315,27 +313,26 @@ Upon resume:
 ### Baseline only (no QA)
 ```bash
 EXPERIMENTS=(
-  "overlapvln|default|defaults|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0"
+  "swiftvln|default|defaults|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0"
 )
 ```
 
 ### Baseline + 15% QA
 ```bash
 EXPERIMENTS=(
-  "overlapvln|default|defaults|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0.15"
+  "swiftvln|default|defaults|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0.15"
 )
 ```
 
 ### Baseline + custom override (e.g. NUM_OVERLAP=32)
 ```bash
 EXPERIMENTS=(
-  "overlapvln|NUM_OVERLAP=32|NUM_OVERLAP=32|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0"
+  "swiftvln|NUM_OVERLAP=32|NUM_OVERLAP=32|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0"
 )
 ```
 
 ### Multi-experiment file example (4 experiments across one server)
 ```bash
-TRAIN_STAGE="stage1"
 ENV_TYPE="satnav"
 USE_SWANLAB="false"
 SWANLAB_PROJECT=""
@@ -343,9 +340,9 @@ QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_sw
 
 _T="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data"
 EXPERIMENTS=(
-  "overlapvln|default|defaults|SatNav|${_T}||0"
-  "overlapvln|default|defaults|SatNav|${_T}||0.15"
-  "overlapvln|default|defaults|SatNav|${_T}||0.30"
-  "overlapvln|NUM_OVERLAP=32|NUM_OVERLAP=32|SatNav|${_T}||0.15"
+  "swiftvln|default|defaults|SatNav|${_T}||0"
+  "swiftvln|default|defaults|SatNav|${_T}||0.15"
+  "swiftvln|default|defaults|SatNav|${_T}||0.30"
+  "swiftvln|NUM_OVERLAP=32|NUM_OVERLAP=32|SatNav|${_T}||0.15"
 )
 ```

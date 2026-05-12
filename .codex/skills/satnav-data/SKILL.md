@@ -40,14 +40,18 @@ Execute a 4-step pipeline **continuously without pausing between steps**. Only s
 
 ## Step 2: Trajectory Generation
 
-Use SatNav repository application, not a copied `trajectory_data`.
+Use the SatNav repository application, but use the trajectory-generation config
+maintained in SwiftVLN.
 
 1. Build a temporary config from:
-- `/mnt/data1/home/jiangjiajun/workspace/SatNav/configs/satnav_task.yaml`
+- `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/configs/satnav_trajectory_generation.yaml`
 - Set `DATASET.DATA_PATH` to:
   `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/episodes/train/all_episodes.json`
 - Set `DATASET.SCENES_DIR` to:
   `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
+- Keep the other production parameters from this YAML:
+  `MAX_EPISODE_STEPS=500`, `FORWARD_STEP_SIZE=10`, `TURN_ANGLE=15`,
+  `RGB_SENSOR=448x448/HFOV90`, and `LandmarkSet` success distance `3.0`.
 
 2. Run in `satnav` conda env (在 tmux 中启动):
 ```bash
@@ -118,7 +122,8 @@ After Step 3 is successful, synchronize latest SatNav dataset paths in project c
 - `src/swiftvln/scripts/data_process/convert_qa_to_swift.py`
 - `src/swiftvln/scripts/data_process/config.py`
 - `/mnt/data1/home/jiangjiajun/workspace/SatNav/applications/trajectory_generation/generate_parallel.py`
-- `/mnt/data1/home/jiangjiajun/workspace/SatNav/configs/satnav_task.yaml`
+- `src/swiftvln/configs/satnav_trajectory_generation.yaml`
+- `src/swiftvln/configs/satnav_task.yaml`
 - `src/swiftvln/scripts/data_sync/sync_and_verify.sh`
 - `src/swiftvln/scripts/data_sync/sync_data.sh`
 

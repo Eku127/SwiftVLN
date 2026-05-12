@@ -1,6 +1,6 @@
-# OverlapVLN 逻辑概览
+# SwiftVLN 逻辑概览
 
-本文档描述 OverlapVLN 的整体工作流程，重点介绍滑动窗口、上下文重用机制和历史记忆处理策略。
+本文档描述 SwiftVLN 的整体工作流程，重点介绍滑动窗口、上下文重用机制和历史记忆处理策略。
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 0.1 俯视图无人机视觉语言导航
 
-OverlapVLN 面向的是**俯视图（Bird's-eye View, BEV）无人机视觉语言导航（VLN）任务**。不同于传统的第一人称视角室内导航任务，本任务使用**卫星图像**模拟真实无人机的俯视视角，在室外大范围连续空间中执行导航。
+SwiftVLN 面向的是**俯视图（Bird's-eye View, BEV）无人机视觉语言导航（VLN）任务**。不同于传统的第一人称视角室内导航任务，本任务使用**卫星图像**模拟真实无人机的俯视视角，在室外大范围连续空间中执行导航。
 
 ### 0.2 俯视图导航的独特挑战
 
@@ -70,7 +70,7 @@ Landmark 任务的低成功率反映了俯视图下精确旋转定位和地标�
 
 ## 1. 核心思想
 
-OverlapVLN 引入**滑动窗口重叠机制**，解决长轨迹推理中上下文丢失的问题。
+SwiftVLN 引入**滑动窗口重叠机制**，解决长轨迹推理中上下文丢失的问题。
 
 ```
 问题: 独立窗口导致上下文断裂
@@ -78,7 +78,7 @@ OverlapVLN 引入**滑动窗口重叠机制**，解决长轨迹推理中上下�
                          ↑
                     完全独立，上下文断裂
 
-OverlapVLN 解决方案: 滑动窗口 + 上下文传递
+SwiftVLN 解决方案: 滑动窗口 + 上下文传递
   窗口1: [step 0-31]   →  窗口2: [step 16-47]
          └── 最后16步 ──┘        └── 前16步来自窗口1
                 overlap_context 传递上下文
@@ -109,7 +109,7 @@ overlap_turns = num_overlap // num_future_steps  # 4，重叠的轮数
 
 ## 2. System Prompt 策略
 
-OverlapVLN 支持两种 system prompt 策略，通过 `system_prompt_setting` 参数选择。
+SwiftVLN 支持两种 system prompt 策略，通过 `system_prompt_setting` 参数选择。
 
 ### 2.1 Vanilla（默认）
 
@@ -157,14 +157,14 @@ System Prompt 结构:
 | 命名后缀 | 无 | `-initial` |
 
 **实验命名示例**：
-- Vanilla: `overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-bs64-lr2e-5-20260207-123456`
-- Initial: `overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-bs64-lr2e-5-20260207-123456`
+- Vanilla: `swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-bs64-lr2e-5-123456`
+- Initial: `swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-bs64-lr2e-5-123456`
 
 ---
 
 ## 3. 历史记忆处理策略
 
-OverlapVLN 支持三种历史记忆处理方式，通过 `history_processor_type` 参数选择。
+SwiftVLN 支持三种历史记忆处理方式，通过 `history_processor_type` 参数选择。
 
 ### 3.1 Per-Frame Compression（默认）
 
@@ -446,7 +446,7 @@ Template 转换后:
 ### 7.1 缓存架构
 
 ```python
-class OverlapVLNEvaluator:
+class SwiftVLNEvaluator:
     # 全局历史缓存
     history_cache: List[Tensor]  # 处理后的历史特征
     
@@ -607,20 +607,20 @@ evaluator.py  → 核心：VIT 缓存、overlap_context 管理、embedding 构�
 
 ```
 Per-Frame:
-  overlapvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-pf-h{history}[-nomem][-random]-b{log_base}-{method}-s{stride}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
+  swiftvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-pf-h{history}[-nomem][-random]-b{log_base}-{method}-s{stride}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
   
-  示例: overlapvln-habitat-stage1-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-bs64-lr2e-5-20260204-123456
-  随机采样示例: overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-data260404-bs64-lr2e-5-20260418-123456
+  示例: swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-bs64-lr2e-5-123456
+  随机采样示例: swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456
 
 GTC:
-  overlapvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-gtc-k{tokens}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
+  swiftvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-gtc-k{tokens}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
   
-  示例: overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-bs64-lr2e-5-20260204-123456
+  示例: swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-bs64-lr2e-5-123456
 
 Segment GTC:
-  overlapvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-sgtc-k{tokens}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
+  swiftvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-sgtc-k{tokens}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
   
-  示例: overlapvln-satnav-stage2-3b-1ep-f32s4-overlap16-sgtc-k512-qa15-bs64-lr2e-5-20260204-123456
+  示例: swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-qa15-bs64-lr2e-5-123456
 ```
 
 ---
@@ -650,7 +650,7 @@ Segment GTC:
 
 **配置**：
 - 模型：Qwen2.5-VL-3B
-- 框架：OverlapVLN + Per-Frame (h8, log_base=1.0, pool, stride=2)
+- 框架：SwiftVLN + Per-Frame (h8, log_base=1.0, pool, stride=2)
 - 窗口：num_frames=32, num_overlap=16, num_future_steps=4
 - 训练：1 epoch, batch_size=64, lr=2e-5
 - 策略：Initial（添加第一帧到 system prompt）
@@ -714,14 +714,14 @@ Segment GTC:
 
 | 模型 | 配置 | ALL_SR | ALL_SPL | Boundary_SR | Landmark_SR |
 |------|------|---------|---------|-------------|-------------|
-| **OverlapVLN** (vanilla, best) | pf-h8-b1.0-pool-s2 | **42.86%** | **0.4203** | 55.16% | **33.43%** |
-| **OverlapVLN** (initial, best) | pf-h8-b1.0-pool-s2-initial | 41.57% | 0.3972 | **63.69%** | 24.62% |
-| OverlapVLN (vanilla) | pf-h8-b2.0-pool-s2 | 41.22% | 0.4039 | 59.52% | 27.20% |
+| **SwiftVLN** (vanilla, best) | pf-h8-b1.0-pool-s2 | **42.86%** | **0.4203** | 55.16% | **33.43%** |
+| **SwiftVLN** (initial, best) | pf-h8-b1.0-pool-s2-initial | 41.57% | 0.3972 | **63.69%** | 24.62% |
+| SwiftVLN (vanilla) | pf-h8-b2.0-pool-s2 | 41.22% | 0.4039 | 59.52% | 27.20% |
 | StreamVLN | f32h8s4 | 42.17% | 0.4123 | **63.89%** | 25.53% |
 | CompressVLN | f32h8s4-stride2 | 37.09% | 0.3600 | 52.78% | 25.08% |
 
 **关键发现**：
-1. OverlapVLN (vanilla) 在综合指标上最优
+1. SwiftVLN (vanilla) 在综合指标上最优
 2. Initial 策略在 Boundary 任务上接近 StreamVLN
 3. 数据集修复后，Landmark 任务的成功率普遍较低（24-33%），说明任务难度较高
-4. OverlapVLN 框架在不同配置下表现稳定，证明设计有效性
+4. SwiftVLN 框架在不同配置下表现稳定，证明设计有效性

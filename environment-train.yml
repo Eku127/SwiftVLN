@@ -1,0 +1,9 @@
+name: swift-vln-train-update
+channels:
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - cuda-toolkit=12.8

@@ -8,10 +8,10 @@
 #    pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
 #
 # 2. flash_attn (install from pre-built whl, must match torch+CUDA+Python):
-#    pip install /mnt/data1/home/jiangjiajun/flash_attn-2.8.3+cu12torch2.5cxx11abiFALSE-cp39-cp39-linux_x86_64.whl
+#    pip install "$FLASH_ATTN_WHL"
 #
 # 3. satnav (editable install, eval 必需):
-#    pip install -e /mnt/data1/home/jiangjiajun/workspace/SatNav
+#    pip install -e "$SATNAV_REPO"
 #
 # === Install order ===
 # Step 1: conda create -n streamvln-baseline python=3.9 && conda activate streamvln-baseline

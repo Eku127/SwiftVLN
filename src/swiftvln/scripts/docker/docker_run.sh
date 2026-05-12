@@ -38,7 +38,7 @@ CONTAINER_CACHE="/mnt/data1/home/jiangjiajun/.cache"
 CONTAINER_CUDA="/usr/local/cuda-13.0"
 
 # Working directory inside container
-CONTAINER_WORKDIR="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
+CONTAINER_WORKDIR="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
 
 # GPU configuration
 # Note: Use specific GPU IDs (e.g., "0,1,2,3,4,5,6,7") or "all" for --gpus flag

@@ -6,16 +6,24 @@
 ## Repository Scope
 
 - Repo: `SwiftVLN`
-- Root: `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN`
+- Root: `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor`
 - 主要代码域：`src/swiftvln/*`
-- 当前主线模型：`overlapvln`（未明确指定时默认按 overlapvln 处理）
+- 当前主线模型：`swiftvln`（未明确指定时默认按 swiftvln 处理）
+- Rename status（Updated: 2026-05-11）：
+  - 主线 active 标识已切到 `swiftvln` / `SwiftVLN` / `SWIFTVLN`
+  - 新训练输出默认写入 `output/swiftvln/<swiftvln-exp-name>`
+  - 新训练实验名不再包含 `stage1`、SatNav `data...` 版本标签、`-notailadj` 默认行为标签；末尾运行标识只保留 `HHMMSS`
+  - 旧本地输出已迁移：`output/overlapvln/*` 已改名并移动到 `output/swiftvln/*`
+  - data4 archive legacy 模型目录已迁移：`/mnt/data4/jiangjiajun/archive/**/overlapvln*` 已改名为 `swiftvln*`
+  - 主线按名评测只接受 `swiftvln-*`，默认结果路径为 `results/eval/swiftvln/<exp>/<split>/<timestamp>`
+  - 算法参数中的 `overlap` / `NUM_OVERLAP` / `num_overlap` / `-overlap{N}` 仍按原语义保留
 
 ## Current Architecture Snapshot
 
 SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如下：
 
 - 包根：`src/swiftvln`
-- 模型目录：`src/swiftvln/model`（主线 overlapvln 唯一实现）
+- 模型目录：`src/swiftvln/model`（主线 swiftvln 唯一实现）
 - 配置目录：`src/swiftvln/configs`
 - 脚本目录：`src/swiftvln/scripts`
 
@@ -85,16 +93,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 默认 tmux session 名：
     - `gpu_health_98`
     - `gpu_health_73`
-- OverlapVLN 单机训练 GPU 选择（Updated: 2026-04-07）：
-  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+- SwiftVLN 单机训练 GPU 选择（Updated: 2026-04-07）：
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
   - 默认不再硬编码 `0-7`，而是自动使用当前环境里**全部可见 GPU**
   - 可选覆盖：
     - `TRAIN_NUM_GPUS=<N>`：从当前可见 GPU 集合中取前 N 张
     - `TRAIN_CUDA_DEVICES=<csv>`：显式指定 GPU 列表，例如 `0,1,3,5`
     - `TRAIN_DRY_RUN=true`：仅做配置与 GPU 解析检查，不实际启动 `torchrun`
   - `src/swiftvln/scripts/train/train_queue.sh` 会把以上三个变量透传给单次训练脚本
-- OverlapVLN 训练默认值与 smoke 隔离（Updated: 2026-04-17）：
-  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+- SwiftVLN 训练默认值与 smoke 隔离（Updated: 2026-04-17）：
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
   - 当前仓库默认值按**正式训练**维护，不再使用 smoke 残留默认：
     - `MAX_SAMPLES=0`（显式表示全量）
     - `NUM_OVERLAP=0`（当前 baseline 默认）
@@ -110,24 +118,15 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `SAVE_STEPS=1`
     - `SAVE_TOTAL_LIMIT=1`
     - 见 `.codex/skills/swiftvln-smoke-test/SKILL.md`
-- OverlapVLN overlap 训练尾窗默认（Updated: 2026-04-30）：
-  - `OVERLAP_TAIL_WINDOW_ADJUST` 已固定进默认训练流程，默认 `false`
-  - 仅在 `NUM_OVERLAP>0` 时影响 VLN dataset 索引：
-    - `false`：保持严格 `stride = num_frames - num_overlap` 的窗口起点，短尾窗不再向后回挪
-    - `true`：保留历史 legacy 行为，尾窗有效监督不足 `num_future_steps` 时向后回挪以覆盖结尾/STOP
-  - `NUM_OVERLAP=0` 保持原有尾窗调整逻辑不变，避免影响当前 baseline
-  - 当 `NUM_OVERLAP>0` 且 `OVERLAP_TAIL_WINDOW_ADJUST=false` 时，训练实验名额外包含
-    `-notailadj`；`true` 保持历史实验名格式不变
-  - `-notailadj` 只是训练命名标记，评测脚本不解析该字段
-  - `src/swiftvln/scripts/train/train_queue.sh` 的默认配置已包含
-    `OVERLAP_TAIL_WINDOW_ADJUST=false`；因此后续只设置 `NUM_OVERLAP>0`
-    就默认进入 no-tail-adjust 流程
-  - 如需复现实验历史 legacy 行为，必须显式设置
-    `OVERLAP_TAIL_WINDOW_ADJUST=true`
-- OverlapVLN 评测窗口默认与 `overlap=0` 修复（Updated: 2026-04-27）：
+- SwiftVLN overlap 训练尾窗行为（Updated: 2026-05-12）：
+  - `OVERLAP_TAIL_WINDOW_ADJUST` 控制参数已移除。
+  - `NUM_OVERLAP>0` 时固定保持严格 `stride = num_frames - num_overlap`
+    的窗口起点，短尾窗不再向后回挪；该行为不再写入实验名。
+  - `NUM_OVERLAP=0` 保持原有尾窗覆盖逻辑不变，避免影响当前 baseline。
+- SwiftVLN 评测窗口默认与 `overlap=0` 修复（Updated: 2026-04-27）：
   - 相关文件：
     - `src/swiftvln/scripts/eval/eval_by_name.sh`
-    - `src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+    - `src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
     - `src/swiftvln/model/eval.py`
     - `src/swiftvln/model/evaluator.py`
   - `eval_by_name.sh` 会从实验名中的 `f{num_frames}s{num_future_steps}` 与
@@ -140,13 +139,12 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - `evaluator._prepare_overlap_context()` 已修复 `NUM_OVERLAP=0` 时
     `self.window_turns[-0:]` 等价于整窗复用的问题；当前 `overlap_turns <= 0`
     会明确禁用上一窗口 context
-- OverlapVLN `7B` 启动约定（Updated: 2026-04-18）：
+- SwiftVLN `7B` 启动约定（Updated: 2026-04-18）：
   - 主训练脚本默认 base model **仍是 3B**：
     - `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
   - 当前脚本已支持通过环境变量覆盖关键训练参数，而不修改默认值：
-    - `TRAIN_STAGE`
     - `STAGE1_MODEL_PATH`
-    - `STAGE2_MODEL_PATH`
+    - `MODEL_PATH`
     - `BATCH_SIZE`
     - `LEARNING_RATE`
     - `NUM_EPOCHS`
@@ -176,8 +174,48 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `BATCH_SIZE=12`
     - `LEARNING_RATE=2e-5`
     - 其余 baseline 配置保持不变
-- OverlapVLN no-memory / per-frame naming 配置约定（Updated: 2026-04-20）：
-  - 训练脚本：`src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+- SwiftVLN `Qwen2.5-VL-32B` 17 机启动约定（Updated: 2026-05-05）：
+  - 本地离线模型路径：
+    - `/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-32B-Instruct`
+  - 17 机 `streamvln-container` 内没有 `tmux`，32B 长跑采用 **17 host tmux + docker exec 容器训练**：
+    - launcher: `runtime/tmp/launch_qwen25_32b_17.sh`
+    - config: `runtime/train_queue/qwen25_vl_32b_0418.env`
+  - 2026-05-05 实测：
+    - `BATCH_SIZE=1`
+    - `GRAD_ACCUM_STEPS=8`（8 卡有效 batch=64）
+    - `USE_DEEPSPEED=true`
+    - `DEEPSPEED_CONFIG=zero3`
+    - `MAX_LENGTH=24576`
+    - `FREEZE_VIT=true`
+    - `DATALOADER_PIN_MEMORY=false`
+    - `DATALOADER_NUM_WORKERS=2`
+    - `DATALOADER_PREFETCH_FACTOR=2`
+    - `DATASET_NUM_PROC=1`
+  - 保持 swiftvln 当前 default 语义配置：
+    - `SatNav0418`
+    - `NUM_FRAMES=32`
+    - `NUM_FUTURE_STEPS=4`
+    - `NUM_OVERLAP=0`
+    - `HISTORY_PROCESSOR_TYPE=per_frame`
+    - `NUM_HISTORY=8`
+    - `COMPRESS_STRIDE=2`
+    - no pixel/pose/uav embed
+  - `zero3_offload` 在当前 17 环境会触发
+    `AttributeError: 'DeepSpeedCPUAdam' object has no attribute 'ds_opt_adam'`，
+    因此不作为默认选择。
+  - 训练脚本已修正 CUDA allocator 环境变量：
+    - 使用 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+    - 不再使用无效的 `PYTORCH_ALLOC_CONF`
+  - 不带 `FREEZE_VIT=true` 或未修正 allocator 时，32B 会在前 1-2 step 附近 OOM。
+  - 2026-05-05 73 机重启 32B 时新增队列配置：
+    - `runtime/train_queue/qwen25_vl_32b_0418_73_nomidckpt.env`
+    - 训练超参与 17/原 73 配置一致，仅将 `SAVE_STEPS=5000`，跳过 step-1000
+      中间 checkpoint，避免再次在中间保存阶段中止。
+    - 已启动 session：`train_q25vl32b73_restart_224552`
+    - 日志：`logs/train_launch/train_q25vl32b73_restart_224552.log`
+    - 输出：`output/swiftvln/swiftvln-satnav-32b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-224602`
+- SwiftVLN no-memory / per-frame naming 配置约定（Updated: 2026-04-20）：
+  - 训练脚本：`src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
   - 数据集：`src/swiftvln/model/dataset.py`
   - 队列展示/解析：`src/swiftvln/scripts/train/train_queue.sh`
   - 评测按名解析说明：`src/swiftvln/scripts/eval/eval_by_name.sh`
@@ -196,25 +234,25 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 2026-04-20 起，`per_frame` 的 `USE_RANDOM=true` 已在**评测端**完整接通：
     - Python CLI：`src/swiftvln/model/eval.py`
     - evaluator 实际采样：`src/swiftvln/model/evaluator.py`
-    - distributed eval 脚本：`src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+    - distributed eval 脚本：`src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
     - `eval_by_name.sh` 解析出的 `USE_RANDOM=true` 不再只是命名元数据，而会真实影响 eval 的 history sampling
   - `log_base` / `use_random` 在 `NUM_HISTORY=0` 时保留为配置元数据，但不会实际影响采样
   - `gtc` / `segment_gtc` 不适用该 no-memory 约定，因为其历史采样逻辑不看 `NUM_HISTORY`
-- OverlapVLN 本地 deploy 默认模型（Updated: 2026-04-21）：
+- SwiftVLN 本地 deploy 默认模型（Updated: 2026-04-21）：
   - CLI：`src/swiftvln/cli.py`
   - 解析常量：`src/swiftvln/deployment/model_resolver.py`
   - wrapper：
-    - `src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh`
+    - `src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh`
     - `src/swiftvln/scripts/deploy/run_deploy_session.sh`
   - 当前若 deploy 未显式传 `--model-name` / `model_name`，默认使用：
-    - `output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-data260418-bs64-lr2e-5-20260419-113050`
-  - `start_overlapvln_deploy.sh` 现支持：
-    - `bash .../start_overlapvln_deploy.sh`
-    - `bash .../start_overlapvln_deploy.sh <model_name> [session_root]`
+    - `output/swiftvln/swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-182323`
+  - `start_swiftvln_deploy.sh` 现支持：
+    - `bash .../start_swiftvln_deploy.sh`
+    - `bash .../start_swiftvln_deploy.sh <model_name> [session_root]`
   - `run_deploy_session.sh` 现支持：
     - `bash .../run_deploy_session.sh <requests_jsonl>`
     - `bash .../run_deploy_session.sh <requests_jsonl> [model_name] [session_root]`
-- OverlapVLN `map` memory 配置约定（Updated: 2026-04-17）：
+- SwiftVLN `map` memory 配置约定（Updated: 2026-04-17）：
   - 共享实现：
     - `src/swiftvln/model/map_memory.py`
   - 训练链路：
@@ -225,7 +263,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 评测链路：
     - CLI 参数：`src/swiftvln/model/eval.py`
     - evaluator window 刷新：`src/swiftvln/model/evaluator.py`
-    - 单次 eval 脚本：`src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+    - 单次 eval 脚本：`src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
     - 按名评测解析：`src/swiftvln/scripts/eval/eval_by_name.sh`
   - 队列透传：
     - `src/swiftvln/scripts/train/train_queue.sh`
@@ -267,8 +305,8 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
       - 训练入口（`dataset.py`）从 `SatNavTrajectoryMetadataResolver.dataset_root` 推导
       - 评测入口（`evaluator.py`）从 habitat `DATA_PATH` 回溯找第一个 `ver_*` 目录
     - 开关（优先级从高到低）：
-      1. 环境变量 `OVERLAPVLN_MAP_CACHE_DIR=<path>` 强制指定路径
-      2. 环境变量 `OVERLAPVLN_MAP_CACHE_DIR=off|false|none|0|disable|disabled|no` 关闭缓存
+      1. 环境变量 `SWIFTVLN_MAP_CACHE_DIR=<path>` 强制指定路径
+      2. 环境变量 `SWIFTVLN_MAP_CACHE_DIR=off|false|none|0|disable|disabled|no` 关闭缓存
       3. 训练/评测脚本 `MAP_CACHE_DIR`（default `"auto"` → 使用代码推导值）
       4. 都未设 → 使用推导的 `{dataset_root}/map_cache`
     - Cache key 由 render config digest + `scene_id` + `window_start` + 全部 poses 的
@@ -282,18 +320,18 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
         `sensor_height` / `global_center_mode` / `global_shift_*`）变化
         → key digest 自动改变 → 新旧缓存自然共存，不会读到过期结果
       - 如需回收磁盘，直接 `rm -rf {cache_dir}` 安全（会懒加载重建）
-    - Debug：`OVERLAPVLN_DEBUG=1` 会在首 N 次 render 打印 `[MAP DEBUG][builder] cache_hit/render ... cache=miss(M/wW)` 统计
+    - Debug：`SWIFTVLN_DEBUG=1` 会在首 N 次 render 打印 `[MAP DEBUG][builder] cache_hit/render ... cache=miss(M/wW)` 统计
     - 性能目标：rasterio 渲染 ~2.4s/次 → cache hit ~10ms（PNG decode），命中率稳定后
       DataLoader 近乎零 CPU 渲染成本（首 epoch 负责 warm-up）
 - SwanLab 直连默认（Updated: 2026-04-08）：
   - `src/swiftvln/scripts/train/train_queue.sh`
-  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
   - 当 `USE_SWANLAB=true` 时，训练脚本默认会清理 `http_proxy/https_proxy/HTTP_PROXY/HTTPS_PROXY/all_proxy/ALL_PROXY`
   - 目的：避免误继承本地 `127.0.0.1:7890` 一类代理，导致 SwanLab 登录失败
   - 如需保留代理，可显式设置 `SWANLAB_DIRECT_NETWORK=false`
   - `train_queue.sh` 现在也会把全局 `QA_DATASET` 显式写入临时训练脚本，避免 `qa*` 实验回退到模型脚本内的旧默认 QA 路径
-- OverlapVLN 训练恢复支持（Updated: 2026-04-08）：
-  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+- SwiftVLN 训练恢复支持（Updated: 2026-04-08）：
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
   - `src/swiftvln/scripts/train/train_queue.sh`
   - 单次训练脚本新增：
     - `RESUME_FROM_CHECKPOINT=<abs_path>`：传给 ms-swift 的 `--resume_from_checkpoint`
@@ -386,9 +424,9 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - 若**未显式传 split 参数**，默认顺序运行 `val_seen` 和 `val_unseen`
     - 若显式传 `val_seen` / `val_unseen` / `test`，则只跑该单个 split
   - 评测结果目录约定（0319 起）：
-    - SwiftVLN 主线模型（overlapvln）：
+    - SwiftVLN 主线模型（swiftvln）：
       `results/eval/<arch>/<model_name>/<split>/<timestamp>/`
-      例：`results/eval/overlapvln/<model>/val_seen/20260319_143025/`
+      例：`results/eval/swiftvln/<model>/val_seen/20260319_143025/`
     - SatNav 默认同时跑 `val_seen` + `val_unseen`（不设置 `EVAL_SPLIT`），Habitat 默认 `EVAL_SPLIT=val_unseen`
 - StreamVLN SatNav eval 约定（Updated: 2026-04-01）：
   - 多卡汇总改为 rank0 从 `result.jsonl` 离线去重汇总，不再用末尾 `all_gather(...)` 汇总本地 `results`
@@ -809,11 +847,11 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - active: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
   - backup(old): `/mnt/data3/jiangjiajun/dataset/satnav_datasets/old_scenes`
 
-### SatNav ver_260418 Snapshot (Updated: 2026-04-26)
+### SatNav ver_260418 Snapshot (Updated: 2026-05-01)
 
-- 当前主线 `OverlapVLN` 与 `baseline/*` 默认训练 / eval 版本已统一切到 `ver_260418`
+- 当前主线 `SwiftVLN` 与 `baseline/*` 默认训练 / eval 版本已统一切到 `ver_260418`
 - 默认路径已同步到：
-  - `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
   - `src/swiftvln/scripts/train/train_queue.sh`
   - `src/swiftvln/configs/satnav_task.yaml`
   - `baseline/{streamvln,navila,uninavid,openfly}/configs/satnav_task.yaml`
@@ -842,6 +880,25 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - `data/qa_swift.jsonl` 已重新生成，共 `273120` 行，图片路径版本计数为 `ver_260418: 273120`，缺图数为 `0`
   - `episodes/eval/val_unseen/{boundary,landmark,road}_episodes.json` 已从当前 `all_episodes.json` 定点重建
   - 注意：`merge_manifest.json` 仍是原始 merge 产物记录，不代表后续 0418 split 清理 / QA 路径修复后的当前状态
+- 2026-05-01 release 准备：
+  - episode-only release 目录：
+    `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-Episodes-v0.1`
+  - 该目录只保留 `episodes/`（含 `train/`, `eval/val_seen/`, `eval/val_unseen/`）以及 release 文档，不包含 `data/`, `trajectory_data/`, `raw_data/`, `check_trajectory_data/`
+  - `SatNav-Episodes-v0.1/episodes` 与 `ver_260418/episodes` 已同步更新 Boundary subtype 命名：
+    - 原缺失 `trajectory_subtype` -> `loop`
+    - `overlap` -> `extended`
+    - `arc` 保持不变
+  - 更新后 Boundary subtype 条目计数（跨 all/type 文件重复计数）：`loop=43340`, `extended=8826`, `arc=8814`；无缺失字段
+  - `SatNav-Episodes-v0.1/episodes` 与 `ver_260418/episodes` 已同步更新 LandmarkSet subtype 命名：
+    - `aux_info.turn_count=2` -> `trajectory_subtype=one_turn`
+    - `aux_info.turn_count=3` -> `trajectory_subtype=two_turn`
+  - 更新后 LandmarkSet subtype 条目计数（跨 all/type 文件重复计数）：`one_turn=73920`, `two_turn=15528`；无缺失字段
+  - `SatNav-Episodes-v0.1/episodes` 与 `ver_260418/episodes` 已同步更新 Road subtype 命名：
+    - `Highway` -> `road`
+    - `Multiway` -> `hybrid`
+    - `Waterway` -> `waterway`
+  - 更新后 Road subtype 条目计数（跨 all/type 文件重复计数）：`road=67936`, `hybrid=7398`, `waterway=11226`；无缺失字段
+  - `ver_260418/trajectory_data` 中未存储 `trajectory_type` / `trajectory_subtype` 字段，因此本次 subtype 命名不涉及 trajectory cache 内容改写
 
 ### SatNav ver_260403 Snapshot (Updated: 2026-04-03)
 
@@ -910,6 +967,15 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   `src/swiftvln/scripts/data_process/normalize_trajectory_types.py`
 - 默认入口 `src/swiftvln/scripts/data_process/run_all.py` 会先执行标准化，再生成 `episodes` 与 `qa_swift.jsonl`
 - 单独执行 `src/swiftvln/scripts/data_process/process_episodes.py` 时，也会自动先做同样的标准化
+- SwiftVLN 维护自己的 SatNav 轨迹生成配置：
+  `src/swiftvln/configs/satnav_trajectory_generation.yaml`
+  - 该文件用于调用 SatNav repo 的
+    `applications/trajectory_generation/generate_parallel.py`
+  - `satnav-data` skill 会基于该 YAML 生成临时配置，并只覆盖
+    `DATASET.DATA_PATH` 与 `DATASET.SCENES_DIR`
+  - 生产默认：`MAX_EPISODE_STEPS=500`、`FORWARD_STEP_SIZE=10`、
+    `TURN_ANGLE=15`、`RGB_SENSOR=448x448/HFOV90`、
+    `LandmarkSet SUCCESS_DISTANCE=3.0`
 - trajectory 生成默认并发（`generate_parallel.py`）为：
   `min(num_scenes, cpu_count//4, 72)`（2026-03-27 更新，原上限 24）
 - `episodes/train/*.json` 与 `episodes/eval/*.json` 输出会保留 `trajectory_subtype` 字段
@@ -934,7 +1000,7 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 | **73** | `10.246.152.73` | `ssh 10.246.152.73` | 8× | 远程 SSH |
 | **17** | `10.246.132.17` | `ssh 10.246.132.17` 后进入 Docker 容器 | 8× | 远程 SSH + Docker |
 
-- 共享工作区挂载点：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN`
+- 共享工作区挂载点：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor`
 - **SSH 仅用于**：远端 GPU/进程状态检查、远程 tmux 启动/停止。
 - **文件操作**（脚本、队列写入、输出读写）：始终是本地操作，无需 SSH。
 - server 17 Docker 容器名查询：`ssh 10.246.132.17 "docker ps"`
@@ -943,7 +1009,7 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 
 | Env | Purpose |
 |---|---|
-| `swift-vln-train` | SwiftVLN 主线训练（OverlapVLN / StreamVLN / CompressVLN） |
+| `swift-vln-train` | SwiftVLN 主线训练（SwiftVLN / StreamVLN / CompressVLN） |
 | `swift-vln-eval` | SwiftVLN 主线评测 |
 | `streamvln-baseline` | baseline/streamvln 训练与评测（独立环境） |
 | `uninavid-baseline` | baseline/uninavid 训练与评测（独立环境） |
@@ -963,8 +1029,7 @@ TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train
 ```
 
 该文件需 source 可读，至少定义：
-- `EXPERIMENTS` 数组（格式：`model|config|changes|ds_names|ds_paths|stage2_path|qa_ratio`）
-- `TRAIN_STAGE`（`stage1` 或 `stage2`）
+- `EXPERIMENTS` 数组（格式：`model|config|changes|ds_names|ds_paths|reserved|qa_ratio`；第 6 列保留为空）
 - `ENV_TYPE`（`satnav` 或 `habitat`）
 
 `train_queue.sh` 的 SwanLab 约定（Updated: 2026-04-21）：
@@ -978,7 +1043,7 @@ TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train
 ### Offline Model Convention (Updated: 2026-03-17)
 
 - 后续 VLN 训练任务默认使用**离线本地模型**，不依赖在线下载（避免 DNS/外网波动导致训练失败）。
-- OverlapVLN 的 stage1 基座模型默认路径：
+- SwiftVLN 的默认基座模型路径：
   `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
 - 启动训练前必须先检查该路径存在且非空；若缺失，先修复模型路径/缓存，再启动训练。
 - 若脚本默认值仍是 `Qwen/Qwen2.5-VL-3B-Instruct`（在线 ID），运行时需显式覆盖为上述本地绝对路径。
@@ -998,7 +1063,7 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_overlap_smoke_150200
 - 原则：小规模、可复现、不可破坏。
 - 默认范围：SatNav-only。
 - 训练 smoke 仅使用多卡多 GPU（不做单卡 smoke）。
-- 主线 smoke 覆盖模型：`overlapvln`，要求 train+eval 全链路可用。
+- 主线 smoke 覆盖模型：`swiftvln`，要求 train+eval 全链路可用。
 - 必须保存并验证 checkpoint 可用于 eval。
 - smoke 完成后需清理本次测试产物（仅清理 smoke 产物，不影响历史正式结果）。
 - 必须避免：
@@ -1032,7 +1097,7 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_overlap_smoke_150200
 新增 Stage-A sim-to-real 对齐包：
 
 - 包目录：`src/swiftvln/s2r/`
-- 目标：基于真实 `UAV ↔ Satellite` 配对图做视觉对齐，产出后续可接入 OverlapVLN 的 adapter
+- 目标：基于真实 `UAV ↔ Satellite` 配对图做视觉对齐，产出后续可接入 SwiftVLN 的 adapter
 
 当前已实现的 Stage-A 入口：
 
@@ -1053,12 +1118,12 @@ Stage-A 当前设计约定：
 
 - 只做 `contrastive + global cosine distill`
 - **不做 token distill**
-- teacher 默认对齐到目标 OverlapVLN checkpoint 的 visual tower 输出空间
+- teacher 默认对齐到目标 SwiftVLN checkpoint 的 visual tower 输出空间
 - `TeacherVisionTower` 必须使用 `Qwen2_5_VLForConditionalGeneration.from_pretrained(...)`
   加载 Qwen2.5-VL checkpoint；不要再走 `AutoModelForCausalLM`，否则会在
   `qwen2_5_vl` config 上报模型类型不识别
 - 当前推荐 teacher：
-  `output/overlapvln/overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-noembed-data260317-bs64-lr2e-5-20260318-202149/v0-20260318-202212/checkpoint-3957`
+  `/mnt/data4/jiangjiajun/archive/swiftvln/data0317/train/swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-202149/v0-20260318-202212/checkpoint-3957`
 - `SatDronePairDataset(max_samples=...)` 现在采用跨数据源 round-robin 限样
   （不是 manifest 头部截断），用于保证 smoke train/eval 在小样本下仍覆盖多数据源
 
@@ -1083,22 +1148,22 @@ Stage-A 测试文件：
 - `tests/test_s2r_dataset.py`
 - `tests/test_s2r_model_and_losses.py`
 
-## OverlapVLN UAV Adapter Stage-B (Updated: 2026-04-07)
+## SwiftVLN UAV Adapter Stage-B (Updated: 2026-04-07)
 
-OverlapVLN 已接入 `uav_adapter` 的 Stage-B 最小链路：
+SwiftVLN 已接入 `uav_adapter` 的 Stage-B 最小链路：
 
 - 在线 enhancement 模块：`src/swiftvln/common/embedding_enhancement/uav_adapter.py`
 - pipeline 工厂：`src/swiftvln/common/embedding_enhancement/__init__.py`
-- OverlapVLN 模型加载与本地/外部权重恢复：
+- SwiftVLN 模型加载与本地/外部权重恢复：
   `src/swiftvln/model/model.py`
-- OverlapVLN trainer 参数透传与 pipeline 重建：
+- SwiftVLN trainer 参数透传与 pipeline 重建：
   `src/swiftvln/model/trainer.py`
-- OverlapVLN eval 参数透传：
+- SwiftVLN eval 参数透传：
   `src/swiftvln/model/eval.py`
-- OverlapVLN 分布式评测脚本参数透传：
-  `src/swiftvln/model/script/eval/eval_overlapvln_qwen2_5_vl_distributed.sh`
+- SwiftVLN 分布式评测脚本参数透传：
+  `src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
 - 训练脚本参数透传：
-  `src/swiftvln/model/script/train/train_overlapvln_qwen2_5_vl.sh`
+  `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
 
 Stage-B 当前参数约定：
 
@@ -1169,25 +1234,25 @@ Stage-A 当前验证状态（2026-04-03）：
 
 ## Local Deployment (Updated: 2026-04-21)
 
-- CLI 入口：`python -m swiftvln deploy --model overlapvln --model-name <EXP_NAME>`
+- CLI 入口：`python -m swiftvln deploy --model swiftvln --model-name <EXP_NAME>`
 - CLI 接线：`src/swiftvln/cli.py`
 - runner：`src/swiftvln/runners/deploy.py`
 - 部署包：`src/swiftvln/deployment/`
-  - `model_resolver.py`：解析 overlapvln baseline 实验名并查找最新 checkpoint
+  - `model_resolver.py`：解析 swiftvln baseline 实验名并查找最新 checkpoint
   - `gpu.py`：默认自动选择本机一张空闲 H100；若已设置 `CUDA_VISIBLE_DEVICES`，则沿用现有可见卡
-  - `loader.py`：加载 overlapvln checkpoint
+  - `loader.py`：加载 swiftvln checkpoint
   - `policy.py`：baseline-only 的 window/history/overlap 推理逻辑
   - `session.py`：单会话状态机、图片落盘、events/summary 记录
   - `server.py`：JSONL stdin/stdout 协议入口
 - README：`src/swiftvln/deployment/README.md`
-- 启动 wrapper：`src/swiftvln/scripts/deploy/start_overlapvln_deploy.sh`
+- 启动 wrapper：`src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh`
 - 单次 session wrapper：`src/swiftvln/scripts/deploy/run_deploy_session.sh`
 - smoke 脚本：`src/swiftvln/scripts/deploy/deploy_smoke.sh`
-- 单测：`tests/test_overlapvln_deployment.py`
+- 单测：`tests/test_swiftvln_deployment.py`
 
 当前部署产品定义：
 
-- 只支持 `overlapvln` baseline `per_frame + pool + noembed`
+- 只支持 `swiftvln` baseline `per_frame + pool + noembed`
 - 当前只适配名字里的 `NUM_OVERLAP`、`NUM_HISTORY`、`LOG_BASE`、`USE_RANDOM`
 - 明确不支持：`map` / `gtc` / `segment_gtc` / `tome` / `initial` / embedding enhancement
 - 协议是**单进程、单会话** JSONL CLI，不提供 HTTP
@@ -1203,6 +1268,140 @@ Stage-A 当前验证状态（2026-04-03）：
   - 之后每张图表示刚完成一个动作
   - 若动作队列在这张反馈图上耗尽，则立刻用该图再次推理
   - 若模型输出无法解析动作，fallback 为 `[STOP]`
+
+## ms-swift 4.x Adaptation (Updated: 2026-05-12)
+
+- 本仓库当前 `ms-swift-refactor` 分支正在适配最新 ms-swift。
+- 保护约定：
+  - 不修改旧环境 `swift-vln-train` / `swift-vln-eval`
+  - 不修改旧仓库 `/mnt/data1/home/jiangjiajun/workspace/ms-swift`
+  - 仅使用 update 环境：`swift-vln-train-update` / `swift-vln-eval-update`
+- `README.md` 现在是 train/eval 两套 from-scratch 安装文档，不再要求从旧环境 clone：
+  - conda 基础层：`environment-train.yml`
+  - pip 训练依赖：`requirements-train.txt`
+  - PyTorch CUDA 12.8 与 `flash-attn` 在 README 中单独按顺序安装
+    - 若在 `/tmp` 等不同挂载点构建 `flash-attn` 遇到 `Invalid cross-device link`，
+      需把 `TMPDIR` 与 `PIP_CACHE_DIR` 放到同一文件系统后重试
+  - 当前目标训练环境仍是 `swift-vln-train-update`
+  - eval conda 基础层：`environment-eval.yml`
+  - eval pip 依赖：`requirements-eval.txt`
+    - 包含 `qwen-vl-utils==0.0.14`，与 README 的 Qwen-VL 验证口径一致
+  - 当前目标 eval 环境仍是 `swift-vln-eval-update`
+  - eval 从零安装 `SwiftVLN` / `ms-swift-lateset` / `SatNav` / `habitat-lab-0.2.4`
+  - eval 使用 Python `3.9` + Habitat `0.2.4` stack；不能直接复用 train 的 Python `3.10` 环境
+  - `pyproject.toml` 的 `requires-python` 已放宽到 `>=3.9`，以支持 eval 环境 `pip install -e .`
+- update 环境当前使用：
+  - `/mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset`
+  - 版本：`ms-swift 4.2.0.dev0`
+  - commit：`ad7d5c515 [docs] fix docs (#9244)`
+- SwiftVLN 当前直接使用 ms-swift 4.x API：
+  - `swift.arguments.SftArguments`
+  - `swift.dataset.*`
+  - `swift.model.*`
+  - `swift.template.*`
+  - `swift.pipelines.train.sft.SwiftSft`
+  - 不再保留 `swift.llm.*` / ms-swift 3.x fallback
+- SwiftVLN 模型注册：
+  - 直接使用 `SwiftVLNQwen25VLLoader`
+  - `ModelMeta` 使用 `loader=SwiftVLNQwen25VLLoader`
+  - 特殊 token 仍为 `<history_image>` / `<history_memory>` / `<current_image>`
+- 默认脚本环境：
+  - train 脚本默认激活 `swift-vln-train-update`
+  - eval distributed 脚本默认激活 `swift-vln-eval-update`
+  - 可分别通过 `SWIFTVLN_TRAIN_CONDA_ENV` / `SWIFTVLN_EVAL_CONDA_ENV` 覆盖回其他环境
+- Qwen3/Qwen3.5 可行性报告：
+  - `reports/ms_swift_qwen3_future.md`
+  - 结论：可适配，但需要模型族抽象，不能只替换 `model_type` / `model_path`
+- Qwen3-VL 适配重构（Updated: 2026-05-01）：
+  - 当前主线已保留 `swiftvln_qwen2_5_vl` 并新增 `swiftvln_qwen3_vl`
+  - 共享逻辑：
+    - streaming KV-cache 状态管理
+    - `<history_image>` / `<history_memory>` / `<current_image>` 注入
+    - `embed_enhance` pipeline 创建、迁移到目标 device/dtype、checkpoint 权重恢复
+  - 模板实现：
+    - Qwen2.5 继续基于 ms-swift `Qwen2_5VLTemplate`
+    - Qwen3 基于 ms-swift `Qwen3VLTemplate`
+    - history/current 图像展开与压缩逻辑通过 SwiftVLN mixin 复用
+    - Qwen3 visual encoder 返回 `pooler_output/deepstack_features` 或 tuple；训练模板与 evaluator 均需先归一化为 pooled visual tokens
+    - 2026-05-12 起训练模板不再强制 `processor.image_processor(..., do_resize=False)`；
+      由 Qwen processor 自行按 patch/merge 规则规整图像尺寸。Habitat 训练集中存在
+      640x480 / 644x476 等尺寸，Qwen3/Qwen2.5 fast image processor 在强制
+      `do_resize=False` 时会因 `patches.view(...)` shape 不整除而失败。
+  - Qwen3 DeepSpeed 兼容：
+    - ms-swift Qwen3-VL DeepSpeed patch 在 `inputs_embeds` 路径仍会访问 `input_ids.device`
+    - `SwiftVLNQwen3VLLoader` 会给 `model.model.forward` 加窄补丁：仅当 SwiftVLN 已经把视觉特征注入 `inputs_embeds` 且没有原始 pixel media 时，直接进入 Qwen3 language stack
+    - 2026-05-12 在 98 上验证 Qwen3-VL 2B SatNav smoke 时，默认
+      `USE_LIGER_KERNEL=true` 会在 Qwen3 vision RoPE 的 Triton kernel 编译阶段报
+      `numel exceeds triton maximum tensor numel`；Qwen3 smoke/训练需显式
+      `USE_LIGER_KERNEL=false`
+  - 脚本选择：
+    - `MODEL_FAMILY=qwen2_5_vl`（默认） -> `MODEL_TYPE=swiftvln_qwen2_5_vl`
+    - `MODEL_FAMILY=qwen3_vl` -> `MODEL_TYPE=swiftvln_qwen3_vl`
+    - Qwen3 默认 base model：
+      `/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct`
+    - Qwen3 8B 可通过 `STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct` 覆盖
+  - 实验命名：
+    - Qwen2.5 保持旧格式，不额外加 family tag
+    - Qwen3 名字包含 `qwen3vl-`，例如 `swiftvln-satnav-qwen3vl-2b-...`
+  - `eval_by_name.sh` 会从模型名中的 `qwen3vl` 解析 `MODEL_FAMILY=qwen3_vl`
+  - README 当前只保留 conda 环境安装与 smoke 命令
+  - Qwen3.5 仍未注册为可运行模型；当前 update 环境缺少 `transformers.models.qwen3_5`，后续必须使用独立环境
+  - Qwen3 2B 下载/同步状态：
+    - 2026-05-01 98 上 `Qwen3-VL-2B-Instruct` 已下载完成并同步到 73：
+      `/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct`
+    - 73 上已验证 `swiftvln_qwen3_vl` + `load_model=False` 可正常加载 `Qwen3VLProcessor` / `SwiftVLNQwen3VLTemplate`
+    - 同目录存在 Hugging Face 下载残留 `.cache/huggingface/download/*.incomplete`；实际加载所需 `model.safetensors` 与 `config.json` 已和 98 hash 一致
+  - 已验证 smoke：
+  - 2026-05-12 98 机 Qwen2.5 3B / Qwen3 2B SatNav smoke（产物已按用户要求从
+    `output/swiftvln` 与 `results/eval/swiftvln` 清理）：
+    - Qwen2.5 3B train：
+      `MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 TRAIN_NUM_GPUS=2`
+    - Qwen2.5 3B output：
+      `output/swiftvln/swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-090746/v0-20260512-090755/checkpoint-1`
+    - Qwen3 2B train：
+      `MODEL_FAMILY=qwen3_vl USE_LIGER_KERNEL=false MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 TRAIN_NUM_GPUS=2`
+    - Qwen3 2B output：
+      `output/swiftvln/swiftvln-satnav-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-091236/v0-20260512-091245/checkpoint-1`
+    - 两个模型均已用 `eval_by_name.sh` 完成 `val_seen` + `val_unseen`
+      各 1 episode smoke，并写出 `evaluation_summary.json`
+  - 2026-05-12 98 机 Habitat smoke（当前代码，SatNav smoke 清理后重跑）：
+    - Qwen2.5 3B train：
+      `VLN_ENV_TYPE=habitat MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 TRAIN_NUM_GPUS=2`
+    - Qwen2.5 3B output：
+      `output/swiftvln/swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-093946/v0-20260512-093955/checkpoint-1`
+    - Qwen2.5 3B eval：
+      `ENV_TYPE=habitat EVAL_SPLIT=val_unseen MAX_EPISODES=1 CUDA_DEVICES=0 SAVE_VIDEO=false`
+      -> `results/eval/swiftvln/swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-093946/val_unseen/20260512_094211/evaluation_summary.json`
+    - Qwen3 2B train：
+      `MODEL_FAMILY=qwen3_vl USE_LIGER_KERNEL=false VLN_ENV_TYPE=habitat MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 TRAIN_NUM_GPUS=2`
+    - Qwen3 2B output：
+      `output/swiftvln/swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-093641/v0-20260512-093650/checkpoint-1`
+    - Qwen3 2B eval：
+      `ENV_TYPE=habitat EVAL_SPLIT=val_unseen MAX_EPISODES=1 CUDA_DEVICES=0 SAVE_VIDEO=false`
+      -> `results/eval/swiftvln/swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-093641/val_unseen/20260512_093838/evaluation_summary.json`
+  - 2026-05-01 Qwen2.5 73 机 train/eval smoke：
+    - train：`MODEL_FAMILY=qwen2_5_vl MAX_SAMPLES=16 MAX_STEPS=2 TRAIN_NUM_GPUS=2`
+    - loss：step1 `1.28262424` -> step2 `0.92245096`，有限、无 NaN/inf
+    - eval：`MODEL_FAMILY=qwen2_5_vl MAX_EPISODES=1 CUDA_DEVICES=0,1 EVAL_SPLIT=val_seen`
+    - summary：`total_episodes=1`，`world_size=2`
+    - 本轮 smoke output/results/log 已清理
+  - 2026-05-01 Qwen3-VL 8B 73 机 train/eval smoke：
+    - base model：`/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct`
+    - train：`MODEL_FAMILY=qwen3_vl NUM_FRAMES=8 NUM_HISTORY=2 NUM_FUTURE_STEPS=2 MAX_SAMPLES=8 MAX_STEPS=1 TRAIN_NUM_GPUS=8`
+    - loss：step1 `5.48239994`，有限、无 NaN/inf；单步约 245s，保存后总 runtime 约 478s
+    - eval：`MODEL_FAMILY=qwen3_vl NUM_FRAMES=8 NUM_HISTORY=2 NUM_FUTURE_STEPS=2 MAX_EPISODES=1 CUDA_DEVICES=0,1 EVAL_SPLIT=val_seen`
+    - summary：`total_episodes=1`，`world_size=2`
+    - 本轮 smoke output/results/log 已清理
+  - 73 机 8 卡 train smoke：
+    - `MAX_SAMPLES=128 MAX_STEPS=2 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1`
+    - 输出：`output/swiftvln/swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-173751/v0-20260430-173826/checkpoint-2`
+    - 训练日志：`/tmp/smoke_swiftvln_ms_swift4_direct_train.log`
+    - loss：step1 `1.22701669` -> step2 `1.15895748`，有限、无 NaN/inf
+  - 73 机 eval smoke：
+    - `MAX_EPISODES=2 EVAL_SPLIT=val_seen CUDA_DEVICES=0,1`
+    - 结果：`results/eval/swiftvln/swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-173751/val_seen/20260430_174342/evaluation_summary.json`
+    - eval 日志：`/tmp/smoke_swiftvln_ms_swift4_direct_eval.log`
+    - summary：`total_episodes=2`，`world_size=2`
 
 ## Commit Style
 

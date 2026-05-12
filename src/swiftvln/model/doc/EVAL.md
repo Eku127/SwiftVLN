@@ -1,13 +1,13 @@
-# OverlapVLN 评估流程详解
+# SwiftVLN 评估流程详解
 
-本文档详细描述 OverlapVLN Evaluator 的实现细节和工作流程。
+本文档详细描述 SwiftVLN Evaluator 的实现细节和工作流程。
 
 ---
 
 ## 1. 评估器架构
 
 ```python
-class OverlapVLNEvaluator(BaseVLNEvaluator):
+class SwiftVLNEvaluator(BaseVLNEvaluator):
     # 核心缓存
     history_cache: List[Tensor]     # 压缩后的全局历史帧特征
     overlap_context: OverlapContext  # 上一窗口的最后4轮

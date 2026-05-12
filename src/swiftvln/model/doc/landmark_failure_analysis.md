@@ -1,8 +1,8 @@
 # Landmark Navigation Failure Analysis Report
 
 **Date**: 2026-02-06  
-**Model**: OverlapVLN (overlapvln-satnav-stage1-3b, per_frame, log_base=2.0)  
-**Best Model**: `overlapvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-pool-s2-bs64-lr2e-5-20260204-230157`
+**Model**: SwiftVLN (swiftvln-satnav-stage1-3b, per_frame, log_base=2.0)
+**Best Model**: `swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-pool-s2-bs64-lr2e-5-20260204-230157`
 
 ## 1. 问题概述
 
@@ -153,7 +153,7 @@ Boundary任务的闭环特性使得模型可以"大致跟随边界"就能成功�
 ## 5. 相关文件
 
 - Debug episode子集: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260202/episodes/eval/debug_landmark_episodes.json`
-- Debug运行结果: `results/eval/overlapvln/debug_landmark_analysis/20260206_102248/`
+- Debug运行结果: `results/eval/swiftvln/debug_landmark_analysis/20260206_102248/`
   - 每个episode的详细报告: `debug_landmark/{episode_id}/debug_report.json`
   - 关键帧: `debug_landmark/{episode_id}/frame_*.jpg`
   - 导航视频: `videos/`

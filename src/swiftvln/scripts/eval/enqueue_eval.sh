@@ -45,8 +45,8 @@ fi
 
 parse_model_arch() {
     local name="$1"
-    if [[ "$name" == overlapvln-* ]]; then
-        echo "overlapvln"
+    if [[ "$name" == swiftvln-* ]]; then
+        echo "swiftvln"
     else
         echo ""
     fi

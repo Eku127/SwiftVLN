@@ -93,12 +93,12 @@ MLP 最后一层权重和偏置 **零初始化**，确保训练开始时 pose em
 | `common/embedding_enhancement/pose_embed.py` | PoseEmbedding 模块（MLP + 融合） |
 | `common/embedding_enhancement/pose_utils.py` | action 积分重建 pose |
 | `common/embedding_enhancement/__init__.py` | pipeline 工厂函数 |
-| `overlapvln/arguments.py` | 训练参数定义 |
-| `overlapvln/model.py` | 模型加载时创建 pipeline |
-| `overlapvln/dataset.py` | 训练数据中重建 per-frame pose |
-| `overlapvln/template.py` | 将 pose 传递到 pipeline |
-| `overlapvln/trainer.py` | 确保 pipeline 正确初始化 |
-| `overlapvln/evaluator.py` | 推理时计算并传递 pose |
+| `swiftvln/arguments.py` | 训练参数定义 |
+| `swiftvln/model.py` | 模型加载时创建 pipeline |
+| `swiftvln/dataset.py` | 训练数据中重建 per-frame pose |
+| `swiftvln/template.py` | 将 pose 传递到 pipeline |
+| `swiftvln/trainer.py` | 确保 pipeline 正确初始化 |
+| `swiftvln/evaluator.py` | 推理时计算并传递 pose |
 
 ## 启用方式
 

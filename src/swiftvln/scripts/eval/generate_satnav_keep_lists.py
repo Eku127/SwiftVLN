@@ -7,7 +7,7 @@ This script builds a balanced eval subset for a SatNav dataset version by:
 - preserving scene coverage via proportional per-scene quotas
 - prioritizing deletion of high-confidence dirty episodes
 - deprioritizing deletion of universally hard episodes
-- using overlapvln per-episode outcome separation to keep more discriminative cases
+- using swiftvln per-episode outcome separation to keep more discriminative cases
 
 Important: ``episode_id`` is not globally unique within a split for SatNav 0404.
 All downstream filtering must therefore use the composite key
@@ -233,7 +233,7 @@ def load_summary(path: Path) -> Dict[str, Any]:
 
 
 def find_latest_overlap_runs(version: str, split: str) -> List[ModelRun]:
-    root = Path("results/eval/overlapvln")
+    root = Path("results/eval/swiftvln")
     runs_by_model: Dict[str, Path] = {}
     for model_dir in root.glob(f"*data{version}*"):
         split_dir = model_dir / split
@@ -258,7 +258,7 @@ def find_latest_overlap_runs(version: str, split: str) -> List[ModelRun]:
         model_runs.append(
             ModelRun(
                 model_name=model_name,
-                family="overlapvln",
+                family="swiftvln",
                 split=split,
                 result_path=result_path,
                 summary_path=summary_path,

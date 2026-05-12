@@ -7,16 +7,16 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, Optional
 
-from swiftvln.deployment.loader import load_overlapvln_policy
+from swiftvln.deployment.loader import load_swiftvln_policy
 from swiftvln.deployment.model_resolver import (
     DeploymentModelSpecError,
-    resolve_overlapvln_deploy_spec,
+    resolve_swiftvln_deploy_spec,
 )
-from swiftvln.deployment.session import DeploymentSessionError, OverlapVLNDeploySession
+from swiftvln.deployment.session import DeploymentSessionError, SwiftVLNDeploySession
 
 
 class JsonlDeploymentServer:
-    def __init__(self, session: OverlapVLNDeploySession, spec: Any):
+    def __init__(self, session: SwiftVLNDeploySession, spec: Any):
         self.session = session
         self.spec = spec
 
@@ -86,8 +86,8 @@ class JsonlDeploymentServer:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="OverlapVLN local deployment JSONL server")
-    parser.add_argument("--model-name", required=True, help="OverlapVLN experiment directory name")
+    parser = argparse.ArgumentParser(description="SwiftVLN local deployment JSONL server")
+    parser.add_argument("--model-name", required=True, help="SwiftVLN experiment directory name")
     parser.add_argument(
         "--session-root",
         default="runtime/deploy/sessions",
@@ -96,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-root",
         default="output",
-        help="Root directory that contains output/overlapvln/<model-name>",
+        help="Root directory that contains output/swiftvln/<model-name>",
     )
     return parser
 
@@ -123,13 +123,13 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     repo_root = _repo_root()
     try:
-        spec = resolve_overlapvln_deploy_spec(
+        spec = resolve_swiftvln_deploy_spec(
             repo_root=repo_root,
             model_name=args.model_name,
             output_root=repo_root / args.output_root,
         )
-        policy = load_overlapvln_policy(spec)
-        session = OverlapVLNDeploySession(
+        policy = load_swiftvln_policy(spec)
+        session = SwiftVLNDeploySession(
             spec=spec,
             policy=policy,
             session_root=repo_root / args.session_root,

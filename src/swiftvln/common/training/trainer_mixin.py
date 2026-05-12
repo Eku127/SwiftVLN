@@ -3,14 +3,14 @@
 VLN Trainer Mixin for Mixed Training
 
 Provides mixin class that adds QA mixed training capabilities to VLN trainers.
-This can be mixed into any VLN trainer (StreamVLN, CompressVLN, OverlapVLN) to
+This can be mixed into any VLN trainer (StreamVLN, CompressVLN, SwiftVLN) to
 enable training with both VLN and QA data.
 """
 
 import os
 from typing import Optional, Tuple, Any
 
-from swift.llm.dataset import LazyLLMDataset, load_dataset
+from swift.dataset import LazyLLMDataset, load_dataset
 from swift.utils import get_logger
 
 from .mixed_dataset import MixedVLNQADataset

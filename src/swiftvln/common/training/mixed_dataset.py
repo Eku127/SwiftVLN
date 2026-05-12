@@ -137,14 +137,14 @@ class MixedVLNQADataset:
     
     def get_inner_vln_dataset(self):
         """Get the inner VLN dataset (unwrapped)."""
-        from swift.llm.dataset import LazyLLMDataset
+        from swift.dataset import LazyLLMDataset
         if isinstance(self.vln_dataset, LazyLLMDataset):
             return self.vln_dataset.dataset
         return self.vln_dataset
     
     def get_inner_qa_dataset(self):
         """Get the inner QA dataset (unwrapped)."""
-        from swift.llm.dataset import LazyLLMDataset
+        from swift.dataset import LazyLLMDataset
         if isinstance(self.qa_dataset, LazyLLMDataset):
             return self.qa_dataset.dataset
         return self.qa_dataset

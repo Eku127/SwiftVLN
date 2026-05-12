@@ -1,4 +1,0 @@
-interface:
-  display_name: "OverlapVLN Train"
-  short_description: "Queue-first OverlapVLN训练流程与监督规范"
-  default_prompt: "Use $overlapvln-train to launch and supervise OverlapVLN training with latest SatNav data and completion webhook notification."

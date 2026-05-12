@@ -19,9 +19,9 @@ fi
 export PYTHONPATH="$REPO_ROOT/src:${PYTHONPATH:-}"
 
 DEFAULT_MODEL_NAME="$($PYTHON_BIN - <<'PY'
-from swiftvln.deployment import DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME
+from swiftvln.deployment import DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME
 
-print(DEFAULT_OVERLAPVLN_DEPLOY_MODEL_NAME)
+print(DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME)
 PY
 )"
 MODEL_NAME="${2:-$DEFAULT_MODEL_NAME}"
@@ -29,7 +29,7 @@ SESSION_ROOT="${3:-$REPO_ROOT/runtime/deploy/sessions}"
 
 DEPLOY_ARGS=(
   -m swiftvln.cli deploy
-  --model overlapvln
+  --model swiftvln
   --session-root "$SESSION_ROOT"
 )
 

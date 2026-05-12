@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-OverlapVLN Training Entry Point
+SwiftVLN Training Entry Point
 
 Usage:
     python src/swiftvln/model/trainer.py --custom_register_path src/swiftvln/model ...
@@ -13,8 +13,8 @@ import torch
 from swift.utils import get_logger
 
 from swiftvln.common.training.base_sft import BaseVLNSft
-from swiftvln.model.arguments import OverlapVLNTrainArguments
-from swiftvln.model.dataset import OverlapVLNDataset
+from swiftvln.model.arguments import SwiftVLNTrainArguments
+from swiftvln.model.dataset import SwiftVLNDataset
 
 logger = get_logger()
 
@@ -26,33 +26,33 @@ def _preview_text(text: str, limit: int = 260) -> str:
     return text[:limit] + '...'
 
 
-class OverlapVLNSft(BaseVLNSft):
-    """OverlapVLN SFT trainer with overlap context and mixed training."""
+class SwiftVLNSft(BaseVLNSft):
+    """SwiftVLN SFT trainer with overlap context and mixed training."""
 
-    args_class = OverlapVLNTrainArguments
-    args: OverlapVLNTrainArguments
-    dataset_class = OverlapVLNDataset
-    model_name = "OverlapVLN"
+    args_class = SwiftVLNTrainArguments
+    args: SwiftVLNTrainArguments
+    dataset_class = SwiftVLNDataset
+    model_name = "SwiftVLN"
 
     def _validate_memory_method(self):
         memory_method = getattr(self.args, 'memory_method', 'history')
         if memory_method != 'map':
             return
         if self.args.vln_env_type != 'satnav':
-            raise ValueError("OverlapVLN memory_method=map currently supports only satnav.")
+            raise ValueError("SwiftVLN memory_method=map currently supports only satnav.")
         if self.args.history_processor_type != 'per_frame':
-            raise ValueError("OverlapVLN memory_method=map currently requires history_processor_type=per_frame.")
+            raise ValueError("SwiftVLN memory_method=map currently requires history_processor_type=per_frame.")
         if getattr(self.args, 'use_tome', False):
-            raise ValueError("OverlapVLN memory_method=map currently requires use_tome=false.")
+            raise ValueError("SwiftVLN memory_method=map currently requires use_tome=false.")
         # Map images are not real camera views, so none of the RGB-frame embed
         # enhancements (pixel / pose / uav_adapter) apply. Reject them early so
         # users do not silently combine conflicting settings.
         if getattr(self.args, 'use_pixel_embed', False):
-            raise ValueError("OverlapVLN memory_method=map requires use_pixel_embed=false.")
+            raise ValueError("SwiftVLN memory_method=map requires use_pixel_embed=false.")
         if getattr(self.args, 'use_pose_embed', False):
-            raise ValueError("OverlapVLN memory_method=map requires use_pose_embed=false.")
+            raise ValueError("SwiftVLN memory_method=map requires use_pose_embed=false.")
         if getattr(self.args, 'use_uav_adapter', False):
-            raise ValueError("OverlapVLN memory_method=map requires use_uav_adapter=false.")
+            raise ValueError("SwiftVLN memory_method=map requires use_uav_adapter=false.")
 
     def _prepare_template(self):
         """Prepare template and set compression/history processor parameters."""
@@ -75,7 +75,7 @@ class OverlapVLNSft(BaseVLNSft):
             gtc_num_iterations = self.args.gtc_num_iterations
 
             # Log the configuration
-            logger.info(f"[OverlapVLN] Configuring history processor:")
+            logger.info(f"[SwiftVLN] Configuring history processor:")
             logger.info(f"  - history_processor_type: {history_processor_type}")
             logger.info(f"  - memory_method: {getattr(self.args, 'memory_method', 'history')}")
 
@@ -112,7 +112,7 @@ class OverlapVLNSft(BaseVLNSft):
                 logger.info(f"  - num_history: {num_history}, log_base: {log_base}")
                 logger.info(f"  - compress: {compress_method}, stride: {compress_stride}")
                 # Debug output
-                if os.environ.get('OVERLAPVLN_DEBUG'):
+                if os.environ.get('SWIFTVLN_DEBUG'):
                     logger.info(f"  [DEBUG] Per-frame configuration verified:")
                     logger.info(f"    -> num_history={num_history} (frames to sample)")
                     logger.info(
@@ -127,7 +127,7 @@ class OverlapVLNSft(BaseVLNSft):
                 logger.info(f"  - num_iterations: {gtc_num_iterations}")
         else:
             logger.warning(
-                f"[OverlapVLN] Template {type(self.template).__name__} does not have history_processor"
+                f"[SwiftVLN] Template {type(self.template).__name__} does not have history_processor"
             )
 
         # Configure embedding enhancement pipeline
@@ -181,7 +181,7 @@ class OverlapVLNSft(BaseVLNSft):
                     uav_adapter_type=uav_adapter_type,
                     uav_adapter_apply_scope=uav_adapter_apply_scope,
                 )
-                logger.info(f"[OverlapVLN] Rebuilt embed_enhance pipeline in trainer: {model.embed_enhance}")
+                logger.info(f"[SwiftVLN] Rebuilt embed_enhance pipeline in trainer: {model.embed_enhance}")
 
             # Move to matching device/dtype
             if not model.embed_enhance.is_empty:
@@ -198,14 +198,14 @@ class OverlapVLNSft(BaseVLNSft):
                 if to_kwargs:
                     model.embed_enhance = model.embed_enhance.to(**to_kwargs)
 
-                logger.info(f"[OverlapVLN] Embedding enhancement pipeline: {model.embed_enhance}")
+                logger.info(f"[SwiftVLN] Embedding enhancement pipeline: {model.embed_enhance}")
                 logger.info(f"  - Enhancements: {model.embed_enhance.enhancement_names}")
                 if use_uav_adapter and uav_adapter_path and 'uav' in model.embed_enhance.enhancements:
                     resolved_path = model.embed_enhance.enhancements['uav'].load_external_checkpoint(
                         uav_adapter_path,
                         strict=True,
                     )
-                    logger.info(f"[OverlapVLN] Loaded external UAV adapter from: {resolved_path}")
+                    logger.info(f"[SwiftVLN] Loaded external UAV adapter from: {resolved_path}")
 
             # Backward compatibility: aliases without duplicate module registration.
             def _set_alias(alias_name: str, value) -> None:
@@ -235,7 +235,6 @@ class OverlapVLNSft(BaseVLNSft):
             "use_random": self.args.use_random,
             "max_samples": self.args.vln_max_samples,
             "num_overlap": self.args.num_overlap,
-            "overlap_tail_window_adjust": self.args.overlap_tail_window_adjust,
             "env_type": self.args.vln_env_type,
             "history_processor_type": self.args.history_processor_type,
             "log_base": self.args.log_base,
@@ -265,8 +264,7 @@ class OverlapVLNSft(BaseVLNSft):
             )
         self._log(
             f"num_overlap={self.args.num_overlap}, "
-            f"stride={self.args.num_frames - self.args.num_overlap}, "
-            f"overlap_tail_window_adjust={self.args.overlap_tail_window_adjust}"
+            f"stride={self.args.num_frames - self.args.num_overlap}"
         )
         self._log(f"system_prompt_setting={self.args.system_prompt_setting}")
         if self.args.memory_method == 'map':
@@ -318,9 +316,9 @@ class OverlapVLNSft(BaseVLNSft):
                 self._log(f"[INITIAL] <image> tags in system prompt: {image_count_in_sys}")
 
 
-def train_main(args: Optional[Union[List[str], OverlapVLNTrainArguments]] = None):
-    """Main entry point for OverlapVLN training."""
-    return OverlapVLNSft(args).main()
+def train_main(args: Optional[Union[List[str], SwiftVLNTrainArguments]] = None):
+    """Main entry point for SwiftVLN training."""
+    return SwiftVLNSft(args).main()
 
 
 if __name__ == '__main__':

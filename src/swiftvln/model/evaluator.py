@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """
-OverlapVLN Evaluator with VIT Feature Caching and Overlap Context Reuse
+SwiftVLN Evaluator with VIT Feature Caching and Overlap Context Reuse
 
 This evaluator implements an efficient inference pipeline that:
 1. Caches VIT features to avoid redundant computation
@@ -84,7 +84,7 @@ except ImportError:
 
 
 def _debug_enabled() -> bool:
-    return os.environ.get('OVERLAPVLN_DEBUG', '') != ''
+    return os.environ.get('SWIFTVLN_DEBUG', '') != ''
 
 
 def _debug_rank() -> int:
@@ -141,9 +141,9 @@ class TurnContext:
     image_embed: torch.Tensor  # VIT features for this turn's image
 
 
-class OverlapVLNEvaluator(BaseVLNEvaluator):
+class SwiftVLNEvaluator(BaseVLNEvaluator):
     """
-    OverlapVLN Evaluator with VIT feature caching and overlap context reuse.
+    SwiftVLN Evaluator with VIT feature caching and overlap context reuse.
     
     Key Features:
     - VIT feature caching: Avoid recomputing features for cached frames
@@ -234,23 +234,23 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
             raise ValueError(f"Unsupported memory_method: {self.memory_method}")
         if self.memory_method == 'map':
             if self.env_type != 'satnav':
-                raise ValueError("OverlapVLN memory_method=map currently supports only satnav.")
+                raise ValueError("SwiftVLN memory_method=map currently supports only satnav.")
             if self.history_processor_type != 'per_frame':
-                raise ValueError("OverlapVLN memory_method=map currently requires history_processor_type=per_frame.")
+                raise ValueError("SwiftVLN memory_method=map currently requires history_processor_type=per_frame.")
             if self.use_tome:
-                raise ValueError("OverlapVLN memory_method=map currently requires use_tome=false.")
+                raise ValueError("SwiftVLN memory_method=map currently requires use_tome=false.")
             # Map images are synthesized top-down views, not real camera frames,
             # so pixel / pose / uav_adapter embed enhancements are not meaningful
             # and must stay disabled to match the training-time constraint.
             if getattr(self.args, 'use_pixel_embed', False):
-                raise ValueError("OverlapVLN memory_method=map requires use_pixel_embed=false.")
+                raise ValueError("SwiftVLN memory_method=map requires use_pixel_embed=false.")
             if getattr(self.args, 'use_pose_embed', False):
-                raise ValueError("OverlapVLN memory_method=map requires use_pose_embed=false.")
+                raise ValueError("SwiftVLN memory_method=map requires use_pose_embed=false.")
             if getattr(self.args, 'use_uav_adapter', False):
-                raise ValueError("OverlapVLN memory_method=map requires use_uav_adapter=false.")
+                raise ValueError("SwiftVLN memory_method=map requires use_uav_adapter=false.")
             # Derive cache dir from DATA_PATH so eval warms the same on-disk
             # cache as training (e.g. ver_260404/map_cache). Env var
-            # OVERLAPVLN_MAP_CACHE_DIR overrides this; "off" disables it.
+            # SWIFTVLN_MAP_CACHE_DIR overrides this; "off" disables it.
             default_map_cache_dir: Optional[str] = None
             data_path_tmpl = getattr(self.config.DATASET, 'DATA_PATH', '') or ''
             probe_dir = os.path.dirname(str(data_path_tmpl))
@@ -305,7 +305,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         # ==========================================================================
         # Print configuration
         # ==========================================================================
-        print(f"[OverlapVLNEvaluator] Initialized:")
+        print(f"[SwiftVLNEvaluator] Initialized:")
         print(f"  Window: num_frames={self.num_frames}, num_overlap={self.num_overlap}, stride={self.stride}")
         print(f"  Turns: per_window={self.turns_per_window}, overlap={self.overlap_turns}")
         print(f"  History Processor: {self.history_processor.name}")
@@ -464,6 +464,15 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         new_h = max(new_h, 28)
         
         return image.resize((new_w, new_h), Image.BILINEAR)
+
+    @staticmethod
+    def _extract_visual_features(visual_res: Any) -> torch.Tensor:
+        """Normalize Qwen-family visual outputs to pooled visual tokens."""
+        if hasattr(visual_res, 'pooler_output'):
+            return visual_res.pooler_output
+        if isinstance(visual_res, tuple):
+            return visual_res[0]
+        return visual_res
     
     def _encode_frame(
         self,
@@ -487,7 +496,9 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         image_grid_thw = media_inputs['image_grid_thw'].to(self.device)
         
         with torch.no_grad():
-            vit_features = self.model.visual(pixel_values, grid_thw=image_grid_thw)
+            vit_features = self._extract_visual_features(
+                self.model.visual(pixel_values, grid_thw=image_grid_thw)
+            )
             
             # Apply embedding enhancement pipeline if enabled (auto-detected from checkpoint)
             if self.has_embed_enhance:
@@ -522,7 +533,9 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         image_grid_thw = media_inputs['image_grid_thw'].to(self.device)
         
         with torch.no_grad():
-            all_vit_features = self.model.visual(pixel_values, grid_thw=image_grid_thw)
+            all_vit_features = self._extract_visual_features(
+                self.model.visual(pixel_values, grid_thw=image_grid_thw)
+            )
         
         # Split features by image
         merge_length = self.merge_size ** 2
@@ -967,7 +980,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
                 init_embeds = self.initial_features.to(system_embeds.device, system_embeds.dtype)
                 system_embeds[0, init_positions_slice] = init_embeds
                 
-                if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_initial_eval_count < 3:
+                if os.environ.get('SWIFTVLN_DEBUG') and self._debug_initial_eval_count < 3:
                     print(f"[INITIAL DEBUG] _build_complete_prompt_embeds: "
                           f"Injected {init_count} initial tokens at positions "
                           f"[{init_positions_slice[0].item()}..{init_positions_slice[-1].item()}] "
@@ -1174,7 +1187,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
         
         # 2. Recompute history cache for new window
         self._compute_history_cache(rgb_list, pose_list, new_window_start, episode)
-        if os.environ.get('OVERLAPVLN_DEBUG') and self.memory_method == 'map':
+        if os.environ.get('SWIFTVLN_DEBUG') and self.memory_method == 'map':
             print(
                 f"[MAP DEBUG][eval] slide_window -> new_window_start={new_window_start}, "
                 f"history_cache={len(self.history_cache)}, overlap_turns={self.overlap_turns}"
@@ -1487,7 +1500,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
                     # Encode initial view image at step 0 (if initial prompt is enabled)
                     if step_id == 0 and self.system_prompt_setting == "initial":
                         self.initial_features, _ = self._encode_frame(current_img, pose=current_pose)
-                        if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_initial_eval_count < 3:
+                        if os.environ.get('SWIFTVLN_DEBUG') and self._debug_initial_eval_count < 3:
                             print(f"[INITIAL DEBUG] Episode {episode_id} step=0: "
                                   f"Encoded initial frame -> {self.initial_features.shape[0]} tokens (uncompressed)")
                     
@@ -1704,7 +1717,7 @@ class OverlapVLNEvaluator(BaseVLNEvaluator):
                 print(f"[Warning] Failed to save debug report: {e}")
         
         # Debug: initial strategy episode summary
-        if os.environ.get('OVERLAPVLN_DEBUG') and self._debug_initial_eval_count < 3:
+        if os.environ.get('SWIFTVLN_DEBUG') and self._debug_initial_eval_count < 3:
             has_initial = self.initial_features is not None
             init_tokens = self.initial_features.shape[0] if has_initial else 0
             print(f"[INITIAL DEBUG] Episode {episode_id} summary: "

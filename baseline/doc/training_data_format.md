@@ -21,7 +21,7 @@ SwiftVLN 支持两类 VLN（Vision-and-Language Navigation）环境的训练数�
 
 ### 2.1 SatNav 数据集
 
-数据集根目录：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/`
+数据集根目录：`$SATNAV_DATA_ROOT`
 
 ```
 satnav_datasets/
@@ -60,7 +60,7 @@ satnav_datasets/
 
 ### 2.2 Habitat (R2R) 数据集
 
-数据集根目录：`/mnt/data3/jiangjiajun/dataset/streamvln_datasets/`
+数据集根目录：`$STREAMVLN_DATA_ROOT`
 
 ```
 streamvln_datasets/
@@ -251,11 +251,11 @@ SatNav 城市按用途划分，训练与评测城市严格分离：
 
 | 数据 | 绝对路径 |
 |------|---------|
-| SatNav 数据集根 | `/mnt/data3/jiangjiajun/dataset/satnav_datasets` |
+| SatNav 数据集根 | `$SATNAV_DATA_ROOT` |
 | 当前默认版本 | `ver_260306` |
 | **VLN 训练标注** | `.../ver_260306/trajectory_data/annotations.json` |
 | **VLN 训练图像** | `.../ver_260306/trajectory_data/images/{episode_id}/rgb/` |
 | 评测 episodes（全量） | `.../ver_260306/episodes/eval/all_episodes.json` |
 | 卫星地图 | `.../scenes/{city}.tif` |
-| **Habitat R2R 训练数据** | `/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/R2R/` |
-| Habitat VLN-CE 评测数据 | `/mnt/data3/jiangjiajun/dataset/vlnce_datasets/R2R_VLNCE_v1-3_preprocessed/` |
+| **Habitat R2R 训练数据** | `$STREAMVLN_DATA_ROOT/trajectory_data/R2R/` |
+| Habitat VLN-CE 评测数据 | `$VLNCE_DATA_ROOT/R2R_VLNCE_v1-3_preprocessed/` |

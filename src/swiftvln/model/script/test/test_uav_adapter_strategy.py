@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for OverlapVLN UAV adapter propagation and external loading."""
+"""Smoke test for SwiftVLN UAV adapter propagation and external loading."""
 
 import argparse
 import importlib.util
@@ -8,12 +8,11 @@ import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import torch
 
 CURRENT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = CURRENT_DIR.parents[5]
+REPO_ROOT = CURRENT_DIR.parents[4]
 SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
@@ -23,8 +22,8 @@ from swiftvln.s2r.model import Sim2RealAdapter
 
 
 def _load_overlap_model_module(repo_root: str):
-    module_path = os.path.join(repo_root, 'src', 'swiftvln', 'models', 'overlapvln', 'model.py')
-    spec = importlib.util.spec_from_file_location('overlapvln_model_for_test', module_path)
+    module_path = os.path.join(repo_root, 'src', 'swiftvln', 'model', 'model.py')
+    spec = importlib.util.spec_from_file_location('swiftvln_model_for_test', module_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f'Failed to load module spec from: {module_path}')
     module = importlib.util.module_from_spec(spec)
@@ -50,29 +49,6 @@ def _write_temp_stagea_checkpoint(path: Path, *, dim: int = 64):
     return str(path)
 
 
-class DummyTokenizer:
-    def __init__(self):
-        self.unk_token_id = 0
-        self._next_id = 100
-        self._token_to_id = {}
-
-    def add_special_tokens(self, special_tokens_dict):
-        tokens = special_tokens_dict.get('additional_special_tokens', [])
-        added = 0
-        for token in tokens:
-            if token not in self._token_to_id:
-                self._token_to_id[token] = self._next_id
-                self._next_id += 1
-                added += 1
-        return added
-
-    def convert_tokens_to_ids(self, token):
-        return self._token_to_id.get(token, self.unk_token_id)
-
-    def __len__(self):
-        return self._next_id
-
-
 class DummyModel:
     def __init__(self, hidden_size: int):
         self.config = SimpleNamespace(hidden_size=hidden_size, vocab_size=100)
@@ -88,18 +64,19 @@ class DummyModel:
 def _run_case(module, checkpoint_path: str):
     adapter_kwargs, _, resolved_path = load_stagea_adapter_checkpoint(checkpoint_path)
     model = DummyModel(hidden_size=int(adapter_kwargs["dim"]))
-    processor = SimpleNamespace(tokenizer=DummyTokenizer())
-
-    with patch('swift.llm.model.model.qwen.get_model_tokenizer_qwen2_5_vl', return_value=(model, processor)):
-        loaded_model, _ = module.get_model_tokenizer_overlapvln_qwen2_5_vl(
-            model_dir='dummy',
-            model_info=SimpleNamespace(),
-            model_kwargs={},
-            load_model=True,
-            use_uav_adapter=True,
-            uav_adapter_path=resolved_path,
-        )
-    return loaded_model, resolved_path
+    module._attach_embedding_enhancement(
+        model,
+        model_dir='dummy',
+        use_pixel_embed=False,
+        use_pose_embed=False,
+        use_uav_adapter=True,
+        uav_adapter_path=resolved_path,
+        uav_adapter_type='transformer_v1',
+        uav_adapter_apply_scope='all_images',
+        pose_fusion_method='additive',
+        pose_norm_scale=100.0,
+    )
+    return model, resolved_path
 
 
 def main():
@@ -116,12 +93,12 @@ def main():
             checkpoint_path = _write_temp_stagea_checkpoint(Path(tmp) / 'best.pt')
             loaded_model, resolved_path = _run_case(module, checkpoint_path)
             _assert_loaded_model(loaded_model, resolved_path)
-            print('PASS: use_uav_adapter/uav_adapter_path are propagated to OverlapVLN model loader.')
+            print('PASS: use_uav_adapter/uav_adapter_path are propagated to SwiftVLN model loader.')
             return
 
     loaded_model, resolved_path = _run_case(module, checkpoint_path)
     _assert_loaded_model(loaded_model, resolved_path)
-    print('PASS: use_uav_adapter/uav_adapter_path are propagated to OverlapVLN model loader.')
+    print('PASS: use_uav_adapter/uav_adapter_path are propagated to SwiftVLN model loader.')
 
 
 def _assert_loaded_model(loaded_model, resolved_path: str):
