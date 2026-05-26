@@ -133,7 +133,7 @@
 当前主线 StreamVLN `0418` 最终记录采用 `0418 80%` 训练结果，产物如下：
 
 1. `a. scratch train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
    `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/train_streamvln_scratch80_051524.log`
    `训练数据`：`0418 80%`（`ver_260418p80`）
    `执行信息`：`98` 服务器，`8` 卡全量训练（scratch）
@@ -142,7 +142,7 @@
    `train_loss`：`0.0657`
 
 2. `b. continue train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-continue-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260420-153328`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-continue-1ep-f32h8s4-lr2e-5`
    `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/train_streamvln_continue80_153328.log`
    `训练数据`：`0418 80%`（`ver_260418p80`）
    `执行信息`：`98` 服务器，`8` 卡全量训练（continue）
@@ -150,15 +150,15 @@
    `训练结果`：`2769 / 2769`（`100%`），`epoch 1.0`
    `train_loss`：`0.0529`
 
-`备注`：当前 `baseline_0418` 文档中的 StreamVLN 最终记录已切换为 `80%` 数据结果。`continue80` 原始训练目录名中曾混入换行，当前 model zoo 中已规范为 `data260418p80`；checkpoint 保存成功，但后续评测结果按路径落在 `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/by-path/checkpoint-2769`。
+`备注`：当前 `baseline_0418` 文档中的 StreamVLN 最终记录已切换为 `80%` 数据结果。`continue80` 原始训练目录名中曾混入换行，当前 model zoo 中已精简为 `streamvln-baseline-continue-1ep-f32h8s4-lr2e-5`；checkpoint 保存成功，但历史评测结果按路径落在 `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/by-path/checkpoint-2769`。
 
 ### Eval
 
 当前主线 StreamVLN `0418` 最终评测情况如下（基于 `0418 80%` 训练产物）：
 
 1. `a. scratch eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524`
-   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
+   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/eval_streamvln_scratch80_0418_g7.log`
    `数据版本`：`0418`
    `执行信息`：`98` 服务器，`8` 卡 eval，默认 SatNav `val_seen + val_unseen`
@@ -168,7 +168,7 @@
    `overall`：`scratch80` 结果已完整回填，可作为 `continue80` 对照组
 
 2. `b. continue eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-continue-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260420-153328/checkpoint-2769`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-continue-1ep-f32h8s4-lr2e-5/checkpoint-2769`
    `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/by-path/checkpoint-2769`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/streamvln_train_eval_train_chain_153328.log`
    `数据版本`：`0418`
