@@ -67,6 +67,20 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - `EXP_NAME` 中的 `data...` 段现在直接使用 `SATNAV_VERSION` 去掉 `ver_` 后的完整后缀
   - 例如：`ver_260418p80 -> data260418p80`，不再因 `grep -oP '\d+'` 提取多段数字而在目录名中引入换行
   - 这使得 `p80` / `p75` 这类子集训练目录、日志与后续链式调度可以稳定按名字管理
+- Baseline 0418 model zoo（Updated: 2026-05-26）：
+  - `baseline_0418_seen_unseen_all.csv` 中本仓库内可定位的收口 baseline 模型已集中移动到：
+    `output/model_zoo/baseline/`
+  - 已移动模型包括：StreamVLN scratch/continue、OpenFly scratch/continue、NaVILA scratch/continue、UniNaVid scratch/continue
+  - Seq2Seq、CMA、OverlapVLN/SwiftVLN 对应模型目录本次未在本仓库输出路径下定位到；仅结果目录或 raw data 仍保留在报告中
+  - `StreamVLN continue80` 原始训练目录名中曾保留历史真实换行；model zoo 中已规范为 `data260418p80`
+- Baseline eval by name with model root（Updated: 2026-05-26）：
+  - 脚本：`baseline/streamvln/scripts/eval_satnav.sh`、`baseline/navila/scripts/eval_satnav.sh`、`baseline/uninavid/scripts/eval_satnav.sh`、`baseline/openfly/scripts/eval_satnav.sh`
+  - 仍兼容旧位置参数：`eval_satnav.sh <exp_or_checkpoint> [split] [gpus] [max_episodes]`
+  - 新增命名参数：`--model_dir`、`--model_name`、`--checkpoint_path`、`--split`、`--gpus`、`--max_episodes`、`--dry_run`
+  - by-name 默认模型根目录仍是各自 `output/<baseline>-baseline`；可用 `--model_dir output/model_zoo/baseline` 评测 model zoo 模型
+  - StreamVLN eval 会从模型名中的 `data{version}` 解析 `SATNAV_VERSION`，从 `f{frames}h{history}s{future}` 解析窗口参数
+  - OpenFly eval 会从模型名中的 `data{version}`、`actcompact|actoriginal`、`hist{N}` 解析数据版本、动作格式和 action history 长度
+  - NaVILA / UniNaVid 当前没有额外必须从模型名恢复的 eval 窗口参数，仅统一 CLI 和数据版本解析
 - OpenFly scratch native checkpoint 本地 HF cache（Updated: 2026-04-20）：
   - 核心实现：`baseline/openfly/src/native_core/checkpoint_conversion.py`
   - 当前 `scratch` backend 不再让 8 个 rank 各自重复读取 `openvlaopenvla-7b-prismatic/checkpoints/*.pt`

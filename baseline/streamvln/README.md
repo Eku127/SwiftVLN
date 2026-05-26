@@ -171,7 +171,7 @@ bash baseline/streamvln/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
 
 支持两种模式：
 
-- 按实验名评测：从 `output/streamvln-baseline/<EXP_NAME>/` 自动解析最新 checkpoint。
+- 按实验名评测：从 `output/streamvln-baseline/<EXP_NAME>/` 自动解析最新 checkpoint；也可通过 `--model_dir` 指定其他模型根目录，例如 `output/model_zoo/baseline`。
 - 按 checkpoint 路径评测：直接传入绝对路径，用于兼容历史目录或手工路径。
 
 SatNav 评测 split 约定：
@@ -188,10 +188,21 @@ bash baseline/streamvln/scripts/eval_satnav.sh \
   val_seen 8
 ```
 
+也可以用命名参数从 model zoo 按名字评测：
+
+```bash
+bash baseline/streamvln/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name streamvln-baseline-continue-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260420-153328 \
+  --split val_seen \
+  --gpus 8
+```
+
 评测实现约定：
 
 - 输出目录：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
 - 评测日志：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/eval.log`
 - eval by name 会从实验名中的 `data{ver}` 自动解析 `SATNAV_VERSION`；也可用环境变量显式覆盖。
+- eval by name 会从实验名中的 `f{frames}h{history}s{future_steps}` 自动解析窗口参数；解析失败时回退到 `32/8/4`。
 - 若 checkpoint 缺少 tokenizer，评测脚本会回退到 `baseline/streamvln/model/LLaVA-Video-7B-Qwen2`。
-- 评测固定使用 `num_frames=32`、`num_history=8`、`num_future_steps=4`、`model_max_length=32768`。
+- 评测固定使用 `model_max_length=32768`。

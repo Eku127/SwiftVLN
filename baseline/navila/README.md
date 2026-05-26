@@ -119,7 +119,7 @@ bash baseline/navila/scripts/eval_satnav.sh navila-llama3-8b-8f
 
 支持两种模式：
 
-- 按实验名评测：从 `output/navila-baseline/<EXP_NAME>/` 自动解析 checkpoint
+- 按实验名评测：从 `output/navila-baseline/<EXP_NAME>/` 自动解析 checkpoint；也可通过 `--model_dir` 指定其他模型根目录，例如 `output/model_zoo/baseline`
 - 按 checkpoint 路径评测：直接传入绝对路径
 
 SatNav 评测 split 约定：
@@ -137,9 +137,20 @@ bash baseline/navila/scripts/eval_satnav.sh \
   val_seen 1 10
 ```
 
+也可以用命名参数从 model zoo 按名字评测：
+
+```bash
+bash baseline/navila/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4 \
+  --split val_seen \
+  --gpus 8
+```
+
 评测实现约定：
 
 - prompt 与原版 `NaVILA/evaluation/vlnce_baselines/navila_trainer.py` 保持一致
 - 动作解析保持原版自然语言正则逻辑：`stop / move forward / turn left / turn right`
 - 距离、角度会被解析成 SatNav 离散动作队列（10m 前进、15 度转向）
+- eval by name 会从实验名中的 `data{ver}` 自动解析 `SATNAV_VERSION`；当前 NaVILA 模型名没有 eval 必须的窗口参数需要解析。
 - 结果输出到 `results/navila-baseline/...`

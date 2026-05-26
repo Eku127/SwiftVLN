@@ -229,6 +229,9 @@ for SPLIT in val_seen val_unseen; do
 done
 ```
 
+`eval_satnav.sh` also supports the unified named-argument form:
+`--model_dir <root> --model_name <name> --split <split> --gpus <n>`.
+
 ### Cleanup
 
 ```bash
@@ -306,6 +309,9 @@ bash baseline/uninavid/scripts/eval_satnav.sh \
 " 2>&1 | tee "/tmp/uninavid_smoke_eval_${SPLIT}.log"
 done
 ```
+
+`eval_satnav.sh` also supports the unified named-argument form:
+`--model_dir <root> --model_name <name> --split <split> --gpus <n>`.
 
 ### Cleanup
 

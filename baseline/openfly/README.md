@@ -165,7 +165,7 @@ bash baseline/openfly/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
 
 支持两种模式：
 
-- 按实验名评测：从 `output/openfly-baseline/<EXP_NAME>/` 自动解析最新 checkpoint。
+- 按实验名评测：从 `output/openfly-baseline/<EXP_NAME>/` 自动解析最新 checkpoint；也可通过 `--model_dir` 指定其他模型根目录，例如 `output/model_zoo/baseline`。
 - 按 checkpoint 路径评测：直接传入绝对路径。
 
 SatNav 评测 split 约定：
@@ -183,12 +183,23 @@ bash baseline/openfly/scripts/eval_satnav.sh \
   val_seen 8
 ```
 
+也可以用命名参数从 model zoo 按名字评测：
+
+```bash
+bash baseline/openfly/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357 \
+  --split val_seen \
+  --gpus 8
+```
+
 评测实现约定：
 
 - 输出目录：`results/openfly-baseline/<EXP_NAME>/<split>/`
 - `result.jsonl` 会记录 `action`、`parsed_action`、`generated_text` 和 `action_trace`。
 - eval 会捕获 simulator out-of-bounds 错误，并将对应 episode 记为失败，不中断整轮评测。
 - train 与 eval 使用同一个 `OPENFLY_ACTION_HISTORY_LIMIT`，默认是 `16`。
+- eval by name 会从实验名中的 `data{ver}` 自动解析 `SATNAV_VERSION`，从 `actcompact` / `actoriginal` 解析动作格式，并从 `hist{N}` 解析 action history 长度；环境变量或命名参数可显式覆盖。
 
 当前已记录结果（`val_seen`, `ver_260404`）：
 

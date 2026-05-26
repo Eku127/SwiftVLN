@@ -85,6 +85,13 @@ uninavid-baseline-{mode}-{epochs}ep-data{version}-bs{effective_bs}-lr{lr}-{times
 # 按实验名评测，自动查找 output/uninavid-baseline/<EXP_NAME>/checkpoint-*
 bash baseline/uninavid/scripts/eval_satnav.sh <exp_name> [split] [gpus] [max_episodes]
 
+# 按实验名从自定义模型根目录评测，例如 model zoo
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  --model_dir output/model_zoo/baseline \
+  --model_name <exp_name> \
+  --split val_seen \
+  --gpus 8
+
 # 按 checkpoint 路径评测
 bash baseline/uninavid/scripts/eval_satnav.sh /path/to/checkpoint [split] [gpus] [max_episodes]
 ```
