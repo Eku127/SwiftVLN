@@ -2,30 +2,20 @@
 # ==============================================================================
 # Evaluate StreamVLN Baseline on SatNav task.
 #
-# Supports two calling modes:
+# Eval data and split are controlled by:
+#   baseline/streamvln/configs/satnav_task.yaml
 #
-#   1. Eval by name (recommended):
-#      bash scripts/eval_satnav.sh <exp_name_or_subpath> [split] [gpus] [max_episodes]
-#      bash scripts/eval_satnav.sh --model_name <exp_name> [--model_dir <dir>] [--split <split>] [--gpus <n>]
-#      - Looks for checkpoint in <model_dir>/<exp_name>/, default model_dir is output/streamvln-baseline
-#      - Extracts data version and f/h/s eval params from exp_name
+# Required:
+#   --model_name   Model directory name under --model_dir
 #
-#   2. Eval by checkpoint path (backward compatible):
-#      bash scripts/eval_satnav.sh /path/to/checkpoint [split] [gpus] [max_episodes]
-#
-# Arguments:
-#   exp_name_or_subpath / path  First argument: experiment name/subpath or checkpoint path
-#   split            Evaluation split: val_seen / val_unseen / test
-#                    If omitted, SatNav runs both val_seen and val_unseen
-#   gpus             Number of GPUs (default: 8)
-#   max_episodes     Limit episodes for debugging (optional)
-#
-# Environment variables:
-#   SATNAV_VERSION   — Override data version (default: auto from exp name or ver_260418)
+# Optional:
+#   --model_dir    Model root directory (default: output/streamvln-baseline)
+#   --gpus         Number of GPUs (default: 8)
+#   --max_episodes Limit episodes for debugging
+#   --dry_run      Resolve paths and print launch config without running eval
 #
 # Output:
-#   results/streamvln-baseline/<exp_name_or_subpath>/<split>/   (eval by name)
-#   results/streamvln-baseline/by-path/<ckpt_name>/<split>/     (eval by path)
+#   results/streamvln-baseline/<model_name>/<split>/
 #
 # Environment: conda env streamvln-baseline
 # ==============================================================================
@@ -46,17 +36,14 @@ print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 usage() {
     echo "Usage:"
     echo ""
-    echo "  # Eval by name from default output/streamvln-baseline"
-    echo "  bash baseline/streamvln/scripts/eval_satnav.sh <exp_name_or_subpath> [split] [gpus] [max_episodes]"
-    echo ""
-    echo "  # Eval by name from a custom model root"
     echo "  bash baseline/streamvln/scripts/eval_satnav.sh \\"
     echo "    --model_dir /path/to/model_root \\"
-    echo "    --model_name streamvln-baseline-continue-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260420-153328 \\"
-    echo "    --split val_seen --gpus 8"
+    echo "    --model_name streamvln-baseline-continue-1ep-f32h8s4-lr2e-5 \\"
+    echo "    --gpus 8"
     echo ""
-    echo "  # Eval by checkpoint path"
-    echo "  bash baseline/streamvln/scripts/eval_satnav.sh --checkpoint_path /path/to/checkpoint --split val_unseen --gpus 8"
+    echo "Notes:"
+    echo "  - Eval data and split come from baseline/streamvln/configs/satnav_task.yaml."
+    echo "  - DATASET.DATA_PATH must be the eval split parent dir, e.g. .../episodes/eval."
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,18 +51,26 @@ BASELINE_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
 EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
 SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
-SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
 DEFAULT_MODEL_DIR="${REPO_ROOT}/output/streamvln-baseline"
+
+read_config_value() {
+    local key="$1"
+    awk -v key="$key" '
+        $1 == key ":" {
+            sub(/^[^:]+:[[:space:]]*/, "")
+            gsub(/^["'\''"]|["'\''"]$/, "")
+            print
+            exit
+        }
+    ' "$SATNAV_CONFIG_TEMPLATE"
+}
 
 # ---- Args ----
 MODEL_DIR_INPUT=""
 MODEL_NAME_ARG=""
-CHECKPOINT_PATH_ARG=""
-SPLIT_ARG=""
 NUM_GPUS="8"
 MAX_EPISODES=""
 DRY_RUN="false"
-POSITIONAL=()
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -85,14 +80,6 @@ while [ "$#" -gt 0 ]; do
             ;;
         --model_name|--model-name)
             MODEL_NAME_ARG="${2:-}"
-            shift 2
-            ;;
-        --checkpoint_path|--checkpoint-path)
-            CHECKPOINT_PATH_ARG="${2:-}"
-            shift 2
-            ;;
-        --split)
-            SPLIT_ARG="${2:-}"
             shift 2
             ;;
         --gpus|--num_gpus|--num-gpus)
@@ -107,20 +94,9 @@ while [ "$#" -gt 0 ]; do
             DRY_RUN="true"
             shift
             ;;
-        --satnav_version|--satnav-version)
-            SATNAV_VERSION="${2:-}"
-            shift 2
-            ;;
         -h|--help)
             usage
             exit 0
-            ;;
-        --)
-            shift
-            while [ "$#" -gt 0 ]; do
-                POSITIONAL+=("$1")
-                shift
-            done
             ;;
         --*)
             print_error "Unknown option: $1"
@@ -128,44 +104,30 @@ while [ "$#" -gt 0 ]; do
             exit 1
             ;;
         *)
-            POSITIONAL+=("$1")
-            shift
+            print_error "Positional arguments are not supported: $1"
+            usage
+            exit 1
             ;;
     esac
 done
 
-if [ -n "$MODEL_NAME_ARG" ] && [ -n "$CHECKPOINT_PATH_ARG" ]; then
-    print_error "--model_name and --checkpoint_path are mutually exclusive"
-    exit 1
-fi
-
-if [ -n "$MODEL_NAME_ARG" ]; then
-    INPUT="$MODEL_NAME_ARG"
-    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[0]:-}"
-    [ "${NUM_GPUS}" = "8" ] && NUM_GPUS="${POSITIONAL[1]:-8}"
-    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[2]:-}"
-elif [ -n "$CHECKPOINT_PATH_ARG" ]; then
-    INPUT="$CHECKPOINT_PATH_ARG"
-    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[0]:-}"
-    [ "${NUM_GPUS}" = "8" ] && NUM_GPUS="${POSITIONAL[1]:-8}"
-    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[2]:-}"
-else
-    INPUT="${POSITIONAL[0]:-}"
-    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[1]:-}"
-    [ "${NUM_GPUS}" = "8" ] && NUM_GPUS="${POSITIONAL[2]:-8}"
-    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[3]:-}"
-fi
-
-if [ -z "$INPUT" ]; then
-    print_error "Missing model name or checkpoint path"
+if [ -z "$MODEL_NAME_ARG" ]; then
+    print_error "Missing required --model_name"
     usage
     exit 1
 fi
 
-if [ -n "$SPLIT_ARG" ]; then
-    SPLITS_LIST="$SPLIT_ARG"
-else
+EXP_NAME="$MODEL_NAME_ARG"
+
+CONFIG_SPLIT="$(read_config_value SPLIT)"
+
+if [ -z "$CONFIG_SPLIT" ]; then
+    print_error "DATASET.SPLIT not found in config: ${SATNAV_CONFIG_TEMPLATE}"
+    exit 1
+elif [ "$CONFIG_SPLIT" = "all" ]; then
     SPLITS_LIST="val_seen val_unseen"
+else
+    SPLITS_LIST="$CONFIG_SPLIT"
 fi
 
 if [ -z "$MODEL_DIR_INPUT" ]; then
@@ -180,77 +142,20 @@ NUM_FRAMES="32"
 NUM_HISTORY="8"
 NUM_FUTURE_STEPS="4"
 
-# ---- Detect mode: eval-by-name vs eval-by-path ----
-EVAL_MODE="by_name"
-if [ -n "$CHECKPOINT_PATH_ARG" ] || [[ "$INPUT" = /* ]] || [ -d "$INPUT" ]; then
-    EVAL_MODE="by_path"
-fi
-
 # ---- Resolve checkpoint and output paths ----
-if [ "$EVAL_MODE" = "by_name" ]; then
-    EXP_NAME="$INPUT"
-    MODEL_DIR="${MODEL_ROOT_DIR}/${EXP_NAME}"
-    if [ ! -d "$MODEL_DIR" ]; then
-        LEGACY_MODEL_DIR="${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}"
-        if [ -d "$LEGACY_MODEL_DIR" ]; then
-            MODEL_DIR="$LEGACY_MODEL_DIR"
-            print_warning "Model dir found in legacy path: ${MODEL_DIR}"
-        fi
-    fi
-
-    if [ ! -d "$MODEL_DIR" ]; then
-        print_error "Experiment directory not found: ${MODEL_ROOT_DIR}/${EXP_NAME}"
-        exit 1
-    fi
-
-    # Find latest checkpoint (checkpoint-N sorted by N descending)
-    CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1 || true)
-
-    # If no checkpoint-* subdir, check if the model dir itself is a merged model
-    if [ -z "$CHECKPOINT_DIR" ]; then
-        if [ -f "${MODEL_DIR}/config.json" ]; then
-            CHECKPOINT_DIR="$MODEL_DIR"
-            print_info "Using merged model dir as checkpoint"
-        else
-            print_error "No checkpoint found in: ${MODEL_DIR}"
-            exit 1
-        fi
-    fi
-
-    # Extract data version from EXP_NAME: data{XXXXXX} -> ver_XXXXXX
-    if [ -z "${SATNAV_VERSION:-}" ]; then
-        PARSED_VER=$(echo "$EXP_NAME" | grep -oP 'data\K\d+' | head -1)
-        if [ -n "$PARSED_VER" ]; then
-            SATNAV_VERSION="ver_${PARSED_VER}"
-            print_info "Parsed data version from exp name: ${SATNAV_VERSION}"
-        fi
-    fi
-
-    OUTPUT_BASE_DIR="${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}"
-
-else
-    INPUT_PATH="${INPUT%/}"
-
-    if [ ! -d "$INPUT_PATH" ]; then
-        print_error "Checkpoint directory not found: ${INPUT_PATH}"
-        exit 1
-    fi
-
-    if ls -d "${INPUT_PATH}"/checkpoint-* >/dev/null 2>&1; then
-        MODEL_DIR="$INPUT_PATH"
-        CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
-        EXP_NAME="$(basename "${MODEL_DIR}")"
-    else
-        CHECKPOINT_DIR="$INPUT_PATH"
-        if [[ "$(basename "${CHECKPOINT_DIR}")" == checkpoint-* ]]; then
-            EXP_NAME="$(basename "$(dirname "${CHECKPOINT_DIR}")")"
-        else
-            EXP_NAME="$(basename "${CHECKPOINT_DIR}")"
-        fi
-    fi
-
-    OUTPUT_BASE_DIR="${REPO_ROOT}/results/streamvln-baseline/by-path/${EXP_NAME}"
+MODEL_DIR="${MODEL_ROOT_DIR}/${EXP_NAME}"
+if [ ! -d "$MODEL_DIR" ]; then
+    print_error "Model directory not found: ${MODEL_DIR}"
+    exit 1
 fi
+
+CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -V | tail -1 || true)
+if [ -z "$CHECKPOINT_DIR" ]; then
+    print_error "No checkpoint-* directory found in: ${MODEL_DIR}"
+    exit 1
+fi
+
+OUTPUT_BASE_DIR="${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}"
 
 if [[ "$EXP_NAME" =~ f([0-9]+)h([0-9]+)s([0-9]+) ]]; then
     NUM_FRAMES="${BASH_REMATCH[1]}"
@@ -261,23 +166,27 @@ else
     print_warning "Unable to parse f/h/s from model name, using defaults: frames=${NUM_FRAMES}, history=${NUM_HISTORY}, future_steps=${NUM_FUTURE_STEPS}"
 fi
 
-if [ -z "${SATNAV_VERSION:-}" ]; then
-    PARSED_VER=$(echo "$EXP_NAME" | grep -oP 'data\K\d+' | head -1 || true)
-    if [ -n "$PARSED_VER" ]; then
-        SATNAV_VERSION="ver_${PARSED_VER}"
-        print_info "Parsed data version from model name: ${SATNAV_VERSION}"
-    fi
+# ---- Resolve SatNav data from config ----
+CONFIG_DATA_PATH="$(read_config_value DATA_PATH)"
+CONFIG_SCENES_DIR="$(read_config_value SCENES_DIR)"
+
+if [ -z "$CONFIG_DATA_PATH" ]; then
+    print_error "DATASET.DATA_PATH not found in config: ${SATNAV_CONFIG_TEMPLATE}"
+    exit 1
 fi
 
-# ---- Resolve SatNav version ----
-if [ -z "${SATNAV_VERSION:-}" ]; then
-    SATNAV_VERSION="ver_260418"
-    print_info "Using default SatNav version: ${SATNAV_VERSION}"
-else
-    print_info "Using SatNav version: ${SATNAV_VERSION}"
+if [ -z "$CONFIG_SCENES_DIR" ]; then
+    print_error "DATASET.SCENES_DIR not found in config: ${SATNAV_CONFIG_TEMPLATE}"
+    exit 1
 fi
 
-SATNAV_SCENES="${SATNAV_DATA_ROOT}/scenes"
+if [ ! -d "$CONFIG_DATA_PATH" ]; then
+    print_error "DATASET.DATA_PATH must be an eval split parent directory: ${CONFIG_DATA_PATH}"
+    exit 1
+fi
+
+SATNAV_SCENES="${CONFIG_SCENES_DIR}"
+print_info "Using SatNav eval data root from config: ${CONFIG_DATA_PATH}"
 
 # ---- Tokenizer ----
 TOKENIZER_PATH="${CHECKPOINT_DIR}"
@@ -301,7 +210,7 @@ fi
 
 run_single_split() {
     local split="$1"
-    local satnav_episodes="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/episodes/eval/${split}/all_episodes.json"
+    local satnav_episodes="${CONFIG_DATA_PATH%/}/${split}/all_episodes.json"
     local satnav_config="${BASELINE_DIR}/configs/.satnav_task_eval_${split}_$$.yaml"
     local output_dir="${OUTPUT_BASE_DIR}/${split}"
 
@@ -311,8 +220,9 @@ run_single_split() {
     fi
 
     cp "$SATNAV_CONFIG_TEMPLATE" "$satnav_config"
-    sed -i "s|DATA_PATH:.*|DATA_PATH: ${satnav_episodes}|" "$satnav_config"
-    sed -i "s|SCENES_DIR:.*|SCENES_DIR: ${SATNAV_SCENES}|" "$satnav_config"
+    sed -i -E "s|^([[:space:]]*)SPLIT:.*|\\1SPLIT: ${split}|" "$satnav_config"
+    sed -i -E "s|^([[:space:]]*)DATA_PATH:.*|\\1DATA_PATH: ${satnav_episodes}|" "$satnav_config"
+    sed -i -E "s|^([[:space:]]*)SCENES_DIR:.*|\\1SCENES_DIR: ${SATNAV_SCENES}|" "$satnav_config"
 
     mkdir -p "${output_dir}"
 
@@ -320,12 +230,12 @@ run_single_split() {
     echo "=========================================="
     echo "StreamVLN Baseline Evaluation"
     echo "=========================================="
-    echo "  Eval mode  : ${EVAL_MODE}"
     echo "  EXP_NAME   : ${EXP_NAME}"
     echo "  Checkpoint : ${CHECKPOINT_DIR}"
     echo "  Tokenizer  : ${TOKENIZER_PATH}"
     echo "  Config     : ${satnav_config}"
-    echo "  Data ver   : ${SATNAV_VERSION}"
+    echo "  Episodes   : ${satnav_episodes}"
+    echo "  Scenes     : ${SATNAV_SCENES}"
     echo "  Frames     : ${NUM_FRAMES}"
     echo "  History    : ${NUM_HISTORY}"
     echo "  Future     : ${NUM_FUTURE_STEPS}"

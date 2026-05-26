@@ -72,13 +72,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     `output/model_zoo/baseline/`
   - 已移动模型包括：StreamVLN scratch/continue、OpenFly scratch/continue、NaVILA scratch/continue、UniNaVid scratch/continue
   - Seq2Seq、CMA、OverlapVLN/SwiftVLN 对应模型目录本次未在本仓库输出路径下定位到；仅结果目录或 raw data 仍保留在报告中
-  - `StreamVLN continue80` 原始训练目录名中曾保留历史真实换行；model zoo 中已规范为 `data260418p80`
+  - StreamVLN model zoo 目录名已精简为 eval 所需窗口参数加训练摘要：
+    `streamvln-baseline-continue-1ep-f32h8s4-lr2e-5`、
+    `streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
 - Baseline eval by name with model root（Updated: 2026-05-26）：
   - 脚本：`baseline/streamvln/scripts/eval_satnav.sh`、`baseline/navila/scripts/eval_satnav.sh`、`baseline/uninavid/scripts/eval_satnav.sh`、`baseline/openfly/scripts/eval_satnav.sh`
-  - 仍兼容旧位置参数：`eval_satnav.sh <exp_or_checkpoint> [split] [gpus] [max_episodes]`
-  - 新增命名参数：`--model_dir`、`--model_name`、`--checkpoint_path`、`--split`、`--gpus`、`--max_episodes`、`--dry_run`
-  - by-name 默认模型根目录仍是各自 `output/<baseline>-baseline`；可用 `--model_dir output/model_zoo/baseline` 评测 model zoo 模型
-  - StreamVLN eval 会从模型名中的 `data{version}` 解析 `SATNAV_VERSION`，从 `f{frames}h{history}s{future}` 解析窗口参数
+  - StreamVLN eval 已收敛为命名参数主路径，只支持 `--model_dir`、`--model_name`、`--gpus`、`--max_episodes`、`--dry_run`；不再支持位置参数、`--checkpoint_path`、`--split` 或 `--satnav_version`
+  - by-name 默认模型根目录仍是各自 `output/<baseline>-baseline`；StreamVLN 可用 `--model_dir output/model_zoo/baseline` 评测 model zoo 模型
+  - StreamVLN eval 不再从模型名中的 `data{version}` 解析 `SATNAV_VERSION`；默认读取 `baseline/streamvln/configs/satnav_task.yaml` 中的 `DATASET.SPLIT` / `DATA_PATH` / `SCENES_DIR`；`SPLIT: all` 默认跑 `val_seen` + `val_unseen`；`DATA_PATH` 必须填写 eval split 父目录（当前为 `SatNav-v0.1/episodes/eval`），脚本解析为 `<DATA_PATH>/<split>/all_episodes.json`
+  - StreamVLN eval 仍会从模型名中的 `f{frames}h{history}s{future}` 解析窗口参数
+  - NaVILA / UniNaVid / OpenFly eval 脚本仍保留历史兼容路径和命名参数入口
   - OpenFly eval 会从模型名中的 `data{version}`、`actcompact|actoriginal`、`hist{N}` 解析数据版本、动作格式和 action history 长度
   - NaVILA / UniNaVid 当前没有额外必须从模型名恢复的 eval 窗口参数，仅统一 CLI 和数据版本解析
 - OpenFly scratch native checkpoint 本地 HF cache（Updated: 2026-04-20）：

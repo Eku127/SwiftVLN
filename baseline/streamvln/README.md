@@ -163,46 +163,49 @@ bash baseline/streamvln/scripts/train_satnav.sh continue
 
 ## 5. 评测
 
-SatNav 评测入口：
+StreamVLN baseline 评测分两步：先确定评测数据，再指定模型目录和模型名启动 eval。
 
-```bash
-bash baseline/streamvln/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
+### 5.1 配置评测数据
+
+评测数据写在 `baseline/streamvln/configs/satnav_task.yaml`：
+
+```yaml
+DATASET:
+  TYPE: SatNav
+  SPLIT: all
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
+  SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
 ```
 
-支持两种模式：
+字段说明：
 
-- 按实验名评测：从 `output/streamvln-baseline/<EXP_NAME>/` 自动解析最新 checkpoint；也可通过 `--model_dir` 指定其他模型根目录，例如 `output/model_zoo/baseline`。
-- 按 checkpoint 路径评测：直接传入绝对路径，用于兼容历史目录或手工路径。
+- `SPLIT: all`：默认依次评测 `val_seen` 和 `val_unseen`。
+- `SPLIT: val_seen` / `val_unseen`：默认只评测对应 split。
+- `DATA_PATH` 推荐填写 eval split 父目录。脚本会解析为 `<DATA_PATH>/<split>/all_episodes.json`。
+- `SCENES_DIR` 指向 SatNav scenes 目录。
 
-SatNav 评测 split 约定：
+### 5.2 启动评测
 
-- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
-- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
-
-常用覆盖项：
-
-```bash
-SATNAV_VERSION=ver_260418 \
-bash baseline/streamvln/scripts/eval_satnav.sh \
-  streamvln-baseline-continue-1ep-f32h8s4-data260418-bs48-lr2e-5-<timestamp> \
-  val_seen 8
-```
-
-也可以用命名参数从 model zoo 按名字评测：
+推荐使用命名参数：
 
 ```bash
 bash baseline/streamvln/scripts/eval_satnav.sh \
   --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
-  --model_name streamvln-baseline-continue-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260420-153328 \
-  --split val_seen \
+  --model_name streamvln-baseline-continue-1ep-f32h8s4-lr2e-5 \
   --gpus 8
 ```
 
-评测实现约定：
+常用模型名：
 
-- 输出目录：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
-- 评测日志：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/eval.log`
-- eval by name 会从实验名中的 `data{ver}` 自动解析 `SATNAV_VERSION`；也可用环境变量显式覆盖。
-- eval by name 会从实验名中的 `f{frames}h{history}s{future_steps}` 自动解析窗口参数；解析失败时回退到 `32/8/4`。
-- 若 checkpoint 缺少 tokenizer，评测脚本会回退到 `baseline/streamvln/model/LLaVA-Video-7B-Qwen2`。
-- 评测固定使用 `model_max_length=32768`。
+```text
+streamvln-baseline-continue-1ep-f32h8s4-lr2e-5
+streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5
+```
+
+### 5.3 行为说明
+
+- 脚本会在 `<model_dir>/<model_name>/` 下选择编号最大的 `checkpoint-*`。
+- 脚本会从模型名里的 `f32h8s4` 解析 `frames=32`、`history=8`、`future_steps=4`。
+- 脚本不会从模型名里的数据版本字段选择 eval 数据；eval 数据和 split 都由 `satnav_task.yaml` 控制。
+- 输出目录：`results/streamvln-baseline/<model_name>/<split>/`。
+- 评测日志：`results/streamvln-baseline/<model_name>/<split>/eval.log`。

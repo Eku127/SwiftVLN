@@ -456,79 +456,73 @@ rm -rf "results/streamvln-baseline/<EXP_NAME>/val_unseen"
 rm -rf "results/streamvln-baseline/<EXP_NAME>/test"
 ```
 
-> **禁止**使用 `rm -rf results/streamvln-baseline/by-path` 或 `find ... -name val_unseen ... -exec rm` 等全局清理命令——这会误删其他实验的已有评测结果。
+> **禁止**使用 `find results/streamvln-baseline ... -exec rm` 等全局清理命令——这会误删其他实验的已有评测结果。
 
-### 评测数据约束（按 split 子目录路由）
+### 评测数据约束
 
-默认直接使用：
+StreamVLN eval 数据和 split 由
+`baseline/streamvln/configs/satnav_task.yaml` 控制：
 
-`/mnt/data3/jiangjiajun/dataset/satnav_datasets/<ver_xxxxxx>/episodes/eval/val_seen/all_episodes.json`
+```yaml
+DATASET:
+  SPLIT: all
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
+  SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
+```
 
-**eval_satnav.sh 根据 `SPLIT` 参数自动路由到对应子目录**（`val_seen/` 或 `val_unseen/`）。
-**若不传 `SPLIT` 参数，则脚本会顺序运行 `val_seen` 和 `val_unseen` 两个 split。**
-不做城市过滤，使用全量 eval episodes。
+- `SPLIT: all`：顺序评测 `val_seen` 和 `val_unseen`
+- `SPLIT: val_seen` / `val_unseen`：只评测对应 split
+- `DATA_PATH` 必须是 eval split 父目录，脚本会解析为 `<DATA_PATH>/<split>/all_episodes.json`
 
-### 按实验名评测（推荐）
+### 按模型名评测（推荐）
 
-从训练日志末尾获取 EXP_NAME。若未指定单个 split，直接调用一次即可默认顺序跑完 `val_seen` 和 `val_unseen`：
+从训练日志末尾获取 EXP_NAME，或使用 model zoo 中的精简模型名。脚本只支持命名参数，不再支持位置参数、checkpoint path、命令行 split 或 `SATNAV_VERSION` 覆盖：
 
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate streamvln-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
-# 默认两个 split 都跑（除非用户明确指定了单个 split）
-bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> "" 8
+bash baseline/streamvln/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name <EXP_NAME> \
+  --gpus 8
 ```
 
-如果需要为每个 split 单独发送 webhook，可按下面形式显式循环：
+如需只跑单个 split，先把 `baseline/streamvln/configs/satnav_task.yaml` 中的
+`DATASET.SPLIT` 改成 `val_seen` 或 `val_unseen`，再运行同一个命令。
+
+如需发送 webhook，围绕这一次 eval 命令发送开始/结束通知即可：
 
 ```bash
 EVAL_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
-
-for SPLIT in val_seen val_unseen; do
-  EVAL_START_TS="$(date +%s)"
-
-  EVAL_START_MSG="## StreamVLN Baseline Eval Started
+EVAL_START_TS="$(date +%s)"
+EVAL_START_MSG="## StreamVLN Baseline Eval Started
 exp_name: <EXP_NAME>
-split: ${SPLIT}
 gpus: 8
 time: $(date '+%Y-%m-%d %H:%M:%S')"
-  send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
+send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
 
-  if bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> "${SPLIT}" 8; then
-    eval_rc=0
-  else
-    eval_rc=$?
-  fi
+if bash baseline/streamvln/scripts/eval_satnav.sh \
+    --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+    --model_name <EXP_NAME> \
+    --gpus 8; then
+  eval_rc=0
+else
+  eval_rc=$?
+fi
 
-  EVAL_END_TS="$(date +%s)"
-  EVAL_DURATION_SEC=$((EVAL_END_TS - EVAL_START_TS))
-  EVAL_STATUS="SUCCESS"
-  [ $eval_rc -ne 0 ] && EVAL_STATUS="FAILED"
+EVAL_END_TS="$(date +%s)"
+EVAL_DURATION_SEC=$((EVAL_END_TS - EVAL_START_TS))
+EVAL_STATUS="SUCCESS"
+[ $eval_rc -ne 0 ] && EVAL_STATUS="FAILED"
 
-  EVAL_END_MSG="## StreamVLN Baseline Eval Finished
+EVAL_END_MSG="## StreamVLN Baseline Eval Finished
 status: ${EVAL_STATUS}
 exp_name: <EXP_NAME>
-split: ${SPLIT}
 duration_sec: ${EVAL_DURATION_SEC}
-eval_log: results/streamvln-baseline/<EXP_NAME>/${SPLIT}/eval.log
 time: $(date '+%Y-%m-%d %H:%M:%S')"
-  send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
-done
-```
-
-### 评测时覆盖数据版本
-
-```bash
-SATNAV_VERSION=ver_260306 \
-  bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> val_seen 8
-```
-
-### 按 checkpoint 路径评测（兼容旧方式）
-
-```bash
-bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_seen 8
+send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
 ```
 
 ### 校验评测产物
