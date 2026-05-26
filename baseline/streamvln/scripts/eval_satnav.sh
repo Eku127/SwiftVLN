@@ -6,8 +6,9 @@
 #
 #   1. Eval by name (recommended):
 #      bash scripts/eval_satnav.sh <exp_name_or_subpath> [split] [gpus] [max_episodes]
-#      - Looks for checkpoint in output/streamvln-baseline/<exp_name_or_subpath>/ (fallback: results/)
-#      - Extracts data version from exp_name (data{XXXXXX} -> ver_XXXXXX)
+#      bash scripts/eval_satnav.sh --model_name <exp_name> [--model_dir <dir>] [--split <split>] [--gpus <n>]
+#      - Looks for checkpoint in <model_dir>/<exp_name>/, default model_dir is output/streamvln-baseline
+#      - Extracts data version and f/h/s eval params from exp_name
 #
 #   2. Eval by checkpoint path (backward compatible):
 #      bash scripts/eval_satnav.sh /path/to/checkpoint [split] [gpus] [max_episodes]
@@ -42,24 +43,122 @@ print_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
+usage() {
+    echo "Usage:"
+    echo ""
+    echo "  # Eval by name from default output/streamvln-baseline"
+    echo "  bash baseline/streamvln/scripts/eval_satnav.sh <exp_name_or_subpath> [split] [gpus] [max_episodes]"
+    echo ""
+    echo "  # Eval by name from a custom model root"
+    echo "  bash baseline/streamvln/scripts/eval_satnav.sh \\"
+    echo "    --model_dir /path/to/model_root \\"
+    echo "    --model_name streamvln-baseline-continue-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260420-153328 \\"
+    echo "    --split val_seen --gpus 8"
+    echo ""
+    echo "  # Eval by checkpoint path"
+    echo "  bash baseline/streamvln/scripts/eval_satnav.sh --checkpoint_path /path/to/checkpoint --split val_unseen --gpus 8"
+}
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASELINE_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
+SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
+SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
+DEFAULT_MODEL_DIR="${REPO_ROOT}/output/streamvln-baseline"
+
 # ---- Args ----
-INPUT="${1:-}"
-SPLIT_ARG="${2:-}"
-NUM_GPUS="${3:-8}"
-MAX_EPISODES="${4:-}"
+MODEL_DIR_INPUT=""
+MODEL_NAME_ARG=""
+CHECKPOINT_PATH_ARG=""
+SPLIT_ARG=""
+NUM_GPUS="8"
+MAX_EPISODES=""
+DRY_RUN="false"
+POSITIONAL=()
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --model_dir|--model-dir)
+            MODEL_DIR_INPUT="${2:-}"
+            shift 2
+            ;;
+        --model_name|--model-name)
+            MODEL_NAME_ARG="${2:-}"
+            shift 2
+            ;;
+        --checkpoint_path|--checkpoint-path)
+            CHECKPOINT_PATH_ARG="${2:-}"
+            shift 2
+            ;;
+        --split)
+            SPLIT_ARG="${2:-}"
+            shift 2
+            ;;
+        --gpus|--num_gpus|--num-gpus)
+            NUM_GPUS="${2:-8}"
+            shift 2
+            ;;
+        --max_episodes|--max-episodes)
+            MAX_EPISODES="${2:-}"
+            shift 2
+            ;;
+        --dry_run|--dry-run)
+            DRY_RUN="true"
+            shift
+            ;;
+        --satnav_version|--satnav-version)
+            SATNAV_VERSION="${2:-}"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            while [ "$#" -gt 0 ]; do
+                POSITIONAL+=("$1")
+                shift
+            done
+            ;;
+        --*)
+            print_error "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+        *)
+            POSITIONAL+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [ -n "$MODEL_NAME_ARG" ] && [ -n "$CHECKPOINT_PATH_ARG" ]; then
+    print_error "--model_name and --checkpoint_path are mutually exclusive"
+    exit 1
+fi
+
+if [ -n "$MODEL_NAME_ARG" ]; then
+    INPUT="$MODEL_NAME_ARG"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[0]:-}"
+    [ "${NUM_GPUS}" = "8" ] && NUM_GPUS="${POSITIONAL[1]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[2]:-}"
+elif [ -n "$CHECKPOINT_PATH_ARG" ]; then
+    INPUT="$CHECKPOINT_PATH_ARG"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[0]:-}"
+    [ "${NUM_GPUS}" = "8" ] && NUM_GPUS="${POSITIONAL[1]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[2]:-}"
+else
+    INPUT="${POSITIONAL[0]:-}"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[1]:-}"
+    [ "${NUM_GPUS}" = "8" ] && NUM_GPUS="${POSITIONAL[2]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[3]:-}"
+fi
 
 if [ -z "$INPUT" ]; then
-    print_error "Usage: bash scripts/eval_satnav.sh <exp_name_or_subpath | checkpoint_path> [split] [gpus] [max_episodes]"
-    echo ""
-    echo "Examples:"
-    echo "  # Eval by name"
-    echo "  bash scripts/eval_satnav.sh streamvln-baseline-continue-1ep-f32h8s4-data260306-bs32-lr2e-5-20260309-143000"
-    echo ""
-    echo "  # Eval smoke test by subpath"
-    echo "  bash scripts/eval_satnav.sh smoketest/streamvln-baseline-continue-1ep-f32h8s4-data260306-bs32-lr2e-5-20260309-143000 val_seen 8"
-    echo ""
-    echo "  # Eval by checkpoint path (legacy)"
-    echo "  bash scripts/eval_satnav.sh /path/to/checkpoint val_unseen 8"
+    print_error "Missing model name or checkpoint path"
+    usage
     exit 1
 fi
 
@@ -69,24 +168,28 @@ else
     SPLITS_LIST="val_seen val_unseen"
 fi
 
-# ---- Paths ----
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASELINE_DIR="$(dirname "$SCRIPT_DIR")"
-REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
-EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
-SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
-SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
+if [ -z "$MODEL_DIR_INPUT" ]; then
+    MODEL_ROOT_DIR="$DEFAULT_MODEL_DIR"
+elif [[ "$MODEL_DIR_INPUT" = /* ]]; then
+    MODEL_ROOT_DIR="$MODEL_DIR_INPUT"
+else
+    MODEL_ROOT_DIR="${REPO_ROOT}/${MODEL_DIR_INPUT}"
+fi
+
+NUM_FRAMES="32"
+NUM_HISTORY="8"
+NUM_FUTURE_STEPS="4"
 
 # ---- Detect mode: eval-by-name vs eval-by-path ----
 EVAL_MODE="by_name"
-if [[ "$INPUT" = /* ]] || [ -d "$INPUT" ]; then
+if [ -n "$CHECKPOINT_PATH_ARG" ] || [[ "$INPUT" = /* ]] || [ -d "$INPUT" ]; then
     EVAL_MODE="by_path"
 fi
 
 # ---- Resolve checkpoint and output paths ----
 if [ "$EVAL_MODE" = "by_name" ]; then
     EXP_NAME="$INPUT"
-    MODEL_DIR="${REPO_ROOT}/output/streamvln-baseline/${EXP_NAME}"
+    MODEL_DIR="${MODEL_ROOT_DIR}/${EXP_NAME}"
     if [ ! -d "$MODEL_DIR" ]; then
         LEGACY_MODEL_DIR="${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}"
         if [ -d "$LEGACY_MODEL_DIR" ]; then
@@ -96,12 +199,12 @@ if [ "$EVAL_MODE" = "by_name" ]; then
     fi
 
     if [ ! -d "$MODEL_DIR" ]; then
-        print_error "Experiment directory not found in output/ or results/: ${EXP_NAME}"
+        print_error "Experiment directory not found: ${MODEL_ROOT_DIR}/${EXP_NAME}"
         exit 1
     fi
 
     # Find latest checkpoint (checkpoint-N sorted by N descending)
-    CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+    CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1 || true)
 
     # If no checkpoint-* subdir, check if the model dir itself is a merged model
     if [ -z "$CHECKPOINT_DIR" ]; then
@@ -126,15 +229,44 @@ if [ "$EVAL_MODE" = "by_name" ]; then
     OUTPUT_BASE_DIR="${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}"
 
 else
-    CHECKPOINT_DIR="$INPUT"
-    EXP_NAME="$(basename "${CHECKPOINT_DIR}")"
+    INPUT_PATH="${INPUT%/}"
 
-    if [ ! -d "$CHECKPOINT_DIR" ]; then
-        print_error "Checkpoint directory not found: ${CHECKPOINT_DIR}"
+    if [ ! -d "$INPUT_PATH" ]; then
+        print_error "Checkpoint directory not found: ${INPUT_PATH}"
         exit 1
     fi
 
+    if ls -d "${INPUT_PATH}"/checkpoint-* >/dev/null 2>&1; then
+        MODEL_DIR="$INPUT_PATH"
+        CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+        EXP_NAME="$(basename "${MODEL_DIR}")"
+    else
+        CHECKPOINT_DIR="$INPUT_PATH"
+        if [[ "$(basename "${CHECKPOINT_DIR}")" == checkpoint-* ]]; then
+            EXP_NAME="$(basename "$(dirname "${CHECKPOINT_DIR}")")"
+        else
+            EXP_NAME="$(basename "${CHECKPOINT_DIR}")"
+        fi
+    fi
+
     OUTPUT_BASE_DIR="${REPO_ROOT}/results/streamvln-baseline/by-path/${EXP_NAME}"
+fi
+
+if [[ "$EXP_NAME" =~ f([0-9]+)h([0-9]+)s([0-9]+) ]]; then
+    NUM_FRAMES="${BASH_REMATCH[1]}"
+    NUM_HISTORY="${BASH_REMATCH[2]}"
+    NUM_FUTURE_STEPS="${BASH_REMATCH[3]}"
+    print_info "Parsed eval params from model name: frames=${NUM_FRAMES}, history=${NUM_HISTORY}, future_steps=${NUM_FUTURE_STEPS}"
+else
+    print_warning "Unable to parse f/h/s from model name, using defaults: frames=${NUM_FRAMES}, history=${NUM_HISTORY}, future_steps=${NUM_FUTURE_STEPS}"
+fi
+
+if [ -z "${SATNAV_VERSION:-}" ]; then
+    PARSED_VER=$(echo "$EXP_NAME" | grep -oP 'data\K\d+' | head -1 || true)
+    if [ -n "$PARSED_VER" ]; then
+        SATNAV_VERSION="ver_${PARSED_VER}"
+        print_info "Parsed data version from model name: ${SATNAV_VERSION}"
+    fi
 fi
 
 # ---- Resolve SatNav version ----
@@ -194,11 +326,21 @@ run_single_split() {
     echo "  Tokenizer  : ${TOKENIZER_PATH}"
     echo "  Config     : ${satnav_config}"
     echo "  Data ver   : ${SATNAV_VERSION}"
+    echo "  Frames     : ${NUM_FRAMES}"
+    echo "  History    : ${NUM_HISTORY}"
+    echo "  Future     : ${NUM_FUTURE_STEPS}"
     echo "  Split      : ${split}"
     echo "  Output     : ${output_dir}"
     echo "  GPUs       : ${NUM_GPUS}"
     [ -n "$MAX_EPISODES" ] && echo "  Max Episodes: ${MAX_EPISODES}"
+    [ "$DRY_RUN" = "true" ] && echo "  Dry Run    : true"
     echo "=========================================="
+
+    if [ "$DRY_RUN" = "true" ]; then
+        rm -f "${satnav_config}"
+        print_success "Dry run completed for split=${split}."
+        return 0
+    fi
 
     COMMON_ARGS=(
         --model_path "${CHECKPOINT_DIR}"
@@ -206,9 +348,9 @@ run_single_split() {
         --satnav_config_path "${satnav_config}"
         --eval_split "${split}"
         --output_path "${output_dir}"
-        --num_frames 32
-        --num_future_steps 4
-        --num_history 8
+        --num_frames "${NUM_FRAMES}"
+        --num_future_steps "${NUM_FUTURE_STEPS}"
+        --num_history "${NUM_HISTORY}"
         --model_max_length 32768
     )
 

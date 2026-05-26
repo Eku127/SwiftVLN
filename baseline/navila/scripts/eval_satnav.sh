@@ -33,17 +33,133 @@ print_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
-INPUT="${1:-}"
-SPLIT_ARG="${2:-}"
-NUM_GPUS="${3:-8}"
-MAX_EPISODES="${4:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASELINE_DIR="$(dirname "${SCRIPT_DIR}")"
+REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
+SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
+SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
+DEFAULT_MODEL_DIR="${REPO_ROOT}/output/navila-baseline"
+
+usage() {
+    echo "Usage:"
+    echo ""
+    echo "  # Eval by name from default output/navila-baseline"
+    echo "  bash baseline/navila/scripts/eval_satnav.sh <exp_name_or_subpath> [split] [gpus] [max_episodes]"
+    echo ""
+    echo "  # Eval by name from a custom model root"
+    echo "  bash baseline/navila/scripts/eval_satnav.sh \\"
+    echo "    --model_dir /path/to/model_root \\"
+    echo "    --model_name navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4 \\"
+    echo "    --split val_seen --gpus 8"
+    echo ""
+    echo "  # Eval by checkpoint path"
+    echo "  bash baseline/navila/scripts/eval_satnav.sh --checkpoint_path /path/to/checkpoint --split val_unseen --gpus 8"
+}
+
+MODEL_DIR_INPUT=""
+MODEL_NAME_ARG=""
+CHECKPOINT_PATH_ARG=""
+SPLIT_ARG=""
+NUM_GPUS="8"
+MAX_EPISODES=""
+DRY_RUN="false"
 SATNAV_VERSION="${SATNAV_VERSION:-}"
 MODEL_BASE="${MODEL_BASE:-}"
 SATNAV_ACTION_FORMAT="${SATNAV_ACTION_FORMAT:-compact}"
 LOCAL_CACHE_DIR="${LOCAL_CACHE_DIR-/mnt/data4/jiangjiajun/navila_ckpt_cache}"
+POSITIONAL=()
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --model_dir|--model-dir)
+            MODEL_DIR_INPUT="${2:-}"
+            shift 2
+            ;;
+        --model_name|--model-name)
+            MODEL_NAME_ARG="${2:-}"
+            shift 2
+            ;;
+        --checkpoint_path|--checkpoint-path)
+            CHECKPOINT_PATH_ARG="${2:-}"
+            shift 2
+            ;;
+        --split)
+            SPLIT_ARG="${2:-}"
+            shift 2
+            ;;
+        --gpus|--num_gpus|--num-gpus)
+            NUM_GPUS="${2:-8}"
+            shift 2
+            ;;
+        --max_episodes|--max-episodes)
+            MAX_EPISODES="${2:-}"
+            shift 2
+            ;;
+        --satnav_version|--satnav-version)
+            SATNAV_VERSION="${2:-}"
+            shift 2
+            ;;
+        --model_base|--model-base)
+            MODEL_BASE="${2:-}"
+            shift 2
+            ;;
+        --action_format|--action-format)
+            SATNAV_ACTION_FORMAT="${2:-compact}"
+            shift 2
+            ;;
+        --dry_run|--dry-run)
+            DRY_RUN="true"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            while [ "$#" -gt 0 ]; do
+                POSITIONAL+=("$1")
+                shift
+            done
+            ;;
+        --*)
+            print_error "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+        *)
+            POSITIONAL+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [ -n "$MODEL_NAME_ARG" ] && [ -n "$CHECKPOINT_PATH_ARG" ]; then
+    print_error "--model_name and --checkpoint_path are mutually exclusive"
+    exit 1
+fi
+
+if [ -n "$MODEL_NAME_ARG" ]; then
+    INPUT="$MODEL_NAME_ARG"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[0]:-}"
+    [ "$NUM_GPUS" = "8" ] && NUM_GPUS="${POSITIONAL[1]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[2]:-}"
+elif [ -n "$CHECKPOINT_PATH_ARG" ]; then
+    INPUT="$CHECKPOINT_PATH_ARG"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[0]:-}"
+    [ "$NUM_GPUS" = "8" ] && NUM_GPUS="${POSITIONAL[1]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[2]:-}"
+else
+    INPUT="${POSITIONAL[0]:-}"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[1]:-}"
+    [ "$NUM_GPUS" = "8" ] && NUM_GPUS="${POSITIONAL[2]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[3]:-}"
+fi
 
 if [ -z "${INPUT}" ]; then
-    print_error "Usage: bash scripts/eval_satnav.sh <exp_name_or_subpath | checkpoint_path> [split] [gpus] [max_episodes]"
+    print_error "Missing model name or checkpoint path"
+    usage
     exit 1
 fi
 
@@ -53,24 +169,25 @@ else
     SPLITS_LIST="val_seen val_unseen"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASELINE_DIR="$(dirname "${SCRIPT_DIR}")"
-REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
-EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
-SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
-SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
+if [ -z "$MODEL_DIR_INPUT" ]; then
+    MODEL_ROOT_DIR="$DEFAULT_MODEL_DIR"
+elif [[ "$MODEL_DIR_INPUT" = /* ]]; then
+    MODEL_ROOT_DIR="$MODEL_DIR_INPUT"
+else
+    MODEL_ROOT_DIR="${REPO_ROOT}/${MODEL_DIR_INPUT}"
+fi
 
 EVAL_MODE="by_name"
-if [[ "${INPUT}" = /* ]] || [ -d "${INPUT}" ]; then
+if [ -n "$CHECKPOINT_PATH_ARG" ] || [[ "${INPUT}" = /* ]] || [ -d "${INPUT}" ]; then
     EVAL_MODE="by_path"
 fi
 
 if [ "${EVAL_MODE}" = "by_name" ]; then
     EXP_NAME="${INPUT}"
-    MODEL_DIR="${REPO_ROOT}/output/navila-baseline/${EXP_NAME}"
+    MODEL_DIR="${MODEL_ROOT_DIR}/${EXP_NAME}"
 
     if [ ! -d "${MODEL_DIR}" ]; then
-        print_error "Experiment directory not found: output/navila-baseline/${EXP_NAME}"
+        print_error "Experiment directory not found: ${MODEL_ROOT_DIR}/${EXP_NAME}"
         exit 1
     fi
 
@@ -95,15 +212,35 @@ if [ "${EVAL_MODE}" = "by_name" ]; then
 
     OUTPUT_BASE_DIR="${REPO_ROOT}/results/navila-baseline/${EXP_NAME}"
 else
-    CHECKPOINT_DIR="${INPUT}"
-    EXP_NAME="$(basename "${CHECKPOINT_DIR}")"
+    INPUT_PATH="${INPUT%/}"
 
-    if [ ! -d "${CHECKPOINT_DIR}" ]; then
-        print_error "Checkpoint directory not found: ${CHECKPOINT_DIR}"
+    if [ ! -d "${INPUT_PATH}" ]; then
+        print_error "Checkpoint directory not found: ${INPUT_PATH}"
         exit 1
     fi
 
+    if ls -d "${INPUT_PATH}"/checkpoint-* >/dev/null 2>&1; then
+        MODEL_DIR="${INPUT_PATH}"
+        CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+        EXP_NAME="$(basename "${MODEL_DIR}")"
+    else
+        CHECKPOINT_DIR="${INPUT_PATH}"
+        if [[ "$(basename "${CHECKPOINT_DIR}")" == checkpoint-* ]]; then
+            EXP_NAME="$(basename "$(dirname "${CHECKPOINT_DIR}")")"
+        else
+            EXP_NAME="$(basename "${CHECKPOINT_DIR}")"
+        fi
+    fi
+
     OUTPUT_BASE_DIR="${REPO_ROOT}/results/navila-baseline/by-path/${EXP_NAME}"
+fi
+
+if [ -z "${SATNAV_VERSION}" ]; then
+    PARSED_VER=$(echo "${EXP_NAME}" | grep -oP 'data\K\d+' | head -1 || true)
+    if [ -n "${PARSED_VER}" ]; then
+        SATNAV_VERSION="ver_${PARSED_VER}"
+        print_info "Parsed data version from model name: ${SATNAV_VERSION}"
+    fi
 fi
 
 if [ -z "${SATNAV_VERSION}" ]; then
@@ -173,10 +310,12 @@ maybe_cache_checkpoint() {
     fi
 }
 
-CHECKPOINT_DIR=$(maybe_cache_checkpoint "$CHECKPOINT_DIR")
+if [ "${DRY_RUN}" != "true" ]; then
+    CHECKPOINT_DIR=$(maybe_cache_checkpoint "$CHECKPOINT_DIR")
 
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate navila-baseline
+    source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+    conda activate navila-baseline
+fi
 
 export PYTHONPATH="${BASELINE_DIR}/src:${BASELINE_DIR}:${PYTHONPATH:-}"
 
@@ -221,7 +360,14 @@ run_single_split() {
     echo "  Action fmt : ${SATNAV_ACTION_FORMAT}"
     [ -n "${MAX_EPISODES}" ] && echo "  Max Episodes: ${MAX_EPISODES}"
     [ -n "${MODEL_BASE}" ] && echo "  Model Base  : ${MODEL_BASE}"
+    [ "${DRY_RUN}" = "true" ] && echo "  Dry Run    : true"
     echo "=========================================="
+
+    if [ "${DRY_RUN}" = "true" ]; then
+        rm -f "${satnav_config}"
+        print_success "Dry run completed for split=${split}."
+        return 0
+    fi
 
     COMMON_ARGS=(
         --model_path "${CHECKPOINT_DIR}"

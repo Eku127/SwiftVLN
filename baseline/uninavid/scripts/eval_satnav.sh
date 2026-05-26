@@ -47,27 +47,130 @@ print_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
+usage() {
+    echo "Usage:"
+    echo ""
+    echo "  # Eval by name from default output/uninavid-baseline"
+    echo "  bash baseline/uninavid/scripts/eval_satnav.sh <exp_name_or_subpath> [split] [gpus] [max_episodes]"
+    echo ""
+    echo "  # Eval by name from a custom model root"
+    echo "  bash baseline/uninavid/scripts/eval_satnav.sh \\"
+    echo "    --model_dir /path/to/model_root \\"
+    echo "    --model_name uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618 \\"
+    echo "    --split val_seen --gpus 8"
+    echo ""
+    echo "  # Eval by checkpoint path"
+    echo "  bash baseline/uninavid/scripts/eval_satnav.sh --checkpoint_path /path/to/checkpoint --split val_unseen --gpus 8"
+}
+
+# ---- Paths ----
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASELINE_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
+SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
+SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
+DEFAULT_MODEL_DIR="${REPO_ROOT}/output/uninavid-baseline"
+
 # ---- Args ----
-INPUT="${1:-}"
-SPLIT_ARG="${2:-}"
-NUM_GPUS="${3:-8}"
-MAX_EPISODES="${4:-}"
+MODEL_DIR_INPUT=""
+MODEL_NAME_ARG=""
+CHECKPOINT_PATH_ARG=""
+SPLIT_ARG=""
+NUM_GPUS="8"
+MAX_EPISODES=""
+DRY_RUN="false"
 SATNAV_VERSION="${SATNAV_VERSION:-}"
 MODEL_BASE="${MODEL_BASE:-}"
 LOCAL_CACHE_DIR="${LOCAL_CACHE_DIR:-/mnt/data4/jiangjiajun/uninavid_ckpt_cache}"
+POSITIONAL=()
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --model_dir|--model-dir)
+            MODEL_DIR_INPUT="${2:-}"
+            shift 2
+            ;;
+        --model_name|--model-name)
+            MODEL_NAME_ARG="${2:-}"
+            shift 2
+            ;;
+        --checkpoint_path|--checkpoint-path)
+            CHECKPOINT_PATH_ARG="${2:-}"
+            shift 2
+            ;;
+        --split)
+            SPLIT_ARG="${2:-}"
+            shift 2
+            ;;
+        --gpus|--num_gpus|--num-gpus)
+            NUM_GPUS="${2:-8}"
+            shift 2
+            ;;
+        --max_episodes|--max-episodes)
+            MAX_EPISODES="${2:-}"
+            shift 2
+            ;;
+        --satnav_version|--satnav-version)
+            SATNAV_VERSION="${2:-}"
+            shift 2
+            ;;
+        --model_base|--model-base)
+            MODEL_BASE="${2:-}"
+            shift 2
+            ;;
+        --dry_run|--dry-run)
+            DRY_RUN="true"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            while [ "$#" -gt 0 ]; do
+                POSITIONAL+=("$1")
+                shift
+            done
+            ;;
+        --*)
+            print_error "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+        *)
+            POSITIONAL+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [ -n "$MODEL_NAME_ARG" ] && [ -n "$CHECKPOINT_PATH_ARG" ]; then
+    print_error "--model_name and --checkpoint_path are mutually exclusive"
+    exit 1
+fi
+
+if [ -n "$MODEL_NAME_ARG" ]; then
+    INPUT="$MODEL_NAME_ARG"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[0]:-}"
+    [ "$NUM_GPUS" = "8" ] && NUM_GPUS="${POSITIONAL[1]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[2]:-}"
+elif [ -n "$CHECKPOINT_PATH_ARG" ]; then
+    INPUT="$CHECKPOINT_PATH_ARG"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[0]:-}"
+    [ "$NUM_GPUS" = "8" ] && NUM_GPUS="${POSITIONAL[1]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[2]:-}"
+else
+    INPUT="${POSITIONAL[0]:-}"
+    [ -z "$SPLIT_ARG" ] && SPLIT_ARG="${POSITIONAL[1]:-}"
+    [ "$NUM_GPUS" = "8" ] && NUM_GPUS="${POSITIONAL[2]:-8}"
+    [ -z "$MAX_EPISODES" ] && MAX_EPISODES="${POSITIONAL[3]:-}"
+fi
 
 if [ -z "$INPUT" ]; then
-    print_error "Usage: bash scripts/eval_satnav.sh <exp_name_or_subpath | checkpoint_path> [split] [gpus] [max_episodes]"
-    echo ""
-    echo "Examples:"
-    echo "  # Eval by name"
-    echo "  bash scripts/eval_satnav.sh uninavid-baseline-data260306-bs16-lr2e-5-20260311-120000"
-    echo ""
-    echo "  # Eval smoke test by subpath"
-    echo "  bash scripts/eval_satnav.sh smoketest/uninavid-baseline-smoke-20260311-120000 val_seen 1 5"
-    echo ""
-    echo "  # Eval by checkpoint path"
-    echo "  bash scripts/eval_satnav.sh /path/to/checkpoint val_unseen 8"
+    print_error "Missing model name or checkpoint path"
+    usage
     exit 1
 fi
 
@@ -77,24 +180,24 @@ else
     SPLITS_LIST="val_seen val_unseen"
 fi
 
-# ---- Paths ----
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASELINE_DIR="$(dirname "$SCRIPT_DIR")"
-REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
-EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
-SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
-SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
+if [ -z "$MODEL_DIR_INPUT" ]; then
+    MODEL_ROOT_DIR="$DEFAULT_MODEL_DIR"
+elif [[ "$MODEL_DIR_INPUT" = /* ]]; then
+    MODEL_ROOT_DIR="$MODEL_DIR_INPUT"
+else
+    MODEL_ROOT_DIR="${REPO_ROOT}/${MODEL_DIR_INPUT}"
+fi
 
 # ---- Detect mode: eval-by-name vs eval-by-path ----
 EVAL_MODE="by_name"
-if [[ "$INPUT" = /* ]] || [ -d "$INPUT" ]; then
+if [ -n "$CHECKPOINT_PATH_ARG" ] || [[ "$INPUT" = /* ]] || [ -d "$INPUT" ]; then
     EVAL_MODE="by_path"
 fi
 
 # ---- Resolve checkpoint and output paths ----
 if [ "$EVAL_MODE" = "by_name" ]; then
     EXP_NAME="$INPUT"
-    MODEL_DIR="${REPO_ROOT}/output/uninavid-baseline/${EXP_NAME}"
+    MODEL_DIR="${MODEL_ROOT_DIR}/${EXP_NAME}"
 
     if [ ! -d "$MODEL_DIR" ]; then
         LEGACY_MODEL_DIR="${REPO_ROOT}/output/uninavid-baseline/legacy/${EXP_NAME}"
@@ -102,7 +205,7 @@ if [ "$EVAL_MODE" = "by_name" ]; then
             MODEL_DIR="$LEGACY_MODEL_DIR"
             print_warning "Experiment directory found in legacy path: ${MODEL_DIR}"
         else
-            print_error "Experiment directory not found: output/uninavid-baseline/${EXP_NAME}"
+            print_error "Experiment directory not found: ${MODEL_ROOT_DIR}/${EXP_NAME}"
             print_error "Legacy path also not found: output/uninavid-baseline/legacy/${EXP_NAME}"
             exit 1
         fi
@@ -133,15 +236,35 @@ if [ "$EVAL_MODE" = "by_name" ]; then
     OUTPUT_BASE_DIR="${REPO_ROOT}/results/uninavid-baseline/${EXP_NAME}"
 
 else
-    CHECKPOINT_DIR="$INPUT"
-    EXP_NAME="$(basename "${CHECKPOINT_DIR}")"
+    INPUT_PATH="${INPUT%/}"
 
-    if [ ! -d "$CHECKPOINT_DIR" ]; then
-        print_error "Checkpoint directory not found: ${CHECKPOINT_DIR}"
+    if [ ! -d "$INPUT_PATH" ]; then
+        print_error "Checkpoint directory not found: ${INPUT_PATH}"
         exit 1
     fi
 
+    if ls -d "${INPUT_PATH}"/checkpoint-* >/dev/null 2>&1; then
+        MODEL_DIR="$INPUT_PATH"
+        CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+        EXP_NAME="$(basename "${MODEL_DIR}")"
+    else
+        CHECKPOINT_DIR="$INPUT_PATH"
+        if [[ "$(basename "${CHECKPOINT_DIR}")" == checkpoint-* ]]; then
+            EXP_NAME="$(basename "$(dirname "${CHECKPOINT_DIR}")")"
+        else
+            EXP_NAME="$(basename "${CHECKPOINT_DIR}")"
+        fi
+    fi
+
     OUTPUT_BASE_DIR="${REPO_ROOT}/results/uninavid-baseline/by-path/${EXP_NAME}"
+fi
+
+if [ -z "$SATNAV_VERSION" ]; then
+    PARSED_VER=$(echo "$EXP_NAME" | grep -oP 'data\K\d+' | head -1 || true)
+    if [ -n "$PARSED_VER" ]; then
+        SATNAV_VERSION="ver_${PARSED_VER}"
+        print_info "Parsed data version from model name: ${SATNAV_VERSION}"
+    fi
 fi
 
 # ---- Resolve SatNav version ----
@@ -211,7 +334,9 @@ maybe_cache_checkpoint() {
     fi
 }
 
-CHECKPOINT_DIR=$(maybe_cache_checkpoint "$CHECKPOINT_DIR")
+if [ "$DRY_RUN" != "true" ]; then
+    CHECKPOINT_DIR=$(maybe_cache_checkpoint "$CHECKPOINT_DIR")
+fi
 
 # ---- PYTHONPATH ----
 export PYTHONPATH="${BASELINE_DIR}/src:${BASELINE_DIR}:${PYTHONPATH:-}"
@@ -271,14 +396,18 @@ run_single_split() {
         return 1
     fi
 
-    visible_gpu_list="$(resolve_visible_gpu_list)"
-    available_gpu_count="$(count_visible_gpus "$visible_gpu_list")"
+    if [ "$DRY_RUN" = "true" ]; then
+        visible_gpu_list="${CUDA_VISIBLE_DEVICES:-<dry-run>}"
+    else
+        visible_gpu_list="$(resolve_visible_gpu_list)"
+        available_gpu_count="$(count_visible_gpus "$visible_gpu_list")"
 
-    if [ "$NUM_GPUS" -gt "$available_gpu_count" ]; then
-        print_error "Requested ${NUM_GPUS} GPUs, but only ${available_gpu_count} are visible on this host."
-        print_error "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}"
-        print_error "Detected visible GPUs: ${visible_gpu_list:-<none>}"
-        return 1
+        if [ "$NUM_GPUS" -gt "$available_gpu_count" ]; then
+            print_error "Requested ${NUM_GPUS} GPUs, but only ${available_gpu_count} are visible on this host."
+            print_error "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}"
+            print_error "Detected visible GPUs: ${visible_gpu_list:-<none>}"
+            return 1
+        fi
     fi
 
     cp "$SATNAV_CONFIG_TEMPLATE" "$satnav_config"
@@ -302,7 +431,14 @@ run_single_split() {
     echo "  VisibleGPU : ${visible_gpu_list:-<none>}"
     [ -n "$MAX_EPISODES" ] && echo "  Max Episodes: ${MAX_EPISODES}"
     [ -n "$MODEL_BASE"   ] && echo "  Model Base  : ${MODEL_BASE}"
+    [ "$DRY_RUN" = "true" ] && echo "  Dry Run    : true"
     echo "=========================================="
+
+    if [ "$DRY_RUN" = "true" ]; then
+        rm -f "${satnav_config}"
+        print_success "Dry run completed for split=${split}."
+        return 0
+    fi
 
     COMMON_ARGS=(
         --model_path "${CHECKPOINT_DIR}"
