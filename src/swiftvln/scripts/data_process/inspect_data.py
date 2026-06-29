@@ -18,23 +18,13 @@ def inspect_city(city_path: Path) -> Dict[str, Any]:
     """检查单个城市的数据情况"""
     result = {
         "city": city_path.name,
-        "has_qa": False,
         "has_episodes": False,
-        "qa_items": 0,
         "episodes": 0,
         "episodes_by_type": {},
         "episodes_by_subtype": {},
         "traj_dirs": 0,
         "img_dirs": 0
     }
-
-    # 检查 qa.json
-    qa_file = city_path / "qa.json"
-    if qa_file.exists():
-        result["has_qa"] = True
-        with open(qa_file, 'r', encoding='utf-8') as f:
-            qa_data = json.load(f)
-            result["qa_items"] = len(qa_data)
 
     # 检查 VLN_episodes.json
     episodes_file = city_path / "VLN_episodes.json"
@@ -104,11 +94,6 @@ def inspect_all(data_dir: Path):
         else:
             print(f"   Episodes: ❌ No VLN_episodes.json")
 
-        if result['has_qa']:
-            print(f"   QA items: {result['qa_items']}")
-        else:
-            print(f"   QA items: ❌ No qa.json")
-
         # 显示子目录统计
         dirs_info = []
         if result['traj_dirs'] > 0:
@@ -126,15 +111,11 @@ def inspect_all(data_dir: Path):
     print("=" * 80)
 
     total_episodes = sum(r['episodes'] for r in all_results)
-    total_qa = sum(r['qa_items'] for r in all_results)
     cities_with_episodes = sum(1 for r in all_results if r['has_episodes'])
-    cities_with_qa = sum(1 for r in all_results if r['has_qa'])
 
     print(f"Total cities: {len(all_results)}")
     print(f"Cities with episodes: {cities_with_episodes}")
-    print(f"Cities with QA: {cities_with_qa}")
     print(f"Total episodes: {total_episodes}")
-    print(f"Total QA items: {total_qa}")
 
     # Episodes 类型汇总
     all_types = Counter()
@@ -156,7 +137,7 @@ def inspect_all(data_dir: Path):
     print("\n" + "=" * 80)
     print("Cities list for config.py:")
     print("=" * 80)
-    all_city_names = [r['city'] for r in all_results if r['has_episodes'] or r['has_qa']]
+    all_city_names = [r['city'] for r in all_results if r['has_episodes']]
     print(f"ALL_CITIES = {all_city_names}")
     print("=" * 80)
 

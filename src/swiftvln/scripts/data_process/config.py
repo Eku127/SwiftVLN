@@ -122,9 +122,6 @@ EPISODE_FILES = {
     "road": "road_episodes.json"
 }
 
-QA_OUTPUT_FILE = "qa_swift.jsonl"
-
-
 def get_dataset_path(version: str) -> Path:
     """获取数据集版本路径"""
     return DATASET_ROOT / version
@@ -138,10 +135,3 @@ def get_data_dir(version: str) -> Path:
 def get_episodes_dir(version: str) -> Path:
     """获取episodes输出目录"""
     return get_dataset_path(version) / "episodes"
-
-
-def get_qa_output_path(version: str, filename: str = None) -> Path:
-    """获取QA输出文件路径"""
-    if filename is None:
-        filename = QA_OUTPUT_FILE
-    return get_data_dir(version) / filename

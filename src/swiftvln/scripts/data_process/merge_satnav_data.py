@@ -9,8 +9,6 @@ The merge strategy is:
    episode to a fresh `episode_id` instead of dropping it.
 4. Regenerate merged `episodes/` via `process_episodes.py`.
 5. Merge `trajectory_data` and rewrite remapped secondary `episode_id` / `video`.
-6. Regenerate `data/qa_swift.jsonl` from merged `qa.json` when possible, or fall
-   back to merging source `qa_swift.jsonl`.
 
 Examples:
     python -m swiftvln.scripts.data_process.merge_satnav_data \
@@ -39,11 +37,9 @@ try:
         TRAIN_CITIES,
         classify_eval_cities,
     )
-    from .convert_qa_to_swift import convert_qa_to_swift
     from .process_episodes import process_episodes
 except ImportError:
     from config import DATASET_ROOT, EVAL_CITIES, TRAIN_CITIES, classify_eval_cities
-    from convert_qa_to_swift import convert_qa_to_swift
     from process_episodes import process_episodes
 
 
@@ -346,131 +342,6 @@ def merge_episode_lists(
     return merged, remap, stats
 
 
-def qa_key(item: dict[str, Any]) -> str:
-    if item.get("id") is not None:
-        return f"id:{item['id']}"
-    return f"hash:{sha1_text(canonical_json(item))}"
-
-
-def rename_qa_id(item: dict[str, Any], version: str, used_ids: set[str]) -> dict[str, Any]:
-    updated = copy.deepcopy(item)
-    base_id = str(updated.get("id", f"qa_{sha1_text(canonical_json(updated))[:12]}"))
-    candidate = f"{base_id}__{version}"
-    suffix = 2
-    while candidate in used_ids:
-        candidate = f"{base_id}__{version}_{suffix}"
-        suffix += 1
-    updated["id"] = candidate
-    used_ids.add(candidate)
-    return updated
-
-
-def merge_qa_items(qa_sources: list[tuple[str, Path]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    merged: list[dict[str, Any]] = []
-    by_key: dict[str, str] = {}
-    used_ids: set[str] = set()
-    stats = {
-        "sources": [],
-        "merged_count": 0,
-        "identical_overlap": 0,
-        "conflicting_overlap": 0,
-    }
-
-    for version, qa_path in qa_sources:
-        if not qa_path.exists():
-            continue
-        items = read_json_file(qa_path)
-        stats["sources"].append({"version": version, "path": str(qa_path), "count": len(items)})
-        for item in items:
-            candidate = copy.deepcopy(item)
-            key = qa_key(candidate)
-            canonical = canonical_json(candidate)
-            if key not in by_key:
-                merged.append(candidate)
-                by_key[key] = canonical
-                if candidate.get("id") is not None:
-                    used_ids.add(str(candidate["id"]))
-                continue
-            if by_key[key] == canonical:
-                stats["identical_overlap"] += 1
-                continue
-            stats["conflicting_overlap"] += 1
-            updated = rename_qa_id(candidate, version, used_ids)
-            merged.append(updated)
-            by_key[qa_key(updated)] = canonical_json(updated)
-
-    stats["merged_count"] = len(merged)
-    return merged, stats
-
-
-def rewrite_swift_record_images(record: dict[str, Any], source_version: str, output_version: str) -> dict[str, Any]:
-    updated = copy.deepcopy(record)
-    source_token = f"/satnav_datasets/{source_version}/"
-    output_token = f"/satnav_datasets/{output_version}/"
-    images = []
-    for image_path in updated.get("images", []):
-        image_text = str(image_path)
-        if source_token in image_text:
-            image_text = image_text.replace(source_token, output_token)
-        images.append(image_text)
-    updated["images"] = images
-    return updated
-
-
-def swift_record_key(item: dict[str, Any]) -> str:
-    if item.get("id") is not None:
-        return f"id:{item['id']}"
-    payload = {
-        "messages": item.get("messages", []),
-        "images": item.get("images", []),
-        "task": item.get("task"),
-    }
-    return f"hash:{sha1_text(canonical_json(payload))}"
-
-
-def merge_qa_swift_files(
-    sources: list[tuple[str, Path]],
-    output_path: Path,
-    output_version: str,
-) -> dict[str, Any]:
-    merged: list[dict[str, Any]] = []
-    by_key: dict[str, str] = {}
-    used_ids: set[str] = set()
-    stats = {
-        "sources": [],
-        "identical_overlap": 0,
-        "conflicting_overlap": 0,
-        "merged_count": 0,
-    }
-
-    for version, file_path in sources:
-        if not file_path.exists():
-            continue
-        items = read_jsonl_records(file_path)
-        stats["sources"].append({"version": version, "path": str(file_path), "count": len(items)})
-        for item in items:
-            candidate = rewrite_swift_record_images(item, version, output_version)
-            key = swift_record_key(candidate)
-            canonical = canonical_json(candidate)
-            if key not in by_key:
-                merged.append(candidate)
-                by_key[key] = canonical
-                if candidate.get("id") is not None:
-                    used_ids.add(str(candidate["id"]))
-                continue
-            if by_key[key] == canonical:
-                stats["identical_overlap"] += 1
-                continue
-            stats["conflicting_overlap"] += 1
-            updated = rename_qa_id(candidate, version, used_ids)
-            merged.append(updated)
-            by_key[swift_record_key(updated)] = canonical_json(updated)
-
-    write_jsonl_records(output_path, merged)
-    stats["merged_count"] = len(merged)
-    return stats
-
-
 def split_name_for_city(city_name: str) -> str:
     if city_name in TRAIN_CITIES_SET:
         return "train"
@@ -767,7 +638,6 @@ def merge_city_assets(
     copy_mode: str,
 ) -> dict[str, Any]:
     output_city_dir.mkdir(parents=True, exist_ok=True)
-    qa_sources: list[tuple[str, Path]] = []
     copied_assets = []
 
     for version, source_dir in (
@@ -777,22 +647,13 @@ def merge_city_assets(
         if source_dir is None or not source_dir.exists():
             continue
         for child in sorted(source_dir.iterdir()):
-            if child.name == "VLN_episodes.json":
-                continue
-            if child.name == "qa.json":
-                qa_sources.append((version, child))
+            if child.suffix == ".json":
                 continue
             copy_tree(child, output_city_dir / child.name, copy_mode)
             copied_assets.append(str((output_city_dir / child.name).relative_to(output_city_dir)))
 
-    qa_stats = None
-    if qa_sources:
-        merged_qa, qa_stats = merge_qa_items(qa_sources)
-        write_json_file(output_city_dir / "qa.json", merged_qa)
-
     return {
         "copied_assets": sorted(set(copied_assets)),
-        "qa": qa_stats,
     }
 
 
@@ -802,20 +663,6 @@ def ensure_empty_output(output_root: Path) -> None:
         if existing:
             raise RuntimeError(f"Output version already exists and is not empty: {output_root}")
     output_root.mkdir(parents=True, exist_ok=True)
-
-
-def output_has_any_qa_json(output_root: Path) -> bool:
-    data_root = output_root / "data"
-    if not data_root.exists():
-        return False
-    return any((city_dir / "qa.json").exists() for city_dir in data_root.iterdir() if city_dir.is_dir())
-
-
-def count_lines(file_path: Path) -> int:
-    if not file_path.exists():
-        return 0
-    with file_path.open("r", encoding="utf-8") as handle:
-        return sum(1 for _ in handle)
 
 
 def validate_merged_outputs(
@@ -988,28 +835,6 @@ def execute_merge(
         copy_mode,
     )
 
-    qa_stats = {}
-    if output_has_any_qa_json(output_root):
-        convert_qa_to_swift(output_version)
-        qa_output = output_root / "data" / "qa_swift.jsonl"
-        qa_stats = {
-            "mode": "regen-from-qa-json",
-            "line_count": count_lines(qa_output),
-            "path": str(qa_output),
-        }
-    else:
-        qa_output = output_root / "data" / "qa_swift.jsonl"
-        qa_stats = merge_qa_swift_files(
-            [
-                (primary_version, source_root(primary_version) / "data" / "qa_swift.jsonl"),
-                (secondary_version, source_root(secondary_version) / "data" / "qa_swift.jsonl"),
-            ],
-            qa_output,
-            output_version,
-        )
-        qa_stats["mode"] = "merged-source-qa-swift"
-        qa_stats["path"] = str(qa_output)
-
     validation = validate_merged_outputs(output_root, split_stats, trajectory_stats, require_growth)
     remap_log_path = write_remap_log(output_root, secondary_version, remap)
 
@@ -1018,7 +843,6 @@ def execute_merge(
         "copy_mode": copy_mode,
         "asset_stats": asset_stats,
         "trajectory": trajectory_stats,
-        "qa": qa_stats,
         "validation": validation,
         "remap_log": str(remap_log_path),
     }

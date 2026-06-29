@@ -966,9 +966,6 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   （当前：8756 条；`val_unseen` 默认评测集）
 - **注意**：`episodes/eval/` 下当前默认只有 `val_seen/` 和 `val_unseen/` 两个子目录
 - `val_seen_update/` 已不再作为当前 0418 默认 eval 目录使用；如果历史脚本仍引用它，需要先改回 `val_seen`
-- QA JSONL:
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl`
-  （2026-04-26 已重写，JSONL 内图片绝对路径均指向 `ver_260418`，不再指向 `ver_260404`）
 - Trajectory data:
   - train 主集：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data`
   - val_seen standalone 子集：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data_val_seen`
@@ -1006,9 +1003,8 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - 0418 实际默认 eval split 只有 `val_seen` 与 `val_unseen`
   - `val_seen_update` 不再作为当前默认目录存在；若要复现实验历史，需要显式提供对应文件而不是继续假定默认脚本可直接找到
 - 2026-04-26 数据一致性修复：
-  - `data/qa_swift.jsonl` 已重新生成，共 `273120` 行，图片路径版本计数为 `ver_260418: 273120`，缺图数为 `0`
   - `episodes/eval/val_unseen/{boundary,landmark,road}_episodes.json` 已从当前 `all_episodes.json` 定点重建
-  - 注意：`merge_manifest.json` 仍是原始 merge 产物记录，不代表后续 0418 split 清理 / QA 路径修复后的当前状态
+  - 注意：`merge_manifest.json` 仍是原始 merge 产物记录，不代表后续 0418 split 清理后的当前状态
 - 2026-05-01 release 准备：
   - episode-only release 目录：
     `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-Episodes-v0.1`
@@ -1039,8 +1035,6 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 - 所有 episode 的 `trajectory_type` 均为 `Boundary`
 - `trajectory_subtype` 在原始 `data/*/VLN_episodes.json` 与处理后的 `episodes/*.json` 中都保留
   - 当前 observed subtype：`arc`、`overlap`
-- `ver_260403/data/` 下无 `qa.json`
-  - `run_all.py` 仍会生成空文件 `data/qa_swift.jsonl`（0 行），属预期行为
 - `ver_260403/trajectory_data` 生成结果：
   - `annotations.json`：`7476`
   - `summary.json`：`7476` 行
@@ -1082,10 +1076,6 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - `annotations.json`：`104954`
   - `images/` 目录：`104954`
   - 从 primary 源里额外清理了 `240` 个未被 merged summary 引用的旧 image 目录
-- QA 结果：
-  - `data/qa_swift.jsonl`：`273120`
-  - 原因：`ver_260403` 无 `qa.json`，因此 merged QA 没有增长
-
 ### SatNav Data Processing Convention (Updated: 2026-03-27)
 
 - 数据处理默认会先执行 trajectory type 标准化：
@@ -1094,7 +1084,7 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
   - 同时保留细分类到顶层字段 `trajectory_subtype`，规范值为 `Highway / Multiway / Waterway`
 - 标准化脚本：
   `src/swiftvln/scripts/data_process/normalize_trajectory_types.py`
-- 默认入口 `src/swiftvln/scripts/data_process/run_all.py` 会先执行标准化，再生成 `episodes` 与 `qa_swift.jsonl`
+- 默认入口 `src/swiftvln/scripts/data_process/run_all.py` 会先执行标准化，再生成 `episodes`
 - 单独执行 `src/swiftvln/scripts/data_process/process_episodes.py` 时，也会自动先做同样的标准化
 - SwiftVLN 维护自己的 SatNav 轨迹生成配置：
   `src/swiftvln/configs/satnav_trajectory_generation.yaml`
