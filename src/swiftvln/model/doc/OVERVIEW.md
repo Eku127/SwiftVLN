@@ -655,7 +655,7 @@ Segment GTC:
 - 训练：1 epoch, batch_size=64, lr=2e-5
 - 策略：Initial（添加第一帧到 system prompt）
 
-**SatNav Stage1 验证集结果（val_unseen）**：
+**SatNav SwiftVLN 验证集结果（val_unseen）**：
 
 运行两次实验，结果如下：
 
