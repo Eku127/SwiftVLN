@@ -12,13 +12,14 @@ NaVILA、UniNaVid、OpenFly 等 baseline 的 eval 脚本改造提供可执行模
 - README 和 skill 文档只描述推荐主路径
 - train+eval pipeline 必须调用新的 by-name eval 入口
 
-## Current StreamVLN Target State
+## Current Baseline Target State
 
-StreamVLN 已经作为本次 refactor 的参考实现。
+StreamVLN 已经作为本次 refactor 的参考实现；NaVILA、UniNaVid、OpenFly
+也已按同一外层入口和数据默认值完成第一阶段收敛。
 
 ### Data Defaults
 
-StreamVLN 训练和评测默认都指向同一个发布数据集标识：
+四个 baseline 的训练和评测默认都指向同一个发布数据集标识：
 
 ```text
 SATNAV_DATASET=SatNav-v0.1
@@ -36,8 +37,8 @@ SATNAV_DATASET=SatNav-v0.1
 /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
 ```
 
-当前 `SatNav-v0.1` 可能还未放出 `trajectory_data`，但脚本默认口径已经固定到
-`SatNav-v0.1`。如果临时需要使用其他 trajectory export，只能显式设置：
+当前 `SatNav-v0.1/trajectory_data` 和 `SatNav-v0.1/episodes/eval` 已存在；
+如果临时需要使用其他 trajectory export，只能显式设置：
 
 ```bash
 SATNAV_TRAIN_DATA_DIR=/path/to/trajectory_data
@@ -628,35 +629,197 @@ find baseline/<baseline>/configs -maxdepth 1 -name '.satnav_task_eval_*.yaml' -p
 git diff --check
 ```
 
+### Current SatNav-v0.1 8-GPU Smoke Evidence
+
+2026-06-29 已按 refactor 标准完成四个 baseline 在 `SatNav-v0.1` 上的
+8 卡 train/eval smoke。该证据用于判断入口、默认数据路径、HF upload-ready
+模型目录和分布式收尾是否可用；不用于报告模型精度。
+
+Train smoke：
+
+```text
+logs/baseline_satnav_v01_smoke/train_smoke_73_20260629_143641.csv
+logs/baseline_satnav_v01_smoke/train_streamvln_local98_20260629_150840.status
+```
+
+覆盖：
+
+- StreamVLN continue，`SATNAV_DATASET=SatNav-v0.1`，
+  `SATNAV_MAX_EPISODES=64 SATNAV_MAX_SAMPLES=64 MAX_STEPS=2`，
+  `train_rc=0 verify_rc=0`
+- NaVILA continue，`SATNAV_DATASET=SatNav-v0.1`，
+  `MAX_STEPS=2 SATNAV_MAX_SAMPLES=32`，`train_rc=0 verify_rc=0`
+- UniNaVid continue，`SATNAV_DATASET=SatNav-v0.1`，
+  `MAX_STEPS=2`，`train_rc=0 verify_rc=0`
+- OpenFly continue，`SATNAV_DATASET=SatNav-v0.1`，
+  `MAX_STEPS=2 SATNAV_MAX_SAMPLES=32`，`train_rc=0 verify_rc=0`
+
+Eval smoke：
+
+```text
+logs/baseline_satnav_v01_smoke/local98_eval_smoke_20260629_142339.csv
+logs/baseline_satnav_v01_smoke/local98_uninavid_retry_20260629_143332.status
+```
+
+覆盖 HF upload-ready continue 模型：
+
+```text
+streamvln-satnav-continue-1ep-f32h8s4-lr2e-5
+navila-satnav-continue-1ep-8f-sample-hk7-fs7-stopx4
+uninavid-satnav-continue-1ep-lr1e-5
+openfly-satnav-continue-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5
+```
+
+统一 eval 命令形态：
+
+```bash
+bash baseline/<baseline>/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_name <baseline-satnav-continue-model-name> \
+  --gpus 8 \
+  --max_episodes 2
+```
+
+结果摘要副本已写出：
+
+```text
+logs/baseline_satnav_v01_smoke/local98_streamvln_20260629_142339_summaries.jsonl
+logs/baseline_satnav_v01_smoke/local98_navila_20260629_142339_summaries.jsonl
+logs/baseline_satnav_v01_smoke/local98_uninavid_retry_20260629_143332_summaries.jsonl
+logs/baseline_satnav_v01_smoke/local98_openfly_20260629_142339_summaries.jsonl
+```
+
+本轮修复中需要复用到其他 baseline 的经验：
+
+- StreamVLN 训练入口必须优先使用自己的 conda Python，并把该 env 的 `bin`
+  放到 `PATH` 前面；否则 DeepSpeed JIT 可能找不到 conda 内的 `ninja`
+- StreamVLN 在 import 阶段会触发 tokenizer/config 读取，训练脚本和 Python 入口都要设置
+  `STREAMVLN_OFFLINE=true` 时的 `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`
+- shell 中可变长度参数不要用字符串拼接后放在多行命令尾部；使用数组，如
+  `SWANLAB_ARGS=(--report_to none)`，再用 `"${SWANLAB_ARGS[@]}"`
+- 分布式 eval 聚合时不要等待没有分到 episode 的 rank；需要按 deterministic shard
+  计算 expected ranks，且 rank0 清理同步 marker 后要 barrier，再让其他 rank 写 marker
+
+历史 0418 smoke 仍可作为 refactor 初期证据参考：
+
+```text
+logs/baseline_refactor_smoke/train_smoke_20260629_110010.log
+logs/baseline_refactor_smoke/eval_smoke_20260629_112321.log
+```
+
 ## Migration Notes Per Baseline
 
 ### NaVILA
 
-当前 NaVILA eval 仍保留较多历史兼容逻辑。迁移前先确认：
+NaVILA 已按 StreamVLN 方式完成第一阶段 eval 入口收敛：
 
-- model zoo 中模型是否是 HF root，还是必须使用 `checkpoint-*`
-- `MODEL_BASE` 是否仍是 adapter-only checkpoint 的必要参数
-- checkpoint cache 逻辑是否应保留
+- 公开入口只接受 `--model_dir + --model_name`
+- 不再接受位置参数、`--checkpoint_path`、`--split`、`--satnav_version`
+- eval split 和数据只从 `baseline/navila/configs/satnav_task.yaml` 读取
+- `DATASET.DATA_PATH` 是 eval split 父目录，当前默认：
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
+- 训练默认使用 `SATNAV_DATASET=SatNav-v0.1`，并展开到
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
+- model zoo 旧归档根目录如果已有 `config.json`，直接用根目录加载；否则才在该根下选择最新
+  `checkpoint-*`
+- NFS checkpoint cache 逻辑保留，但只影响模型加载路径，不影响 eval 数据选择
+- `MODEL_BASE` 作为可选参数保留，用于 adapter-only checkpoint 的显式回退
 
-如果 Python eval 仍需要 checkpoint 目录，可以让 `--model_dir/--model_name` 指向实验根，
-由脚本选择该根目录下最新 `checkpoint-*`。但这必须是唯一主路径，不要再暴露 by-path。
+当前已 dry-run 通过的模型名：
+
+```text
+navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4
+navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4
+```
+
+验证命令：
+
+```bash
+bash baseline/navila/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4 \
+  --gpus 8 \
+  --dry_run
+```
 
 ### UniNaVid
 
-UniNaVid 当前有 legacy path fallback 和 GPU 可见性检查。迁移时：
+UniNaVid 已按 StreamVLN/NaVILA 的方式完成第一阶段 eval 入口收敛：
 
-- 保留 GPU 可见性检查
-- 移除 README 主路径中的 legacy fallback
-- 确认 model zoo 目录是否根目录可 eval，还是需要最新 `checkpoint-*`
+- 公开入口只接受 `--model_dir + --model_name`
+- 不再接受位置参数、`--checkpoint_path`、`--split`、`--satnav_version`
+- eval split 和数据只从 `baseline/uninavid/configs/satnav_task.yaml` 读取
+- `DATASET.DATA_PATH` 是 eval split 父目录，当前默认：
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
+- 训练默认使用 `SATNAV_DATASET=SatNav-v0.1`，并展开到
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
+- 保留启动前 GPU 可见性检查，8 卡 eval 会在进入 `torchrun` 前确认当前 host 可见 GPU 数足够
+- model zoo 归档根目录已有 `config.json` 和 `pytorch_model*.bin`，直接用根目录加载
+
+当前已 dry-run 通过的归档模型名：
+
+```text
+uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618
+uninavid-baseline-scratch-1ep-data260418-bs192-lr1e-5-20260418-203618
+```
+
+当前已生成并 dry-run 通过的 HF upload-ready 模型名：
+
+```text
+uninavid-satnav-continue-1ep-lr1e-5
+uninavid-satnav-scratch-1ep-lr1e-5
+```
+
+验证命令：
+
+```bash
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_name uninavid-satnav-continue-1ep-lr1e-5 \
+  --gpus 8 \
+  --dry_run
+```
 
 ### OpenFly
 
-OpenFly 会从模型名解析 action format 和 history length。迁移时：
+OpenFly 已按 StreamVLN/NaVILA/UniNaVid 的方式完成第一阶段 eval 入口收敛：
 
-- 可以保留 `-actcompact` / `-actoriginal` 解析，因为这是 eval 行为参数
-- 可以保留 `-hist<N>` 解析，因为这是 eval 行为参数
-- 不要再从 `data<N>` 解析 eval 数据版本
-- `OPENFLY_NATIVE_HF_CACHE_DIR` 等训练/加载 cache 逻辑不应影响 eval 数据选择
+- 公开入口只接受 `--model_dir + --model_name`
+- 不再接受位置参数、`--checkpoint_path`、`--split`、`--satnav_version`
+- eval split 和数据只从 `baseline/openfly/configs/satnav_task.yaml` 读取
+- `DATASET.DATA_PATH` 是 eval split 父目录，当前默认：
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
+- 训练默认使用 `SATNAV_DATASET=SatNav-v0.1`，并展开到
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
+- 保留 `-actcompact` / `-actoriginal` 解析，因为这是 eval 行为参数
+- 保留 `-hist<N>` 解析，因为这是 eval 行为参数
+- 不再从 `data<N>` 解析 eval 数据版本
+- 旧 model zoo 归档根目录没有根权重时，脚本会选择该根下最新 `checkpoint-*`
+- HF upload-ready 目录把 `checkpoint-*` 中的 HF 权重文件提升到目录根，eval 直接加载公开目录根
+
+当前已 dry-run 通过的归档模型名：
+
+```text
+openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357
+openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110
+```
+
+当前已生成并 dry-run 通过的 HF upload-ready 模型名：
+
+```text
+openfly-satnav-continue-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5
+openfly-satnav-scratch-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5
+```
+
+验证命令：
+
+```bash
+bash baseline/openfly/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_name openfly-satnav-continue-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5 \
+  --gpus 8 \
+  --dry_run
+```
 
 ## Done Definition
 
