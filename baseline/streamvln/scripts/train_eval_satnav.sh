@@ -18,8 +18,6 @@
 #   EVAL_MODEL_DIR   Model root for eval (default: output/streamvln-baseline)
 #   EVAL_MAX_EPISODES  Limit eval episodes for smoke/debug (default: unset)
 #   CLEAN_EVAL_FIRST true/false, clear target eval output before run (default: true)
-#   TRAIN_WEBHOOK_URL  Webhook for train start/end
-#   EVAL_WEBHOOK_URL   Webhook for eval start/end
 # ==============================================================================
 
 set -euo pipefail
@@ -65,23 +63,9 @@ read_config_value() {
 CONFIG_SPLIT="$(read_config_value SPLIT)"
 CONFIG_DATA_PATH="$(read_config_value DATA_PATH)"
 
-TRAIN_WEBHOOK_URL="${TRAIN_WEBHOOK_URL:-}"
-EVAL_WEBHOOK_URL="${EVAL_WEBHOOK_URL:-}"
-
 PIPE_TS="$(date +%Y%m%d-%H%M%S)"
 PIPE_LOG="/tmp/streamvln_baseline_train_eval_${PIPE_TS}.log"
 HOSTNAME_STR="$(hostname)"
-
-send_wecom_markdown() {
-    local webhook_url="$1"
-    local content="$2"
-    if [ -z "$webhook_url" ]; then
-        return 0
-    fi
-    curl -sS -X POST "$webhook_url" \
-      -H "Content-Type: application/json" \
-      -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" >/dev/null || true
-}
 
 extract_exp_name_from_log() {
     local log_path="$1"
@@ -111,16 +95,9 @@ extract_exp_name_from_log() {
 }
 
 TRAIN_START_TS="$(date +%s)"
-TRAIN_START_MSG="## StreamVLN Baseline Train Started
-host: ${HOSTNAME_STR}
-mode: ${MODE}
-eval_split_config: ${CONFIG_SPLIT:-unknown}
-train_gpus: ${TRAIN_GPUS}
-satnav_dataset: ${SATNAV_DATASET}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_START_MSG}"
-
 echo "[INFO] Pipeline log: ${PIPE_LOG}" | tee -a "${PIPE_LOG}"
+echo "[INFO] Host: ${HOSTNAME_STR}" | tee -a "${PIPE_LOG}"
+echo "[INFO] Mode: ${MODE}, train_gpus=${TRAIN_GPUS}, satnav_dataset=${SATNAV_DATASET}, eval_split_config=${CONFIG_SPLIT:-unknown}" | tee -a "${PIPE_LOG}"
 echo "[INFO] Start training..." | tee -a "${PIPE_LOG}"
 
 set +e
@@ -152,13 +129,7 @@ if [ -n "${EXP_NAME}" ] && [ "${SMOKE_TEST}" = "true" ]; then
 fi
 echo "[INFO] Eval target subpath: ${EXP_SUBPATH:-unknown}" | tee -a "${PIPE_LOG}"
 
-TRAIN_END_MSG="## StreamVLN Baseline Train Finished
-status: ${TRAIN_STATUS}
-mode: ${MODE}
-exp_name: ${EXP_NAME:-unknown}
-duration_sec: ${TRAIN_DURATION_SEC}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_END_MSG}"
+echo "[INFO] Train finished: status=${TRAIN_STATUS}, duration_sec=${TRAIN_DURATION_SEC}, exp_name=${EXP_NAME:-unknown}" | tee -a "${PIPE_LOG}"
 
 if [ "${train_rc}" -ne 0 ]; then
     echo "[ERROR] Training failed (rc=${train_rc}). Skip eval." | tee -a "${PIPE_LOG}"
@@ -176,19 +147,8 @@ if [ "${CLEAN_EVAL_FIRST}" = "true" ]; then
 fi
 
 EVAL_START_TS="$(date +%s)"
-EVAL_START_MSG="## StreamVLN Baseline Eval Started
-host: ${HOSTNAME_STR}
-exp_name: ${EXP_NAME}
-model_dir: ${EVAL_MODEL_DIR}
-model_name: ${EXP_SUBPATH}
-eval_split_config: ${CONFIG_SPLIT:-unknown}
-eval_data_path: ${CONFIG_DATA_PATH:-unknown}
-eval_gpus: ${EVAL_GPUS}
-eval_max_episodes: ${EVAL_MAX_EPISODES:-full}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
-
 echo "[INFO] Start eval by name..." | tee -a "${PIPE_LOG}"
+echo "[INFO] Eval target: model_dir=${EVAL_MODEL_DIR}, model_name=${EXP_SUBPATH}, split=${CONFIG_SPLIT:-unknown}, data_path=${CONFIG_DATA_PATH:-unknown}, gpus=${EVAL_GPUS}, max_episodes=${EVAL_MAX_EPISODES:-full}" | tee -a "${PIPE_LOG}"
 EVAL_CMD=(
     bash "${BASELINE_DIR}/scripts/eval_satnav.sh"
     --model_dir "${EVAL_MODEL_DIR}"
@@ -209,14 +169,7 @@ EVAL_DURATION_SEC=$((EVAL_END_TS - EVAL_START_TS))
 EVAL_STATUS="SUCCESS"
 [ "${eval_rc}" -ne 0 ] && EVAL_STATUS="FAILED"
 
-EVAL_END_MSG="## StreamVLN Baseline Eval Finished
-status: ${EVAL_STATUS}
-exp_name: ${EXP_NAME}
-exp_subpath: ${EXP_SUBPATH}
-duration_sec: ${EVAL_DURATION_SEC}
-eval_root: results/streamvln-baseline/${EXP_SUBPATH}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
+echo "[INFO] Eval finished: status=${EVAL_STATUS}, duration_sec=${EVAL_DURATION_SEC}, eval_root=results/streamvln-baseline/${EXP_SUBPATH}" | tee -a "${PIPE_LOG}"
 
 if [ "${eval_rc}" -ne 0 ]; then
     echo "[ERROR] Eval failed (rc=${eval_rc})." | tee -a "${PIPE_LOG}"

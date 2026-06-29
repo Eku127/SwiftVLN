@@ -52,9 +52,6 @@ declare -a EXP_ERRORS=()       # 错误记录
 SLEEP_BETWEEN_EXPERIMENTS=30   # 实验间隔（秒）
 MAX_AUTO_FIX_RETRIES="${MAX_AUTO_FIX_RETRIES:-2}"
 
-# Webhook 通知配置
-USE_WEBHOOK_NOTIFICATION="${USE_WEBHOOK_NOTIFICATION:-true}"
-WEBHOOK_URL="${WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=503b5488-4d70-455d-a5b9-29fc8d7fb797}"
 LAST_AUTO_FIX_ACTIONS=""
 AUTO_ENQUEUE_EVAL="${AUTO_ENQUEUE_EVAL:-true}"
 EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL="${EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL:-false}"
@@ -74,18 +71,6 @@ MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
 MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
 MAP_RENDER_PX="${MAP_RENDER_PX:-448}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
-
-send_webhook() {
-    local title="$1"
-    local body="$2"
-    if [[ "$USE_WEBHOOK_NOTIFICATION" != "true" ]]; then
-        return 0
-    fi
-    local content="## ${title}\n${body}\ntime: $(date '+%Y-%m-%d %H:%M:%S')"
-    curl -sS -m 8 -X POST "$WEBHOOK_URL" \
-      -H "Content-Type: application/json" \
-      -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" >/dev/null 2>&1 || true
-}
 
 # ── 事件日志（供 train_watchdog 消费）──────────────────────────────────────
 # 写入 TRAIN_EVENTS_FILE（由 watchdog export），回退到 TRAIN_RUN_DIR 下的文件
@@ -905,7 +890,6 @@ run_experiment() {
 
         if [[ $attempt -lt $max_attempts ]] && apply_auto_fix_for_train_failure "$run_log_file" "$temp_script"; then
             attempted_fixes="${attempted_fixes}\n- attempt ${attempt}: ${LAST_AUTO_FIX_ACTIONS}"
-            send_webhook "Train Auto-Fix Retry" "experiment=${exp_idx}\nmodel=${model}\nattempt=${attempt}\nissue_log=${run_log_file}\nsolution=${LAST_AUTO_FIX_ACTIONS}\nresult=retrying next attempt"
             ((attempt++))
             continue
         fi
@@ -968,7 +952,6 @@ if meta:
         else
             print_success "实验 $exp_idx 完成! 耗时: $duration_str"
             enqueue_model_for_eval "$exp_name" || true
-            send_webhook "Train Success" "experiment=${exp_idx}\nmodel=${model}\nduration=${duration_str}\noutput=${output_path:-N/A}\nlog=${run_log_file}"
             _emit_train_event "EXPERIMENT_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${output_path:-N/A}|$(date -Iseconds)"
         fi
 
@@ -981,7 +964,6 @@ if meta:
         EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|FAILED|--|--")
         EXP_ERRORS+=("实验 $exp_idx ($model): $error_msg")
         print_error "实验 $exp_idx 失败!"
-        send_webhook "Train Failed" "experiment=${exp_idx}\nmodel=${model}\nerror=${error_msg}\nlog=${run_log_file}\nattempted_fixes=${attempted_fixes:-none}\nresult=marked FAILED and continue queue"
         _emit_train_event "EXPERIMENT_FAILED|${exp_idx}|${total:-0}|${model}|unknown|${error_msg:0:200}|${run_log_file}|$(date -Iseconds)"
 
         rm -f "$temp_script"
@@ -1054,8 +1036,6 @@ show_final_results() {
         echo ""
         echo "════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
     } | tee "$RESULT_FILE"
-
-    send_webhook "Train Queue Finished" "env=${ENV_TYPE}\nsuccess=${success_count}\nfailed=${fail_count}\ntotal=${#EXP_RESULTS[@]}\nreport=${RESULT_FILE}"
 
     _emit_train_event "QUEUE_DONE|${success_count}|${fail_count}|${#EXP_RESULTS[@]}|$(date -Iseconds)"
     _write_train_completion_status "$RESULT_FILE" "$success_count" "$fail_count"

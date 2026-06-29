@@ -10,8 +10,7 @@ set -euo pipefail
 #
 # 当评测完成或失败时：
 #   1. 写入 per-run watchdog 状态文件
-#   2. 发送 webhook 通知
-#   3. 可选：通过 `codex exec resume` 回调 Codex 进行智能处理
+#   2. 可选：通过 `codex exec resume` 回调 Codex 进行智能处理
 #
 # 用法:
 #   nohup bash src/swiftvln/scripts/eval/eval_watchdog.sh [OPTIONS] &
@@ -23,14 +22,12 @@ set -euo pipefail
 #   --check-interval SECS    轮询间隔秒数（默认 30）
 #   --max-wait SECS          最大等待时间（默认 21600 = 6 小时）
 #   --stall-threshold N      连续无进度 N 轮后告警（默认 20，即 ~10 分钟）
-#   --webhook true|false     是否发 webhook 通知（默认 true）
 #   --codex-model MODEL      codex exec resume 使用的模型（可选）
 #   --cleanup-days N         启动时清理 N 天前的 run 目录和日志（默认 7，0=不清理）
 #   --remote-host HOST       远程主机 IP（如 10.246.152.73），tmux 操作走 SSH，codex 回调在本机执行
 #                            适用于：watchdog 在 98 上跑，监控 73 上的 tmux session
 #
 # 环境变量:
-#   WEBHOOK_URL              webhook 地址（默认企业微信机器人）
 #   EVAL_QUEUE_DIR           队列目录（默认 runtime/eval_queue）
 #
 # Per-run 目录结构:
@@ -41,7 +38,7 @@ set -euo pipefail
 #     └── eval_queue_status.json   eval_queue.sh 写入的完成状态（如设置了 EVAL_RUN_DIR）
 #
 # 示例:
-#   # 仅监控 + webhook
+#   # 仅监控
 #   nohup bash src/swiftvln/scripts/eval/eval_watchdog.sh \
 #     --tmux-session eval_queue_153025 &
 #
@@ -63,14 +60,12 @@ EVAL_LOG=""
 CHECK_INTERVAL=30
 MAX_WAIT=21600
 STALL_THRESHOLD=20
-USE_WEBHOOK=true
 CODEX_MODEL=""
 CLEANUP_DAYS=7
 CODEX_HOST=""   # 运行 codex CLI 的主机（默认本地；远程 eval 时设为安装了 codex 的服务器 IP）
 CODEX_BIN_PATH="/mnt/data1/home/jiangjiajun/.nvm/versions/node/v24.13.0/bin/codex"
 NODE_BIN_PATH="/mnt/data1/home/jiangjiajun/.nvm/versions/node/v24.13.0/bin/node"
 REMOTE_HOST=""
-WEBHOOK_URL="${WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=87cd9c07-52f0-4cec-a7a8-9586a9dc68c8}"
 EVAL_QUEUE_DIR="${EVAL_QUEUE_DIR:-${SWIFTVLN_ROOT}/runtime/eval_queue}"
 RUNS_DIR="${EVAL_QUEUE_DIR}/runs"
 HOSTNAME_SAFE="$(hostname | sed 's/[^a-zA-Z0-9._-]/_/g')"
@@ -84,7 +79,6 @@ while [[ $# -gt 0 ]]; do
         --check-interval)  CHECK_INTERVAL="$2";  shift 2 ;;
         --max-wait)        MAX_WAIT="$2";        shift 2 ;;
         --stall-threshold) STALL_THRESHOLD="$2"; shift 2 ;;
-        --webhook)         USE_WEBHOOK="$2";     shift 2 ;;
         --codex-model)     CODEX_MODEL="$2";     shift 2 ;;
         --cleanup-days)    CLEANUP_DAYS="$2";    shift 2 ;;
         --remote-host)     REMOTE_HOST="$2";     shift 2 ;;
@@ -132,16 +126,6 @@ tmux_capture_pane() {
     else
         tmux capture-pane -pt "$TMUX_SESSION" -S -"$lines" 2>/dev/null || echo "(无法获取 tmux 输出)"
     fi
-}
-
-send_webhook() {
-    local title="$1" body="$2"
-    [[ "$USE_WEBHOOK" != "true" ]] && return 0
-    local content="## ${title}\n${body}\nhost: ${HOSTNAME_SAFE}\ntime: $(date '+%Y-%m-%d %H:%M:%S')"
-    curl -sS -m 8 -X POST "$WEBHOOK_URL" \
-        -H "Content-Type: application/json" \
-        -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" \
-        >/dev/null 2>&1 || true
 }
 
 # ── Cleanup old runs ────────────────────────────────────────────────────────
@@ -334,7 +318,6 @@ log "  eval_log      = ${EVAL_LOG:-(auto-detect)}"
 log "  check_interval= ${CHECK_INTERVAL}s"
 log "  max_wait      = ${MAX_WAIT}s"
 log "  stall_threshold= ${STALL_THRESHOLD} cycles"
-log "  webhook       = $USE_WEBHOOK"
 log "  cleanup_days  = $CLEANUP_DAYS"
 log "  pid           = $$"
 log "=========================================="
@@ -353,7 +336,6 @@ while true; do
     if [[ $ELAPSED -ge $MAX_WAIT ]]; then
         log "Max wait (${MAX_WAIT}s) reached. Eval may still be running."
         write_watchdog_result "timeout" "$ELAPSED"
-        send_webhook "Eval Watchdog Timeout" "tmux_session=${TMUX_SESSION}\nelapsed=$((ELAPSED/60))min\neval 可能仍在运行"
         if [[ -n "$CODEX_SESSION" ]]; then
             trigger_codex_resume "评测已运行超过 $((MAX_WAIT/3600)) 小时（tmux: ${TMUX_SESSION}，host: ${HOSTNAME_SAFE}），仍未结束。请检查评测进度，判断是否需要干预。"
         fi
@@ -380,7 +362,6 @@ while true; do
         if [[ "$local_outcome" == "crash" ]]; then
             # ── Crash / 异常退出 ──
             error_ctx=$(get_error_context)
-            send_webhook "Eval Crashed" "host=${HOSTNAME_SAFE}\ntmux_session=${TMUX_SESSION}\nelapsed=$((ELAPSED/60))min\nsuccess=${success_count} failed=${fail_count}"
             if [[ -n "$CODEX_SESSION" ]]; then
                 trigger_codex_resume "$(cat <<PROMPT
 评测进程异常退出（tmux: ${TMUX_SESSION}，host: ${HOSTNAME_SAFE}，运行 $((ELAPSED/60)) 分钟后退出）。
@@ -403,7 +384,6 @@ PROMPT
         elif [[ $fail_count -gt 0 ]]; then
             # ── 正常结束但有失败 ──
             error_ctx=$(get_error_context)
-            send_webhook "Eval Done (with failures)" "host=${HOSTNAME_SAFE}\ntmux_session=${TMUX_SESSION}\nsuccess=${success_count}\nfailed=${fail_count}\nfailed_models=${failed_models}\nelapsed=$((ELAPSED/60))min"
             if [[ -n "$CODEX_SESSION" ]]; then
                 trigger_codex_resume "$(cat <<PROMPT
 评测队列已结束（tmux: ${TMUX_SESSION}，host: ${HOSTNAME_SAFE}），但存在失败模型。
@@ -424,7 +404,6 @@ PROMPT
 
         else
             # ── 全部成功 ──
-            send_webhook "Eval All Success" "host=${HOSTNAME_SAFE}\ntmux_session=${TMUX_SESSION}\nsuccess=${success_count}\nmodels=${done_models}\nelapsed=$((ELAPSED/60))min"
             if [[ -n "$CODEX_SESSION" ]]; then
                 trigger_codex_resume "$(cat <<PROMPT
 评测队列已全部成功完成（tmux: ${TMUX_SESSION}，host: ${HOSTNAME_SAFE}）。
@@ -451,7 +430,6 @@ PROMPT
                 STALL_CYCLES=$((STALL_CYCLES + 1))
                 if [[ $STALL_CYCLES -ge $STALL_THRESHOLD && "$WARNED_STALL" != "true" ]]; then
                     log "WARNING: Progress stalled for $((STALL_CYCLES * CHECK_INTERVAL))s at: $current_progress"
-                    send_webhook "Eval Stall Warning" "host=${HOSTNAME_SAFE}\ntmux_session=${TMUX_SESSION}\nstalled_at=${current_progress}\nstall_duration=$((STALL_CYCLES * CHECK_INTERVAL))s"
                     WARNED_STALL=true
                 fi
             else

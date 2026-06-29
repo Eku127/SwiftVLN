@@ -451,12 +451,6 @@ SWANLAB_PROJECT="${SWANLAB_PROJECT:-StreamVLN}"
 SWANLAB_EXP_NAME="${EXP_NAME}"
 SWANLAB_MODE="${SWANLAB_MODE:-cloud}"
 
-# WXWork Notification
-USE_WXWORK_NOTIFICATION="${USE_WXWORK_NOTIFICATION:-false}"
-SWANLAB_NOTIFICATION_METHOD="${SWANLAB_NOTIFICATION_METHOD:-wxwork}"
-SWANLAB_WEBHOOK_URL="${SWANLAB_WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d78d3128-7b16-4bf1-a6a7-403bf0915fe0}"
-SWANLAB_SECRET="${SWANLAB_SECRET:-}"
-
 # ============================================================================
 # Environment Setup
 # ============================================================================
@@ -586,13 +580,6 @@ DEEPSPEED_ARG=""
 SWANLAB_ARGS=""
 if [ "$USE_SWANLAB" = true ]; then
     SWANLAB_ARGS="--report_to swanlab --swanlab_project $SWANLAB_PROJECT --swanlab_exp_name $SWANLAB_EXP_NAME --swanlab_mode $SWANLAB_MODE"
-    
-    if [ "$USE_WXWORK_NOTIFICATION" = true ]; then
-        SWANLAB_ARGS="$SWANLAB_ARGS --swanlab_notification_method $SWANLAB_NOTIFICATION_METHOD --swanlab_webhook_url $SWANLAB_WEBHOOK_URL"
-        if [ -n "$SWANLAB_SECRET" ]; then
-            SWANLAB_ARGS="$SWANLAB_ARGS --swanlab_secret $SWANLAB_SECRET"
-        fi
-    fi
 fi
 
 # Attention implementation argument

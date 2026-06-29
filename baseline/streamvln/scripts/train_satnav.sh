@@ -20,7 +20,6 @@
 #   GRAD_ACCUM       — Gradient accumulation steps (default: 2)
 #   GPUS_PER_NODE    — Number of GPUs (default: 8)
 #   USE_SWANLAB      — Enable SwanLab reporting (default: false)
-#   USE_WXWORK_NOTIFICATION — Enable WXWork webhook notification (default: false)
 #   SAVE_STRATEGY    — "epoch" or "steps" (default: epoch)
 #   SAVE_STEPS       — Save every N steps when SAVE_STRATEGY=steps (default: 1000)
 #   SMOKE_TEST       — true/false, when true save under output/streamvln-baseline/smoketest (default: false)
@@ -99,10 +98,6 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 USE_SWANLAB="${USE_SWANLAB:-false}"
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-baseline}"
 SWANLAB_MODE="cloud"
-USE_WXWORK_NOTIFICATION="${USE_WXWORK_NOTIFICATION:-false}"
-SWANLAB_NOTIFICATION_METHOD="wxwork"
-SWANLAB_WEBHOOK_URL="${SWANLAB_WEBHOOK_URL:-}"
-SWANLAB_SECRET="${SWANLAB_SECRET:-}"
 
 # ---- VLN parameters ----
 NUM_FRAMES=32
@@ -146,17 +141,6 @@ if [ "$USE_SWANLAB" = "true" ]; then
     export SWANLAB_NAME="${EXP_NAME}"
     export SWANLAB_MODE="${SWANLAB_MODE}"
     SWANLAB_ARGS=(--report_to swanlab)
-
-    if [ "$USE_WXWORK_NOTIFICATION" = "true" ]; then
-        if [ -z "$SWANLAB_WEBHOOK_URL" ]; then
-            echo "[WARN] USE_WXWORK_NOTIFICATION=true but SWANLAB_WEBHOOK_URL is empty; skip wxwork notification."
-        else
-            SWANLAB_ARGS+=(--swanlab_notification_method "${SWANLAB_NOTIFICATION_METHOD}" --swanlab_webhook_url "${SWANLAB_WEBHOOK_URL}")
-            if [ -n "$SWANLAB_SECRET" ]; then
-                SWANLAB_ARGS+=(--swanlab_secret "${SWANLAB_SECRET}")
-            fi
-        fi
-    fi
 else
     SWANLAB_ARGS=(--report_to none)
 fi
@@ -188,7 +172,6 @@ echo "  LR          : ${LEARNING_RATE}"
 echo "  Epochs      : ${NUM_EPOCHS}"
 echo "  Save        : ${SAVE_STRATEGY}"
 echo "  SwanLab     : ${USE_SWANLAB}"
-echo "  WXWork      : ${USE_WXWORK_NOTIFICATION}"
 echo "  Smoke Test  : ${SMOKE_TEST}"
 echo "=========================================="
 

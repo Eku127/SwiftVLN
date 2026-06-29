@@ -10,16 +10,12 @@ SESSION_73="gpu_health_73"
 CHECK_INTERVAL=30
 TEMP_THRESHOLD=85
 ALERT_COOLDOWN=600
-USE_WEBHOOK=true
-WEBHOOK_URL="${WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=48e434da-fb2d-453c-a180-c4041b4c7f1e}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --check-interval) CHECK_INTERVAL="$2"; shift 2 ;;
         --temp-threshold) TEMP_THRESHOLD="$2"; shift 2 ;;
         --alert-cooldown) ALERT_COOLDOWN="$2"; shift 2 ;;
-        --webhook) USE_WEBHOOK="$2"; shift 2 ;;
-        --webhook-url) WEBHOOK_URL="$2"; shift 2 ;;
         *)
             echo "[gpu-health-start] Unknown option: $1" >&2
             exit 1
@@ -38,13 +34,12 @@ start_local_session() {
     local expected_gpus="$3"
     tmux has-session -t "$session_name" 2>/dev/null && tmux kill-session -t "$session_name"
     tmux new-session -d -s "$session_name" \
-        "WEBHOOK_URL='$WEBHOOK_URL' bash '$MONITOR_SCRIPT' \
+        "bash '$MONITOR_SCRIPT' \
             --host-label '$host_label' \
             --expected-gpus '$expected_gpus' \
             --check-interval '$CHECK_INTERVAL' \
             --temp-threshold '$TEMP_THRESHOLD' \
-            --alert-cooldown '$ALERT_COOLDOWN' \
-            --webhook '$USE_WEBHOOK'"
+            --alert-cooldown '$ALERT_COOLDOWN'"
 }
 
 start_remote_session() {
@@ -53,14 +48,13 @@ start_remote_session() {
     local expected_gpus="$3"
     ssh -o BatchMode=yes -o ConnectTimeout=8 10.246.152.73 "\
         tmux has-session -t '$session_name' 2>/dev/null && tmux kill-session -t '$session_name' || true; \
-        WEBHOOK_URL='$WEBHOOK_URL' tmux new-session -d -s '$session_name' \
+        tmux new-session -d -s '$session_name' \
             \"bash '$MONITOR_SCRIPT' \
                 --host-label '$host_label' \
                 --expected-gpus '$expected_gpus' \
                 --check-interval '$CHECK_INTERVAL' \
                 --temp-threshold '$TEMP_THRESHOLD' \
-                --alert-cooldown '$ALERT_COOLDOWN' \
-                --webhook '$USE_WEBHOOK'\""
+                --alert-cooldown '$ALERT_COOLDOWN'\""
 }
 
 start_local_session "$SESSION_98" "98" "8"

@@ -88,9 +88,6 @@ WAIT_FOR_NEW_TASKS=false       # 动态模式下空队列是否持续等待
 TODO_POLL_INTERVAL="${TODO_POLL_INTERVAL:-60}"
 MAX_EVAL_AUTO_FIX_RETRIES="${MAX_EVAL_AUTO_FIX_RETRIES:-2}"
 
-# Webhook 通知配置
-USE_WEBHOOK_NOTIFICATION="${USE_WEBHOOK_NOTIFICATION:-true}"
-WEBHOOK_URL="${WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=87cd9c07-52f0-4cec-a7a8-9586a9dc68c8}"
 LAST_AUTO_FIX_ACTIONS=""
 
 # ============================================================================
@@ -130,18 +127,6 @@ mark_model_failed() {
     local model="$1"
     remove_line_from_todo "$model"
     append_unique_line "$FAILED_FILE" "$model"
-}
-
-send_webhook() {
-    local title="$1"
-    local body="$2"
-    if [[ "$USE_WEBHOOK_NOTIFICATION" != "true" ]]; then
-        return 0
-    fi
-    local content="## ${title}\n${body}\ntime: $(date '+%Y-%m-%d %H:%M:%S')"
-    curl -sS -m 8 -X POST "$WEBHOOK_URL" \
-      -H "Content-Type: application/json" \
-      -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" >/dev/null 2>&1 || true
 }
 
 apply_auto_fix_for_eval_failure() {
@@ -564,7 +549,6 @@ run_evaluation() {
     local max_attempts=$((MAX_EVAL_AUTO_FIX_RETRIES + 1))
 
     # 运行评估（自动修复重试）
-    send_webhook "Eval Started" "model=${model}\nindex=${exp_idx}/${total}\nsplit=${EVAL_SPLIT}"
     while true; do
         if [[ $attempt -eq 1 ]]; then
             run_log_file="$log_file"
@@ -611,7 +595,7 @@ run_evaluation() {
     fi
 
     # 查找各 split 结果路径（格式: results/eval/<arch>/<model>/<split>/<timestamp>/）
-    local result_path=""         # 用于 webhook/摘要展示（取第一个有效 split）
+    local result_path=""         # 用于摘要展示（取第一个有效 split）
     declare -a _split_result_paths=()
     if [[ -n "$model_arch" ]]; then
         local results_base="${SWIFTVLN_ROOT}/results/eval/${model_arch}/${model}"
@@ -658,7 +642,6 @@ run_evaluation() {
         EXP_RESULTS+=("$exp_idx|$model|SUCCESS|$duration_str|SR:$sr SPL:$spl NE:$ne")
         RESULT_PATHS+=("$exp_idx|$model|${_paths_str:-${result_path:-N/A}}")
         print_success "评估 $exp_idx 完成! 耗时: $duration_str"
-        send_webhook "Eval Finished" "model=${model}\nindex=${exp_idx}/${total}\nstatus=SUCCESS\nduration=${duration_str}\nmetrics=SR:${sr} SPL:${spl} NE:${ne}\nsplits=${_actual_splits}"
 
         # 自动收集到 results/eval_collected/<split>/eval_results_data<version>.csv
         # 对每个实际评测的 split 分别收集
@@ -689,7 +672,6 @@ run_evaluation() {
         RESULT_PATHS+=("$exp_idx|$model|${run_log_file}")
         EXP_ERRORS+=("评估 $exp_idx ($model): ${error_msg:0:100}")
         print_error "评估 $exp_idx 失败!"
-        send_webhook "Eval Finished" "model=${model}\nindex=${exp_idx}/${total}\nstatus=FAILED\nduration=${duration_str}"
 
         export CUDA_DEVICES="$original_cuda_devices"
         if [[ -n "$original_master_port" ]]; then export MASTER_PORT="$original_master_port"; else unset MASTER_PORT; fi
@@ -850,8 +832,6 @@ show_final_results() {
             ((fail_count++))
         fi
     done
-
-    send_webhook "Eval Queue Finished" "success=${success_count}\nfailed=${fail_count}\ntotal=${#EXP_RESULTS[@]}"
 
     # 写入机器可读的完成状态文件（供 eval_watchdog 等外部工具使用）
     write_completion_status "$RESULT_FILE" "$success_count" "$fail_count"

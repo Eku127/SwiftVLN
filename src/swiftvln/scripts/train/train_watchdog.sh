@@ -13,7 +13,7 @@ set -euo pipefail
 #   2. 实验失败且脚本内建修复失败 → resume Codex 做智能修复
 #   3. 全部完成 → enqueue eval + 启动新 Codex session 按 eval skill 执行
 #   4. 进程崩溃 → resume Codex 诊断并恢复
-#   5. 进度停滞 → webhook 告警
+#   5. 进度停滞 → 写入 watchdog 日志
 #
 # 用法:
 #   nohup bash src/swiftvln/scripts/train/train_watchdog.sh [OPTIONS] &
@@ -27,14 +27,12 @@ set -euo pipefail
 #   --stall-threshold N      连续无进度 N 轮后告警（默认 40，即 ~20 分钟）
 #   --on-experiment-fail resume|skip  单实验失败时是否 resume Codex（默认 resume）
 #   --on-all-done eval|notify        全部完成时触发 eval 还是仅通知（默认 eval）
-#   --webhook true|false     是否发 webhook（默认 true）
 #   --codex-model MODEL      codex exec resume/exec 使用的模型（可选）
 #   --cleanup-days N         启动时清理 N 天前的 run 目录（默认 7）
 #   --remote-host HOST       远程主机 IP（如 10.246.152.73），tmux 操作走 SSH，codex 回调在本机执行
 #                            适用于：watchdog 在 98 上跑，监控 73 上的 tmux session
 #
 # 环境变量:
-#   WEBHOOK_URL              webhook 地址
 #   TRAIN_QUEUE_DIR          训练队列目录（默认 runtime/train_queue）
 #
 # Per-run 目录:
@@ -59,14 +57,12 @@ MAX_WAIT=86400
 STALL_THRESHOLD=40
 ON_EXPERIMENT_FAIL="resume"
 ON_ALL_DONE="eval"
-USE_WEBHOOK=true
 CODEX_MODEL=""
 CLEANUP_DAYS=7
 REMOTE_HOST=""
 CODEX_HOST=""   # 运行 codex CLI 的主机（默认本地；远程训练时设为安装了 codex 的服务器 IP）
 CODEX_BIN_PATH="/mnt/data1/home/jiangjiajun/.nvm/versions/node/v24.13.0/bin/codex"
 NODE_BIN_PATH="/mnt/data1/home/jiangjiajun/.nvm/versions/node/v24.13.0/bin/node"
-WEBHOOK_URL="${WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=503b5488-4d70-455d-a5b9-29fc8d7fb797}"
 TRAIN_QUEUE_DIR="${TRAIN_QUEUE_DIR:-${SWIFTVLN_ROOT}/runtime/train_queue}"
 EVAL_QUEUE_DIR="${EVAL_QUEUE_DIR:-${SWIFTVLN_ROOT}/runtime/eval_queue}"
 RUNS_DIR="${TRAIN_QUEUE_DIR}/runs"
@@ -83,7 +79,6 @@ while [[ $# -gt 0 ]]; do
         --stall-threshold)   STALL_THRESHOLD="$2";   shift 2 ;;
         --on-experiment-fail) ON_EXPERIMENT_FAIL="$2"; shift 2 ;;
         --on-all-done)       ON_ALL_DONE="$2";       shift 2 ;;
-        --webhook)           USE_WEBHOOK="$2";       shift 2 ;;
         --codex-model)       CODEX_MODEL="$2";       shift 2 ;;
         --cleanup-days)      CLEANUP_DAYS="$2";      shift 2 ;;
         --remote-host)       REMOTE_HOST="$2";       shift 2 ;;
@@ -132,16 +127,6 @@ tmux_capture_pane() {
     else
         tmux capture-pane -pt "$TMUX_SESSION" -S -"$lines" 2>/dev/null || echo "(无法获取 tmux 输出)"
     fi
-}
-
-send_webhook() {
-    local title="$1" body="$2"
-    [[ "$USE_WEBHOOK" != "true" ]] && return 0
-    local content="## ${title}\n${body}\nhost: ${HOSTNAME_SAFE}\ntime: $(date '+%Y-%m-%d %H:%M:%S')"
-    curl -sS -m 8 -X POST "$WEBHOOK_URL" \
-        -H "Content-Type: application/json" \
-        -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" \
-        >/dev/null 2>&1 || true
 }
 
 # ── Cleanup ─────────────────────────────────────────────────────────────────
@@ -393,7 +378,6 @@ while true; do
     if [[ $ELAPSED -ge $MAX_WAIT ]]; then
         log "Max wait ${MAX_WAIT}s reached"
         write_watchdog_result "timeout" "$ELAPSED"
-        send_webhook "Train Watchdog Timeout" "tmux=${TMUX_SESSION}\nhost=${HOSTNAME_SAFE}\nelapsed=$((ELAPSED/3600))h"
         if [[ -n "$CODEX_SESSION" ]]; then
             trigger_codex_resume "训练已运行超过 $((MAX_WAIT/3600)) 小时（tmux: ${TMUX_SESSION}，host: ${HOSTNAME_SAFE}），仍未结束。请检查训练进度，判断是否需要干预。"
         fi
@@ -430,7 +414,6 @@ while true; do
             # ── Crash ──
             err_ctx=""
             err_ctx=$(get_error_context)
-            send_webhook "Train Crashed" "host=${HOSTNAME_SAFE}\ntmux=${TMUX_SESSION}\nsuccess=${success_n}\nfailed=${fail_n}\nelapsed=$((ELAPSED/60))min"
             if [[ -n "$CODEX_SESSION" ]]; then
                 trigger_codex_resume "$(cat <<PROMPT
 训练进程异常退出（tmux: ${TMUX_SESSION}，host: ${HOSTNAME_SAFE}，运行 $((ELAPSED/60)) 分钟）。
@@ -450,8 +433,6 @@ PROMPT
 
         elif [[ $fail_n -gt 0 && "$ON_ALL_DONE" == "eval" ]]; then
             # ── Completed with some failures ──
-            send_webhook "Train Done (partial)" "host=${HOSTNAME_SAFE}\ntmux=${TMUX_SESSION}\nsuccess=${success_n}\nfailed=${fail_n}\nelapsed=$((ELAPSED/60))min"
-
             # Still trigger eval for successful models
             if [[ $success_n -gt 0 ]]; then
                 log "Triggering eval for $success_n successful models"
@@ -473,12 +454,10 @@ PROMPT
 
         elif [[ "$ON_ALL_DONE" == "eval" && $success_n -gt 0 ]]; then
             # ── All success → trigger eval ──
-            send_webhook "Train All Success" "host=${HOSTNAME_SAFE}\ntmux=${TMUX_SESSION}\nsuccess=${success_n}\nelapsed=$((ELAPSED/60))min"
             trigger_eval_for_completed_models
 
         else
-            # ── notify only ──
-            send_webhook "Train Done" "host=${HOSTNAME_SAFE}\ntmux=${TMUX_SESSION}\nsuccess=${success_n}\nfailed=${fail_n}\nelapsed=$((ELAPSED/60))min"
+            log "Train done: success=${success_n}, failed=${fail_n}, elapsed=$((ELAPSED/60))min"
         fi
 
         break
@@ -493,7 +472,6 @@ PROMPT
                 STALL_CYCLES=$((STALL_CYCLES + 1))
                 if [[ $STALL_CYCLES -ge $STALL_THRESHOLD && "$WARNED_STALL" != "true" ]]; then
                     log "WARNING: stalled for $((STALL_CYCLES * CHECK_INTERVAL))s at: $current_progress"
-                    send_webhook "Train Stall Warning" "host=${HOSTNAME_SAFE}\ntmux=${TMUX_SESSION}\nstalled_at=${current_progress}\nduration=$((STALL_CYCLES * CHECK_INTERVAL))s"
                     WARNED_STALL=true
                 fi
             else
