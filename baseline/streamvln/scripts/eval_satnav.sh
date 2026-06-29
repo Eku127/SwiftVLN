@@ -12,7 +12,13 @@
 #   --model_dir    Model root directory (default: output/streamvln-baseline)
 #   --gpus         Number of GPUs (default: 8)
 #   --max_episodes Limit episodes for debugging
+#   --vision_tower Optional local path or HF id for the vision tower
 #   --dry_run      Resolve paths and print launch config without running eval
+#
+# Model loading:
+#   The script passes <model_dir>/<model_name> directly to HuggingFace
+#   from_pretrained(). The model directory must contain config.json and
+#   safetensors/bin weights; checkpoint-* subdirectories are not used.
 #
 # Output:
 #   results/streamvln-baseline/<model_name>/<split>/
@@ -44,6 +50,7 @@ usage() {
     echo "Notes:"
     echo "  - Eval data and split come from baseline/streamvln/configs/satnav_task.yaml."
     echo "  - DATASET.DATA_PATH must be the eval split parent dir, e.g. .../episodes/eval."
+    echo "  - Vision tower is auto-resolved locally from model config; override with --vision_tower."
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,11 +72,104 @@ read_config_value() {
     ' "$SATNAV_CONFIG_TEMPLATE"
 }
 
+read_model_config_value() {
+    local key="$1"
+    python - "$MODEL_DIR/config.json" "$key" <<'PY'
+import json
+import sys
+
+config_path, key = sys.argv[1], sys.argv[2]
+with open(config_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+value = data.get(key, "")
+if value is None:
+    value = ""
+print(value)
+PY
+}
+
+resolve_local_or_remote_path() {
+    local configured_path="$1"
+    local override_path="$2"
+    local selected_path=""
+
+    if [ -n "$override_path" ]; then
+        selected_path="$override_path"
+    else
+        selected_path="$configured_path"
+    fi
+
+    if [ -z "$selected_path" ]; then
+        return 0
+    fi
+
+    if [ -d "$selected_path" ]; then
+        realpath "$selected_path"
+        return 0
+    fi
+
+    if [[ "$selected_path" != /* && -d "${REPO_ROOT}/${selected_path}" ]]; then
+        realpath "${REPO_ROOT}/${selected_path}"
+        return 0
+    fi
+
+    local basename_path="${selected_path##*/}"
+    local candidates=(
+        "${MODEL_DIR}/${basename_path}"
+        "${BASELINE_DIR}/model/${basename_path}"
+        "${REPO_ROOT}/output/model_zoo/baseline/${basename_path}"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if [ -d "$candidate" ]; then
+            realpath "$candidate"
+            return 0
+        fi
+    done
+
+    echo "$selected_path"
+}
+
+prepare_model_dir() {
+    local split="$1"
+    local model_load_dir="$MODEL_DIR"
+
+    if [ -z "$VISION_TOWER_PATH" ] || [ "$VISION_TOWER_PATH" = "$CONFIG_VISION_TOWER" ]; then
+        echo "$model_load_dir"
+        return 0
+    fi
+
+    local temp_model_dir="${BASELINE_DIR}/configs/.streamvln_model_eval_${split}_$$"
+    rm -rf "$temp_model_dir"
+    mkdir -p "$temp_model_dir"
+
+    find "$MODEL_DIR" -maxdepth 1 -mindepth 1 -exec ln -s {} "$temp_model_dir"/ \;
+    rm -f "${temp_model_dir}/config.json"
+
+    python - "$MODEL_DIR/config.json" "${temp_model_dir}/config.json" "$VISION_TOWER_PATH" <<'PY'
+import json
+import sys
+
+src, dst, vision_tower = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src, "r", encoding="utf-8") as f:
+    data = json.load(f)
+for key in ("mm_vision_tower", "vision_tower"):
+    if key in data:
+        data[key] = vision_tower
+with open(dst, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+
+    echo "$temp_model_dir"
+}
+
 # ---- Args ----
 MODEL_DIR_INPUT=""
 MODEL_NAME_ARG=""
 NUM_GPUS="8"
 MAX_EPISODES=""
+VISION_TOWER_INPUT=""
 DRY_RUN="false"
 
 while [ "$#" -gt 0 ]; do
@@ -88,6 +188,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --max_episodes|--max-episodes)
             MAX_EPISODES="${2:-}"
+            shift 2
+            ;;
+        --vision_tower|--vision-tower|--vision_tower_path|--vision-tower-path)
+            VISION_TOWER_INPUT="${2:-}"
             shift 2
             ;;
         --dry_run|--dry-run)
@@ -142,17 +246,34 @@ NUM_FRAMES="32"
 NUM_HISTORY="8"
 NUM_FUTURE_STEPS="4"
 
-# ---- Resolve checkpoint and output paths ----
+# ---- Resolve model and output paths ----
 MODEL_DIR="${MODEL_ROOT_DIR}/${EXP_NAME}"
 if [ ! -d "$MODEL_DIR" ]; then
     print_error "Model directory not found: ${MODEL_DIR}"
     exit 1
 fi
 
-CHECKPOINT_DIR=$(ls -d "${MODEL_DIR}"/checkpoint-* 2>/dev/null | sort -V | tail -1 || true)
-if [ -z "$CHECKPOINT_DIR" ]; then
-    print_error "No checkpoint-* directory found in: ${MODEL_DIR}"
+if [ ! -f "${MODEL_DIR}/config.json" ]; then
+    print_error "config.json not found in model directory: ${MODEL_DIR}"
     exit 1
+fi
+
+if ! find "${MODEL_DIR}" -maxdepth 1 -type f \( -name '*.safetensors' -o -name 'pytorch_model*.bin' \) | grep -q .; then
+    print_error "No safetensors/bin model weights found in model directory: ${MODEL_DIR}"
+    exit 1
+fi
+
+CONFIG_VISION_TOWER="$(read_model_config_value mm_vision_tower)"
+if [ -z "$CONFIG_VISION_TOWER" ]; then
+    CONFIG_VISION_TOWER="$(read_model_config_value vision_tower)"
+fi
+VISION_TOWER_PATH="$(resolve_local_or_remote_path "$CONFIG_VISION_TOWER" "$VISION_TOWER_INPUT")"
+if [ -n "$VISION_TOWER_PATH" ]; then
+    if [ -d "$VISION_TOWER_PATH" ]; then
+        print_info "Using local vision tower: ${VISION_TOWER_PATH}"
+    else
+        print_info "No local vision tower found for '${VISION_TOWER_PATH}', allowing Transformers to resolve/download it."
+    fi
 fi
 
 OUTPUT_BASE_DIR="${REPO_ROOT}/results/streamvln-baseline/${EXP_NAME}"
@@ -189,10 +310,10 @@ SATNAV_SCENES="${CONFIG_SCENES_DIR}"
 print_info "Using SatNav eval data root from config: ${CONFIG_DATA_PATH}"
 
 # ---- Tokenizer ----
-TOKENIZER_PATH="${CHECKPOINT_DIR}"
-if [ ! -f "${CHECKPOINT_DIR}/tokenizer_config.json" ]; then
+TOKENIZER_PATH="${MODEL_DIR}"
+if [ ! -f "${MODEL_DIR}/tokenizer_config.json" ]; then
     TOKENIZER_PATH="${BASELINE_DIR}/model/LLaVA-Video-7B-Qwen2"
-    print_info "No tokenizer in checkpoint, using local base model: ${TOKENIZER_PATH}"
+    print_info "No tokenizer in model directory, using local base model: ${TOKENIZER_PATH}"
 fi
 
 # ---- PYTHONPATH ----
@@ -213,9 +334,12 @@ run_single_split() {
     local satnav_episodes="${CONFIG_DATA_PATH%/}/${split}/all_episodes.json"
     local satnav_config="${BASELINE_DIR}/configs/.satnav_task_eval_${split}_$$.yaml"
     local output_dir="${OUTPUT_BASE_DIR}/${split}"
+    local model_load_dir
+    model_load_dir="$(prepare_model_dir "$split")"
 
     if [ ! -f "$satnav_episodes" ]; then
         print_error "Episodes file not found: ${satnav_episodes}"
+        [ "$model_load_dir" != "$MODEL_DIR" ] && rm -rf "$model_load_dir"
         return 1
     fi
 
@@ -231,8 +355,10 @@ run_single_split() {
     echo "StreamVLN Baseline Evaluation"
     echo "=========================================="
     echo "  EXP_NAME   : ${EXP_NAME}"
-    echo "  Checkpoint : ${CHECKPOINT_DIR}"
+    echo "  Model      : ${MODEL_DIR}"
+    [ "$model_load_dir" != "$MODEL_DIR" ] && echo "  ModelLoad  : ${model_load_dir}"
     echo "  Tokenizer  : ${TOKENIZER_PATH}"
+    [ -n "$VISION_TOWER_PATH" ] && echo "  Vision     : ${VISION_TOWER_PATH}"
     echo "  Config     : ${satnav_config}"
     echo "  Episodes   : ${satnav_episodes}"
     echo "  Scenes     : ${SATNAV_SCENES}"
@@ -248,12 +374,13 @@ run_single_split() {
 
     if [ "$DRY_RUN" = "true" ]; then
         rm -f "${satnav_config}"
+        [ "$model_load_dir" != "$MODEL_DIR" ] && rm -rf "$model_load_dir"
         print_success "Dry run completed for split=${split}."
         return 0
     fi
 
     COMMON_ARGS=(
-        --model_path "${CHECKPOINT_DIR}"
+        --model_path "${model_load_dir}"
         --tokenizer_path "${TOKENIZER_PATH}"
         --satnav_config_path "${satnav_config}"
         --eval_split "${split}"
@@ -268,24 +395,37 @@ run_single_split() {
         COMMON_ARGS+=(--max_episodes "${MAX_EPISODES}")
     fi
 
+    local eval_rc=0
     if [ "$NUM_GPUS" -gt 1 ]; then
-        "${TORCHRUN_CMD[@]}" \
+        if "${TORCHRUN_CMD[@]}" \
             --nproc_per_node="${NUM_GPUS}" \
             --master_port=$((RANDOM % 10000 + 20000)) \
             "${EVAL_SCRIPT}" \
             "${COMMON_ARGS[@]}" \
             --world_size "${NUM_GPUS}" \
-            2>&1 | tee "${output_dir}/eval.log"
+            2>&1 | tee "${output_dir}/eval.log"; then
+            eval_rc=0
+        else
+            eval_rc=$?
+        fi
     else
-        python "${EVAL_SCRIPT}" \
+        if python "${EVAL_SCRIPT}" \
             "${COMMON_ARGS[@]}" \
             --world_size 1 \
             --rank 0 \
             --gpu 0 \
-            2>&1 | tee "${output_dir}/eval.log"
+            2>&1 | tee "${output_dir}/eval.log"; then
+            eval_rc=0
+        else
+            eval_rc=$?
+        fi
     fi
 
     rm -f "${satnav_config}"
+    [ "$model_load_dir" != "$MODEL_DIR" ] && rm -rf "$model_load_dir"
+    if [ "$eval_rc" -ne 0 ]; then
+        return "$eval_rc"
+    fi
     print_success "Evaluation completed for split=${split}!"
     echo "  Results: ${output_dir}"
 }

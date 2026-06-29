@@ -50,6 +50,7 @@ baseline/navila/doc/setup_env_log.txt
 
 # Baseline eval generated temp configs
 baseline/*/configs/.satnav_task_eval_*.yaml
+baseline/streamvln/configs/.streamvln_model_eval_*/
 baseline/*/configs/.debug_eval*.yaml
 
 # Ignore pycache under baseline

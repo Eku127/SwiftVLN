@@ -10,7 +10,9 @@
 #   scratch             — start from LLaVA-Video-7B-Qwen2 base model
 #
 # Environment variables (all optional):
-#   SATNAV_VERSION   — Data version dir name, e.g. ver_260418 (default: ver_260418)
+#   SATNAV_DATASET   — Data dir name under satnav_datasets (default: SatNav-v0.1)
+#   SATNAV_VERSION   — Deprecated alias for SATNAV_DATASET, kept for old launchers
+#   SATNAV_TRAIN_DATA_DIR — Explicit trajectory_data dir override
 #   NUM_EPOCHS       — Training epochs (default: 1)
 #   LEARNING_RATE    — Learning rate (default: 2e-5)
 #   BATCH_SIZE       — Per-device batch size (default: 3)
@@ -27,7 +29,7 @@
 #   output/streamvln-baseline/smoketest/<EXP_NAME>/      (smoke test)
 #
 # EXP_NAME format:
-#   streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{ver}-bs{eff_bs}-lr{lr}-{timestamp}
+#   streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{dataset}-bs{eff_bs}-lr{lr}-{timestamp}
 #
 # Environment: conda env streamvln-baseline
 # ==============================================================================
@@ -49,18 +51,25 @@ REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
 TRAIN_SCRIPT="${BASELINE_DIR}/src/train_satnav.py"
 DEEPSPEED_CFG="${BASELINE_DIR}/configs/zero2.json"
 
-# ---- SatNav Data Version ----
+# ---- SatNav Data ----
 SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
-SATNAV_VERSION="${SATNAV_VERSION:-ver_260418}"
-echo "[INFO] Using SatNav version: ${SATNAV_VERSION}"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
+echo "[INFO] Using SatNav dataset: ${SATNAV_DATASET}"
 
-SATNAV_DATA_DIR="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/trajectory_data"
+SATNAV_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}"
 if [ ! -d "$SATNAV_DATA_DIR" ]; then
     echo "[ERROR] SatNav trajectory data not found: ${SATNAV_DATA_DIR}"
+    echo "[ERROR] StreamVLN training expects <dataset>/trajectory_data/annotations.json and image folders."
+    echo "[ERROR] Set SATNAV_DATASET or SATNAV_TRAIN_DATA_DIR if the training trajectory export lives elsewhere."
     exit 1
 fi
 
-VERSION_TAG="$(echo "$SATNAV_VERSION" | sed -E 's/^ver_//')"
+if [ ! -f "${SATNAV_DATA_DIR}/annotations.json" ]; then
+    echo "[ERROR] SatNav trajectory annotations not found: ${SATNAV_DATA_DIR}/annotations.json"
+    exit 1
+fi
+
+VERSION_TAG="$(echo "$SATNAV_DATASET" | sed -E 's/^ver_//; s/[^A-Za-z0-9._-]+/-/g')"
 
 # ---- Vision model (local copy to avoid network download) ----
 VISION_MODEL_VERSION="${BASELINE_DIR}/model/siglip-so400m-patch14-384"
@@ -156,7 +165,7 @@ echo "StreamVLN Baseline Training"
 echo "=========================================="
 echo "  Mode        : ${MODE}"
 echo "  Model       : ${MODEL_NAME_OR_PATH}"
-echo "  Data version: ${SATNAV_VERSION}"
+echo "  Dataset     : ${SATNAV_DATASET}"
 echo "  Data dir    : ${SATNAV_DATA_DIR}"
 echo "  Output      : ${OUTPUT_DIR}"
 echo "  EXP_NAME    : ${EXP_NAME}"
