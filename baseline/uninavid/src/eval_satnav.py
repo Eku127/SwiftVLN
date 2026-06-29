@@ -12,7 +12,7 @@ Design:
   - Supports resume from partial result.jsonl
 
 Run via:
-  bash scripts/eval_satnav.sh <exp_name_or_checkpoint_path> [split] [gpus] [max_episodes]
+  bash scripts/eval_satnav.sh --model_dir <model_root> --model_name <model_name> --gpus 8
 
 Environment: conda env uninavid-baseline (satnav installed via pip install -e /path/to/SatNav)
 """
@@ -38,6 +38,7 @@ if _SWIFTVLN_SRC not in sys.path:
 
 import re
 import json
+from typing import List, Optional
 import argparse
 import time
 
@@ -553,6 +554,7 @@ def write_rank_marker(
 def wait_for_rank_markers(
     output_path: str,
     world_size: int,
+    expected_ranks: Optional[List[int]] = None,
     timeout_seconds: int = 1800,
     poll_seconds: int = 5,
     verbose: bool = False,
@@ -561,10 +563,15 @@ def wait_for_rank_markers(
     os.makedirs(sync_dir, exist_ok=True)
     deadline = time.time() + timeout_seconds
     last_missing = None
+    ranks_to_wait = (
+        sorted(set(int(rank) for rank in expected_ranks))
+        if expected_ranks is not None
+        else list(range(world_size))
+    )
 
     while True:
         missing = []
-        for rank in range(world_size):
+        for rank in ranks_to_wait:
             marker = os.path.join(sync_dir, f"rank_{rank}.done.json")
             if not os.path.exists(marker):
                 missing.append(rank)
@@ -671,6 +678,7 @@ def aggregate_distributed(result_file: str, output_path: str, args) -> None:
         wait_for_rank_markers(
             output_path,
             args.world_size,
+            expected_ranks=getattr(args, "expected_result_ranks", None),
             timeout_seconds=1800,
             poll_seconds=5,
             verbose=True,
@@ -711,13 +719,27 @@ def evaluate(model, tokenizer, image_processor, args) -> None:
     for scene_id in sorted(scene_episode_dict.keys()):
         my_episodes.extend(scene_episode_dict[scene_id][rank::world_size])
 
+    expected_result_ranks = [
+        rank_id
+        for rank_id in range(world_size)
+        if any(
+            len(scene_episode_dict[scene_id][rank_id::world_size]) > 0
+            for scene_id in scene_episode_dict
+        )
+    ]
+    if not expected_result_ranks:
+        expected_result_ranks = [0]
+    args.expected_result_ranks = expected_result_ranks
+
     if is_main:
         print(
             f"[Eval] split={args.eval_split}, total={len(all_episodes)}, "
             f"this_rank={len(my_episodes)}, scenes={len(scene_episode_dict)}, "
-            f"world_size={world_size}"
+            f"world_size={world_size}, expected_result_ranks={expected_result_ranks}"
         )
         clear_rank_markers(args.output_path)
+    if world_size > 1:
+        distributed_barrier(args)
 
     # Resume support
     result_file = os.path.join(args.output_path, "result.jsonl")

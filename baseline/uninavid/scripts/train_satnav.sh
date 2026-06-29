@@ -5,6 +5,8 @@
 #   bash baseline/uninavid/scripts/train_satnav.sh [EXP_NAME]   # backward-compatible, defaults to continue
 #
 # Optional env overrides:
+#   SATNAV_DATASET=SatNav-v0.1
+#   SATNAV_TRAIN_DATA_DIR=...
 #   DATA_PATH=...
 #   VIDEO_FOLDER=...
 #   NUM_GPUS=8
@@ -37,8 +39,11 @@ VISION_TOWER="${BASELINE_DIR}/model/eva_vit_g.pth"
 IMAGE_PROCESSOR="${UNINAVID_REPO}/uninavid/processor/clip-patch14-224"
 DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero1.json}"
 
-DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data/annotations.json}"
-VIDEO_FOLDER="${VIDEO_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data}"
+SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
+SATNAV_TRAIN_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}"
+DATA_PATH="${DATA_PATH:-${SATNAV_TRAIN_DATA_DIR}/annotations.json}"
+VIDEO_FOLDER="${VIDEO_FOLDER:-${SATNAV_TRAIN_DATA_DIR}}"
 
 NUM_GPUS="${NUM_GPUS:-8}"
 TRAIN_BSZ="${TRAIN_BSZ:-24}"
@@ -89,9 +94,9 @@ case "${TRAIN_MODE}" in
         ;;
 esac
 
-VERSION_NUM="$(echo "${DATA_PATH}" | grep -oP 'ver_\K\d+' | head -1 || true)"
-if [[ -z "${VERSION_NUM}" ]]; then
-    VERSION_NUM="unknown"
+VERSION_TAG="$(echo "${SATNAV_DATASET}" | sed -E 's/^ver_//; s/[^A-Za-z0-9._-]+/-/g')"
+if [[ -z "${VERSION_TAG}" ]]; then
+    VERSION_TAG="unknown"
 fi
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
@@ -100,7 +105,7 @@ EFFECTIVE_BATCH_SIZE=$((TRAIN_BSZ * GRAD_ACCUM * NUM_GPUS))
 if [[ -n "${CUSTOM_EXP_NAME}" ]]; then
     EXP_NAME="${CUSTOM_EXP_NAME}"
 else
-    EXP_NAME="uninavid-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+    EXP_NAME="uninavid-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-data${VERSION_TAG}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 fi
 
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/uninavid-baseline/${EXP_NAME}"
@@ -152,6 +157,7 @@ conda activate uninavid-baseline
 echo "=========================================="
 echo "Uni-NaVid Baseline Training"
 echo "=========================================="
+echo "  Dataset     : ${SATNAV_DATASET}"
 echo "  Data path   : ${DATA_PATH}"
 echo "  Video dir   : ${VIDEO_FOLDER}"
 echo "  Output      : ${OUTPUT_DIR}"

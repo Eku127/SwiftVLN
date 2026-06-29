@@ -65,9 +65,8 @@ read_config_value() {
 CONFIG_SPLIT="$(read_config_value SPLIT)"
 CONFIG_DATA_PATH="$(read_config_value DATA_PATH)"
 
-DEFAULT_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
-TRAIN_WEBHOOK_URL="${TRAIN_WEBHOOK_URL:-${DEFAULT_WEBHOOK_URL}}"
-EVAL_WEBHOOK_URL="${EVAL_WEBHOOK_URL:-${DEFAULT_WEBHOOK_URL}}"
+TRAIN_WEBHOOK_URL="${TRAIN_WEBHOOK_URL:-}"
+EVAL_WEBHOOK_URL="${EVAL_WEBHOOK_URL:-}"
 
 PIPE_TS="$(date +%Y%m%d-%H%M%S)"
 PIPE_LOG="/tmp/streamvln_baseline_train_eval_${PIPE_TS}.log"
@@ -76,6 +75,9 @@ HOSTNAME_STR="$(hostname)"
 send_wecom_markdown() {
     local webhook_url="$1"
     local content="$2"
+    if [ -z "$webhook_url" ]; then
+        return 0
+    fi
     curl -sS -X POST "$webhook_url" \
       -H "Content-Type: application/json" \
       -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" >/dev/null || true
@@ -84,7 +86,11 @@ send_wecom_markdown() {
 extract_exp_name_from_log() {
     local log_path="$1"
     local exp_name
-    exp_name="$(rg 'EXP_NAME' "$log_path" | tail -1 | sed -E 's/.*EXP_NAME[[:space:]]*:[[:space:]]*//')"
+    if command -v rg >/dev/null 2>&1; then
+        exp_name="$(rg 'EXP_NAME' "$log_path" 2>/dev/null | tail -1 | sed -E 's/.*EXP_NAME[[:space:]]*:[[:space:]]*//')"
+    else
+        exp_name="$(grep -E 'EXP_NAME' "$log_path" 2>/dev/null | tail -1 | sed -E 's/.*EXP_NAME[[:space:]]*:[[:space:]]*//')"
+    fi
     if [ -n "$exp_name" ]; then
         echo "$exp_name"
         return 0

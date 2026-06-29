@@ -14,6 +14,10 @@
 import sys
 import os
 
+if os.environ.get("STREAMVLN_OFFLINE", "true").lower() in ("1", "true", "yes", "on"):
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 # ---------------------------------------------------------------
 # Make StreamVLN packages importable.
 # The streamvln-baseline conda env already has a .pth pointing here,
@@ -405,7 +409,8 @@ def get_model(model_args, training_args, data_args, bnb_model_from_pretrained_ar
     overwrite_config["mm_patch_merge_type"] = model_args.mm_patch_merge_type
 
     if overwrite_config:
-        assert cfg_pretrained is not None, "cfg_pretrained is None"
+        if cfg_pretrained is None:
+            cfg_pretrained = AutoConfig.from_pretrained(model_args.model_name_or_path)
         rank0_print(f"Overwriting config with {overwrite_config}")
         for k, v in overwrite_config.items():
             setattr(cfg_pretrained, k, v)

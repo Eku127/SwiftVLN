@@ -59,6 +59,18 @@ REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
 EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
 SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
 DEFAULT_MODEL_DIR="${REPO_ROOT}/output/streamvln-baseline"
+DEFAULT_STREAMVLN_PYTHON="/mnt/data1/home/jiangjiajun/miniconda3/envs/streamvln-baseline/bin/python"
+if [ -z "${PYTHON_BIN:-}" ]; then
+    if [ -x "$DEFAULT_STREAMVLN_PYTHON" ]; then
+        PYTHON_BIN="$DEFAULT_STREAMVLN_PYTHON"
+    else
+        PYTHON_BIN="$(command -v python3 || command -v python || true)"
+    fi
+fi
+if [ -z "$PYTHON_BIN" ]; then
+    print_error "python3/python not found; cannot read model config"
+    exit 1
+fi
 
 read_config_value() {
     local key="$1"
@@ -74,7 +86,7 @@ read_config_value() {
 
 read_model_config_value() {
     local key="$1"
-    python - "$MODEL_DIR/config.json" "$key" <<'PY'
+    "$PYTHON_BIN" - "$MODEL_DIR/config.json" "$key" <<'PY'
 import json
 import sys
 
@@ -146,7 +158,7 @@ prepare_model_dir() {
     find "$MODEL_DIR" -maxdepth 1 -mindepth 1 -exec ln -s {} "$temp_model_dir"/ \;
     rm -f "${temp_model_dir}/config.json"
 
-    python - "$MODEL_DIR/config.json" "${temp_model_dir}/config.json" "$VISION_TOWER_PATH" <<'PY'
+    "$PYTHON_BIN" - "$MODEL_DIR/config.json" "${temp_model_dir}/config.json" "$VISION_TOWER_PATH" <<'PY'
 import json
 import sys
 
@@ -325,8 +337,8 @@ ${BASELINE_DIR}:${PYTHONPATH:-}"
 if command -v torchrun >/dev/null 2>&1; then
     TORCHRUN_CMD=(torchrun)
 else
-    print_warning "torchrun not found, fallback to: python -m torch.distributed.run"
-    TORCHRUN_CMD=(python -m torch.distributed.run)
+    print_warning "torchrun not found, fallback to: ${PYTHON_BIN} -m torch.distributed.run"
+    TORCHRUN_CMD=("${PYTHON_BIN}" -m torch.distributed.run)
 fi
 
 run_single_split() {
@@ -409,7 +421,7 @@ run_single_split() {
             eval_rc=$?
         fi
     else
-        if python "${EVAL_SCRIPT}" \
+        if "${PYTHON_BIN}" "${EVAL_SCRIPT}" \
             "${COMMON_ARGS[@]}" \
             --world_size 1 \
             --rank 0 \

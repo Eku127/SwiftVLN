@@ -7,7 +7,7 @@ Design:
   - Supports distributed evaluation, resume from partial results, and summary export
 
 Run via:
-  bash scripts/eval_satnav.sh <exp_name_or_checkpoint_path> [split] [gpus] [max_episodes]
+  bash scripts/eval_satnav.sh --model_dir <model_root> --model_name <model_name> --gpus 8
 
 Environment: conda env navila-baseline
 """

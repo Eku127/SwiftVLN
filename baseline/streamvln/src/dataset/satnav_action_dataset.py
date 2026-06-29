@@ -56,6 +56,18 @@ from streamvln.dataset.vln_action_dataset import (
     pad_tensors,
 )
 
+def _read_positive_int_env(name: str):
+    raw_value = os.environ.get(name, "").strip()
+    if not raw_value:
+        return None
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer, got {raw_value!r}") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer, got {raw_value!r}")
+    return value
+
 
 class SatNavActionDataset(Dataset):
     """
@@ -94,12 +106,16 @@ class SatNavActionDataset(Dataset):
 
         # Support comma-separated list of video folders (same as original)
         self.video_folder = data_args.video_folder.split(",")
+        max_episodes = _read_positive_int_env("SATNAV_MAX_EPISODES")
+        max_samples = _read_positive_int_env("SATNAV_MAX_SAMPLES")
 
         # Load all annotations
         self.nav_data = []
         for vf in self.video_folder:
             anno_path = os.path.join(vf, "annotations.json")
             anno_json = json.load(open(anno_path, "r"))
+            if max_episodes is not None:
+                anno_json = anno_json[:max_episodes]
             for tdata in anno_json:
                 # Prepend video folder so video path is absolute
                 tdata["video"] = os.path.join(vf, tdata["video"])
@@ -135,6 +151,12 @@ class SatNavActionDataset(Dataset):
                     if n * self.num_frames == actions_len - valid_idx:
                         continue
                     self.data_list.append((ep_id, ins_id, n * self.num_frames, valid_idx))
+                    if max_samples is not None and len(self.data_list) >= max_samples:
+                        break
+                if max_samples is not None and len(self.data_list) >= max_samples:
+                    break
+            if max_samples is not None and len(self.data_list) >= max_samples:
+                break
 
         # Action index → symbol mapping (same as original)
         self.idx2actions = {

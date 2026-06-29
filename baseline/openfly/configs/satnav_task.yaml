@@ -1,4 +1,4 @@
-# SatNav VLN Task Configuration for NaVILA Baseline Evaluation
+# SatNav VLN Task Configuration for OpenFly Baseline Evaluation
 #
 # Keep in sync with other baseline SatNav configs.
 
@@ -13,10 +13,6 @@ SIMULATOR:
     WIDTH: 448
     HEIGHT: 448
     HFOV: 90
-  AERIAL:
-    API_KEY: "AIzaSyAvdA9uijk4A2IX0sYeMOc2Kv3dH7GpDRc"
-    BROWSER: chrome
-    HEADLESS: true
 
 TASK:
   TYPE: VLN
@@ -35,6 +31,9 @@ TASK:
 
 DATASET:
   TYPE: SatNav
-  SPLIT: val_seen
-  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/eval/val_seen/all_episodes.json
+  # all means the launcher evaluates val_seen and val_unseen.
+  SPLIT: all
+  # Eval split parent dir. The launcher resolves this to:
+  #   ${DATA_PATH}/${split}/all_episodes.json
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
   SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
