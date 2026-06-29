@@ -342,7 +342,7 @@ a) NUM_FRAMES=32           # 视频帧数
 b) NUM_HISTORY=8           # 历史帧数 (per_frame模式有效)
 c) NUM_FUTURE_STEPS=4      # 预测动作步数
 d) COMPRESS_STRIDE=2       # 压缩步长 (per_frame: 2=4x, 3=9x, 4=16x)
-e) NUM_OVERLAP=16          # 滑动窗口重叠帧数 (stride = num_frames - num_overlap)
+e) NUM_OVERLAP=0           # 滑动窗口重叠帧数 (0=禁用; stride = num_frames - num_overlap)
 f) NUM_EPOCHS=1            # 训练轮数
 g) LEARNING_RATE=2e-5      # 学习率
 h) BATCH_SIZE=8            # 批量大小
@@ -465,10 +465,20 @@ interactive_setup() {
 
     # 1. SwanLab 配置
     print_header "📊 Step 1: SwanLab 配置"
-    print_info "train_queue 现统一启用 SwanLab 记录实验"
-    read -p "SwanLab Project 名称 [${SWANLAB_PROJECT}]: " swanlab_project
-    SWANLAB_PROJECT=${swanlab_project:-$SWANLAB_PROJECT}
-    print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
+    print_info "SwanLab 默认状态: $([ "$USE_SWANLAB" = true ] && echo "启用" || echo "禁用")"
+    local swanlab_default="n"
+    [[ "$USE_SWANLAB" == true ]] && swanlab_default="Y"
+    read -p "启用 SwanLab 记录实验? [${swanlab_default}]: " swanlab_enable_input
+    swanlab_enable_input=${swanlab_enable_input:-$swanlab_default}
+    if [[ "$swanlab_enable_input" =~ ^[Yy]$ ]]; then
+        USE_SWANLAB=true
+        read -p "SwanLab Project 名称 [${SWANLAB_PROJECT}]: " swanlab_project
+        SWANLAB_PROJECT=${swanlab_project:-$SWANLAB_PROJECT}
+        print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
+    else
+        USE_SWANLAB=false
+        print_success "SwanLab: 禁用"
+    fi
 
     # 2. 选择模型
     print_header "🤖 Step 2: 选择训练模型"
