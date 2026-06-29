@@ -86,7 +86,7 @@ DATASET:
   # e.g. val_seen → eval/val_seen/all_episodes.json
   # If the resolved path does not exist, evaluation will fail with a clear error.
   # DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260115/episodes/MN_VLN_Episodes_2.5flash.json
-  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/eval/{split}/all_episodes.json
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval/{split}/all_episodes.json
   # DATA_PATH: /mnt/data1/home/jiangjiajun/workspace/SatNav/tests/test_data/satnav_debug_merged.json
   # DATA_PATH: /mnt/data1/home/jiangjiajun/workspace/SatNav/tests/test_data/satnav_dataset_merged_2.json
   
