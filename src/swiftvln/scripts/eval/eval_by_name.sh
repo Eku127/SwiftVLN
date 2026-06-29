@@ -21,14 +21,8 @@
 #   # SwiftVLN 评估 (GTC, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-123456
 #
-#   # SwiftVLN 评估 (Pixel Embed)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-initial-pixel-bs64-lr2e-5-123456
-#
 #   # SwiftVLN 评估 (Pose Embed, additive)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pose-bs64-lr2e-5-123456
-#
-#   # SwiftVLN 评估 (Pixel + Pose Embed)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pixel+pose-bs64-lr2e-5-123456
 #
 #   # SwiftVLN 评估 (SegmentGTC, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-bs64-lr2e-5-123456
@@ -124,7 +118,7 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # SwiftVLN (per_frame):   swiftvln-{env_type}-[qwen3vl-]{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
 # SwiftVLN (gtc):         swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
 # SwiftVLN (segment_gtc): swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
-#   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
+#   embed_slot: noembed | pose | posefilm | uav | pose+uav | posefilm+uav
 
 # ============================================================================
 # 解析环境类型 (从模型名中提取 env_type，兼容新旧格式)
@@ -152,7 +146,7 @@ parse_swiftvln_params() {
     # no-memory 示例:       swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
     # 新格式 (gtc):         swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
     # 新格式 (segment_gtc): swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
-    # embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
+    # embed_slot: noembed | pose | posefilm | uav | pose+uav | posefilm+uav
     # 注: -initial 是可选的，vanilla 模式下不显示（默认）
     
     local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
@@ -190,7 +184,6 @@ parse_swiftvln_params() {
     local use_random="false"
     local use_tome="false"
     local gtc_output_tokens=""
-    local use_pixel_embed="false"
     local use_pose_embed="false"
     local pose_fusion_method="additive"
     
@@ -237,28 +230,14 @@ parse_swiftvln_params() {
     fi
 
     # 解析 embedding enhancement slot
-    # 匹配顺序: pixel+posefilm > pixel+pose > posefilm > pose > pixel > noembed
-    if [[ "$name" == *"-pixel+posefilm-"* ]]; then
-        use_pixel_embed="true"
-        use_pose_embed="true"
-        pose_fusion_method="film"
-    elif [[ "$name" == *"-pixel+pose-"* ]]; then
-        use_pixel_embed="true"
-        use_pose_embed="true"
-        pose_fusion_method="additive"
-    elif [[ "$name" == *"-posefilm-"* ]]; then
-        use_pixel_embed="false"
+    # 匹配顺序: posefilm > pose > noembed
+    if [[ "$name" == *"-posefilm-"* ]]; then
         use_pose_embed="true"
         pose_fusion_method="film"
     elif [[ "$name" == *"-pose-"* ]]; then
-        use_pixel_embed="false"
         use_pose_embed="true"
         pose_fusion_method="additive"
-    elif [[ "$name" == *"-pixel-"* ]]; then
-        use_pixel_embed="true"
-        use_pose_embed="false"
     elif [[ "$name" == *"-noembed-"* ]]; then
-        use_pixel_embed="false"
         use_pose_embed="false"
     fi
     
@@ -281,7 +260,6 @@ parse_swiftvln_params() {
     echo "MAP_RENDER_PX=$map_render_px"
     echo "MAP_MASK_METHOD=$map_mask_method"
     echo "SYSTEM_PROMPT_SETTING=$system_prompt_setting"
-    echo "USE_PIXEL_EMBED=$use_pixel_embed"
     echo "USE_POSE_EMBED=$use_pose_embed"
     echo "POSE_FUSION_METHOD=$pose_fusion_method"
     echo "BATCH_SIZE=$batch_size"
@@ -348,7 +326,6 @@ if [ "$MODEL_ARCH" == "swiftvln" ]; then
         echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
         echo "USE_TOME:       ${USE_TOME:-false}"
     fi
-    echo "USE_PIXEL_EMBED: ${USE_PIXEL_EMBED:-false}"
     echo "USE_POSE_EMBED: ${USE_POSE_EMBED:-false}"
     if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
         echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
@@ -452,9 +429,6 @@ if [ "$CHECK_ONLY" == "true" ]; then
     fi
     if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
         echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
-    fi
-    if [ "$MODEL_ARCH" == "swiftvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
-        echo "USE_PIXEL_EMBED=${USE_PIXEL_EMBED}"
     fi
     if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
         echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
@@ -696,9 +670,6 @@ fi
 if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
     export SYSTEM_PROMPT_SETTING
 fi
-if [ "$MODEL_ARCH" == "swiftvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
-    export USE_PIXEL_EMBED
-fi
 if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
     export USE_POSE_EMBED
     export POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
@@ -752,7 +723,6 @@ if [ "$MODEL_ARCH" == "swiftvln" ]; then
         echo "USE_TOME:           ${USE_TOME:-false}"
     fi
     echo "SYSTEM_PROMPT:      ${SYSTEM_PROMPT_SETTING:-vanilla}"
-    echo "USE_PIXEL_EMBED:    ${USE_PIXEL_EMBED:-false}"
     echo "USE_POSE_EMBED:     ${USE_POSE_EMBED:-false}"
     if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
         echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"

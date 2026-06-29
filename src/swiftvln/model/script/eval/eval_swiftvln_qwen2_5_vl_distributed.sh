@@ -133,7 +133,6 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
 # Embedding enhancement (must match training checkpoint setup)
-USE_PIXEL_EMBED="${USE_PIXEL_EMBED:-false}"
 USE_POSE_EMBED="${USE_POSE_EMBED:-false}"
 USE_UAV_ADAPTER="${USE_UAV_ADAPTER:-false}"
 UAV_ADAPTER_PATH="${UAV_ADAPTER_PATH:-}"
@@ -249,7 +248,6 @@ elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc
     echo "  Num Segments: 8 (fixed)"
 fi
 echo "System Prompt:   ${SYSTEM_PROMPT_SETTING}"
-echo "Pixel Embed:     ${USE_PIXEL_EMBED}"
 echo "Pose Embed:      ${USE_POSE_EMBED} (fusion=${POSE_FUSION_METHOD}, norm_scale=${POSE_NORM_SCALE})"
 echo "UAV Adapter:     ${USE_UAV_ADAPTER} (path=${UAV_ADAPTER_PATH:-<none>}, type=${UAV_ADAPTER_TYPE}, scope=${UAV_ADAPTER_APPLY_SCOPE})"
 echo "Save Video:      ${SAVE_VIDEO}"
@@ -283,12 +281,8 @@ if [ "$MEMORY_METHOD" = "map" ]; then
         exit 1
     fi
     # Map images are synthesized top-down views, so RGB-frame embed
-    # enhancements (pixel / pose / uav_adapter) are not meaningful and must
+    # enhancements (pose / uav_adapter) are not meaningful and must
     # match the training-time constraint of staying disabled.
-    if [ "$USE_PIXEL_EMBED" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_PIXEL_EMBED=false."
-        exit 1
-    fi
     if [ "$USE_POSE_EMBED" = "true" ]; then
         echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
         exit 1
@@ -369,9 +363,6 @@ EVAL_CMD=(
     --map_mask_method "${MAP_MASK_METHOD}"
 )
 
-if [ "$USE_PIXEL_EMBED" = "true" ]; then
-    EVAL_CMD+=(--use_pixel_embed)
-fi
 if [ "$USE_POSE_EMBED" = "true" ]; then
     EVAL_CMD+=(--use_pose_embed --pose_fusion_method "${POSE_FUSION_METHOD}" --pose_norm_scale "${POSE_NORM_SCALE}")
 fi

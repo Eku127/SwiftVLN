@@ -168,16 +168,6 @@ class SwiftVLNTrainArguments(BaseVLNTrainArguments):
     # ==========================================================================
     # Embedding Enhancement
     # ==========================================================================
-    use_pixel_embed: bool = field(
-        default=False,
-        metadata={
-            "help": "Enable pixel coordinate embedding enhancement (MLP_xy). "
-                    "When enabled, adds learnable Fourier-encoded pixel coordinate embeddings "
-                    "to ViT features after visual encoding. Uses zero-initialization to ensure "
-                    "no behavior change at the start of training. Default: False."
-        }
-    )
-
     use_pose_embed: bool = field(
         default=False,
         metadata={

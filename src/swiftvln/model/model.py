@@ -258,7 +258,6 @@ except Exception:
 
 def _pop_embedding_options(kwargs):
     return {
-        'use_pixel_embed': kwargs.pop('use_pixel_embed', False),
         'use_pose_embed': kwargs.pop('use_pose_embed', False),
         'use_uav_adapter': kwargs.pop('use_uav_adapter', False),
         'uav_adapter_path': kwargs.pop('uav_adapter_path', ''),
@@ -275,7 +274,6 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
 
     from swiftvln.common.embedding_enhancement import create_embedding_pipeline
 
-    use_pixel_embed = options['use_pixel_embed']
     use_pose_embed = options['use_pose_embed']
     use_uav_adapter = options['use_uav_adapter']
     uav_adapter_path = options['uav_adapter_path']
@@ -288,7 +286,6 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
 
     model.embed_enhance = create_embedding_pipeline(
         embed_dim=embed_dim,
-        use_pixel_embed=use_pixel_embed,
         use_pose_embed=use_pose_embed,
         use_uav_adapter=use_uav_adapter,
         pose_fusion=pose_fusion_method,
@@ -314,7 +311,7 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
 
     # Try to restore embed_enhance weights from local checkpoint (if present).
     # This is needed at eval time when loading a finetuned checkpoint that
-    # contains trained enhancement parameters (e.g., pixel_embed weights).
+    # contains trained enhancement parameters.
     if not model.embed_enhance.is_empty and os.path.isdir(model_dir):
         _restore_enhancement_weights(model, model_dir)
 
@@ -338,10 +335,6 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
             model._modules.pop(alias_name, None)
         model.__dict__[alias_name] = value
 
-    if use_pixel_embed and 'pixel' in model.embed_enhance.enhancements:
-        _set_alias('pixel_embed', model.embed_enhance.enhancements['pixel'])
-    else:
-        _set_alias('pixel_embed', None)
     if use_pose_embed and 'pose' in model.embed_enhance.enhancements:
         _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
     else:
@@ -442,40 +435,6 @@ def _restore_enhancement_weights(model, model_dir: str):
                             enhancement_sd[key.replace(prefix, '', 1)] = f.get_tensor(key)
         except Exception as e:
             print(f"[SwiftVLN] Warning: failed to read embed_enhance weights from safetensors: {e}")
-    
-    # Also try legacy keys (pixel_embed.*) for backward compatibility with old checkpoints
-    if not enhancement_sd:
-        legacy_prefix = 'pixel_embed.'
-        legacy_shard_files = []
-        if os.path.isfile(index_path):
-            try:
-                with open(index_path, 'r', encoding='utf-8') as f:
-                    index_data = json.load(f)
-                weight_map = index_data.get('weight_map', {})
-                legacy_shard_files = sorted({
-                    shard for name, shard in weight_map.items()
-                    if name.startswith(legacy_prefix)
-                })
-            except Exception:
-                pass
-        elif os.path.isfile(os.path.join(model_dir, 'model.safetensors')):
-            legacy_shard_files = ['model.safetensors']
-        
-        if legacy_shard_files:
-            try:
-                from safetensors import safe_open
-                for shard in legacy_shard_files:
-                    shard_path = os.path.join(model_dir, shard)
-                    with safe_open(shard_path, framework='pt', device='cpu') as f:
-                        for key in f.keys():
-                            if key.startswith(legacy_prefix):
-                                # Map legacy pixel_embed.* -> enhancements.pixel.*
-                                new_key = 'enhancements.pixel.' + key.replace(legacy_prefix, '', 1)
-                                enhancement_sd[new_key] = f.get_tensor(key)
-                if enhancement_sd:
-                    print(f"[SwiftVLN] Found legacy pixel_embed.* keys, remapping to embed_enhance.*")
-            except Exception as e:
-                print(f"[SwiftVLN] Warning: failed to read legacy pixel_embed weights: {e}")
     
     if enhancement_sd:
         missing, unexpected = model.embed_enhance.load_state_dict(enhancement_sd, strict=False)

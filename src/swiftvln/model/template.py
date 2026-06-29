@@ -114,8 +114,6 @@ class SwiftVLNTemplateMixin:
     # History processor
     history_processor: Optional[HistoryProcessor] = None
     
-    # Pixel embedding enhancement (set by trainer)
-    use_pixel_embed: bool = False
     use_uav_adapter: bool = False
     
     def __init__(
@@ -684,7 +682,7 @@ class SwiftVLNTemplateMixin:
             all_image_embeds = visual_res
         
         # --- Embedding Enhancement Pipeline ---
-        # Apply embedding enhancements (pixel, pose, etc.) to ALL images
+        # Apply embedding enhancements to ALL images
         # This must happen BEFORE history compression so both history and current
         # images benefit from the learned enhancements
         if hasattr(model, 'embed_enhance') and not model.embed_enhance.is_empty:

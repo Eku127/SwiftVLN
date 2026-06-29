@@ -44,11 +44,9 @@ class SwiftVLNSft(BaseVLNSft):
             raise ValueError("SwiftVLN memory_method=map currently requires history_processor_type=per_frame.")
         if getattr(self.args, 'use_tome', False):
             raise ValueError("SwiftVLN memory_method=map currently requires use_tome=false.")
-        # Map images are not real camera views, so none of the RGB-frame embed
-        # enhancements (pixel / pose / uav_adapter) apply. Reject them early so
+        # Map images are not real camera views, so RGB-frame embed
+        # enhancements (pose / uav_adapter) do not apply. Reject them early so
         # users do not silently combine conflicting settings.
-        if getattr(self.args, 'use_pixel_embed', False):
-            raise ValueError("SwiftVLN memory_method=map requires use_pixel_embed=false.")
         if getattr(self.args, 'use_pose_embed', False):
             raise ValueError("SwiftVLN memory_method=map requires use_pose_embed=false.")
         if getattr(self.args, 'use_uav_adapter', False):
@@ -131,7 +129,6 @@ class SwiftVLNSft(BaseVLNSft):
             )
 
         # Configure embedding enhancement pipeline
-        use_pixel_embed = getattr(self.args, 'use_pixel_embed', False)
         use_pose_embed = getattr(self.args, 'use_pose_embed', False)
         use_uav_adapter = getattr(self.args, 'use_uav_adapter', False)
         uav_adapter_path = getattr(self.args, 'uav_adapter_path', '')
@@ -139,15 +136,12 @@ class SwiftVLNSft(BaseVLNSft):
         uav_adapter_apply_scope = getattr(self.args, 'uav_adapter_apply_scope', 'all_images')
         pose_fusion_method = getattr(self.args, 'pose_fusion_method', 'additive')
         pose_norm_scale = getattr(self.args, 'pose_norm_scale', 100.0)
-        self.template.use_pixel_embed = use_pixel_embed
         self.template.use_pose_embed = use_pose_embed
         self.template.use_uav_adapter = use_uav_adapter
 
         model = getattr(self, 'model', None)
         if model is not None:
             desired_enhancements = []
-            if use_pixel_embed:
-                desired_enhancements.append('pixel')
             if use_pose_embed:
                 desired_enhancements.append('pose')
             if use_uav_adapter:
@@ -172,7 +166,6 @@ class SwiftVLNSft(BaseVLNSft):
                 embed_dim = model.config.hidden_size
                 model.embed_enhance = create_embedding_pipeline(
                     embed_dim=embed_dim,
-                    use_pixel_embed=use_pixel_embed,
                     use_pose_embed=use_pose_embed,
                     use_uav_adapter=use_uav_adapter,
                     pose_fusion=pose_fusion_method,
@@ -213,10 +206,6 @@ class SwiftVLNSft(BaseVLNSft):
                     model._modules.pop(alias_name, None)
                 model.__dict__[alias_name] = value
 
-            if use_pixel_embed and hasattr(model.embed_enhance, 'enhancements') and 'pixel' in model.embed_enhance.enhancements:
-                _set_alias('pixel_embed', model.embed_enhance.enhancements['pixel'])
-            elif not hasattr(model, 'pixel_embed'):
-                _set_alias('pixel_embed', None)
             if use_pose_embed and hasattr(model.embed_enhance, 'enhancements') and 'pose' in model.embed_enhance.enhancements:
                 _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
             elif not hasattr(model, 'pose_embed'):

@@ -96,8 +96,6 @@ class SwiftVLNEval(BaseVLNEval):
                             help="[GTC] Temperature for soft assignment (lower = sharper)")
         parser.add_argument("--gtc_num_iterations", type=int, default=1,
                             help="[GTC] Number of soft k-means iterations")
-        parser.add_argument("--use_pixel_embed", action="store_true",
-                            help="Enable pixel coordinate embedding enhancement (must match training)")
         parser.add_argument("--use_pose_embed", action="store_true",
                             help="Enable pose embedding enhancement (must match training)")
         parser.add_argument("--use_uav_adapter", action="store_true",
@@ -134,8 +132,6 @@ class SwiftVLNEval(BaseVLNEval):
             extras['map_local_side_m'] = getattr(self.args, 'map_local_side_m', 400.0)
             extras['map_render_px'] = getattr(self.args, 'map_render_px', 448)
             extras['map_mask_method'] = getattr(self.args, 'map_mask_method', 'dilate20')
-        if hasattr(self.args, 'use_pixel_embed'):
-            extras['use_pixel_embed'] = self.args.use_pixel_embed
         if hasattr(self.args, 'use_pose_embed'):
             extras['use_pose_embed'] = self.args.use_pose_embed
         if hasattr(self.args, 'use_uav_adapter'):
@@ -177,7 +173,7 @@ class SwiftVLNEval(BaseVLNEval):
             pass
 
     def load_model(self):
-        """Load model and processor with optional pixel embedding module."""
+        """Load model and processor with optional embedding enhancements."""
         from swift.model import get_model_processor
 
         # Device mapping based on mode
@@ -192,7 +188,6 @@ class SwiftVLNEval(BaseVLNEval):
             torch_dtype=torch.bfloat16,
             device_map=device_map,
             attn_impl='flash_attn',
-            use_pixel_embed=getattr(self.args, 'use_pixel_embed', False),
             use_pose_embed=getattr(self.args, 'use_pose_embed', False),
             use_uav_adapter=getattr(self.args, 'use_uav_adapter', False),
             uav_adapter_path=getattr(self.args, 'uav_adapter_path', ''),

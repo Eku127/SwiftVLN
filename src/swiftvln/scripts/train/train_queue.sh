@@ -354,9 +354,8 @@ m) HISTORY_PROCESSOR_TYPE=per_frame  # 历史处理方式: per_frame(默认), gt
 n) GTC_OUTPUT_TOKENS=512   # GTC/SegmentGTC输出tokens数 (gtc/segment_gtc模式有效)
 o) LOG_BASE=1.0            # 历史采样分布 (per_frame: 1.0=均匀, >1.0=对数/更多近帧; NUM_HISTORY=0时忽略)
 p) SYSTEM_PROMPT_SETTING=vanilla  # System prompt策略: vanilla(默认) 或 initial
-q) USE_PIXEL_EMBED=false      # 像素坐标增强: true(开启) 或 false(关闭)
-r) USE_POSE_EMBED=false       # Pose增强: true(开启) 或 false(关闭)
-s) POSE_FUSION_METHOD=additive  # Pose融合方式: additive(默认) 或 film
+q) USE_POSE_EMBED=false       # Pose增强: true(开启) 或 false(关闭)
+r) POSE_FUSION_METHOD=additive  # Pose融合方式: additive(默认) 或 film
 # 说明: SwiftVLN 没有单独的 USE_MEMORY 开关；如需 no-memory，请用
 #       HISTORY_PROCESSOR_TYPE=per_frame + NUM_HISTORY=0
 EOF
@@ -381,7 +380,7 @@ expand_shortcodes() {
     declare -A mapping
     case "$model" in
         swiftvln)
-            mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="COMPRESS_STRIDE" [e]="NUM_OVERLAP" [f]="NUM_EPOCHS" [g]="LEARNING_RATE" [h]="BATCH_SIZE" [i]="FREEZE_VIT" [j]="FREEZE_LLM" [k]="FREEZE_ALIGNER" [l]="USE_TOME" [m]="HISTORY_PROCESSOR_TYPE" [n]="GTC_OUTPUT_TOKENS" [o]="LOG_BASE" [p]="SYSTEM_PROMPT_SETTING" [q]="USE_PIXEL_EMBED" [r]="USE_POSE_EMBED" [s]="POSE_FUSION_METHOD")
+            mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="COMPRESS_STRIDE" [e]="NUM_OVERLAP" [f]="NUM_EPOCHS" [g]="LEARNING_RATE" [h]="BATCH_SIZE" [i]="FREEZE_VIT" [j]="FREEZE_LLM" [k]="FREEZE_ALIGNER" [l]="USE_TOME" [m]="HISTORY_PROCESSOR_TYPE" [n]="GTC_OUTPUT_TOKENS" [o]="LOG_BASE" [p]="SYSTEM_PROMPT_SETTING" [q]="USE_POSE_EMBED" [r]="POSE_FUSION_METHOD")
             ;;
     esac
 

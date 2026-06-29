@@ -206,16 +206,10 @@ parse_embed_slot_from_model() {
         echo "-"
         return
     fi
-    if [[ "$name" == *"-pixel+posefilm-"* ]]; then
-        echo "pixel+posefilm"
-    elif [[ "$name" == *"-pixel+pose-"* ]]; then
-        echo "pixel+pose"
-    elif [[ "$name" == *"-posefilm-"* ]]; then
+    if [[ "$name" == *"-posefilm-"* ]]; then
         echo "posefilm"
     elif [[ "$name" == *"-pose-"* ]]; then
         echo "pose"
-    elif [[ "$name" == *"-pixel-"* ]]; then
-        echo "pixel"
     elif [[ "$name" == *"-noembed-"* ]]; then
         echo "noembed"
     else
@@ -368,7 +362,7 @@ interactive_setup() {
         echo "  swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456  # per_frame, random"
         echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-123456  # per_frame, no embed"
         echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-123456  # initial + pose"
-        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-123456  # pixel+pose"
+        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pose-bs64-lr2e-5-123456  # pose"
         echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-123456  # GTC, no embed"
         echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-bs64-lr2e-5-123456  # SegmentGTC"
         echo ""

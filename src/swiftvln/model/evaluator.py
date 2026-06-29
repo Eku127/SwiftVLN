@@ -240,10 +240,8 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
             if self.use_tome:
                 raise ValueError("SwiftVLN memory_method=map currently requires use_tome=false.")
             # Map images are synthesized top-down views, not real camera frames,
-            # so pixel / pose / uav_adapter embed enhancements are not meaningful
+            # so pose / uav_adapter embed enhancements are not meaningful
             # and must stay disabled to match the training-time constraint.
-            if getattr(self.args, 'use_pixel_embed', False):
-                raise ValueError("SwiftVLN memory_method=map requires use_pixel_embed=false.")
             if getattr(self.args, 'use_pose_embed', False):
                 raise ValueError("SwiftVLN memory_method=map requires use_pose_embed=false.")
             if getattr(self.args, 'use_uav_adapter', False):
@@ -299,9 +297,6 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
             hasattr(self.model, 'embed_enhance') and 
             not self.model.embed_enhance.is_empty
         )
-        # Backward compatibility alias
-        self.use_pixel_embed = self.has_embed_enhance
-        
         # ==========================================================================
         # Print configuration
         # ==========================================================================

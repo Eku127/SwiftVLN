@@ -260,12 +260,6 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 # Only has effect when MEMORY_METHOD=map.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
-# ---------- Embedding enhancement ----------
-# Pixel coordinate embedding enhancement (Fourier + MLP)
-# - false: disable (default)
-# - true: enable and train pixel embedding module
-USE_PIXEL_EMBED="${USE_PIXEL_EMBED:-false}"
-
 # Pose embedding enhancement (MLP, per-image pose injection)
 # - false: disable (default)
 # - true: enable and train pose embedding module
@@ -355,12 +349,8 @@ if [ "$MEMORY_METHOD" = "map" ]; then
         exit 1
     fi
     # Map images are synthesized top-down views, so RGB-frame embed
-    # enhancements (pixel / pose / uav_adapter) are not meaningful and must
+    # enhancements (pose / uav_adapter) are not meaningful and must
     # stay disabled to avoid silent semantic mismatches.
-    if [ "$USE_PIXEL_EMBED" = true ] || [ "$USE_PIXEL_EMBED" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_PIXEL_EMBED=false."
-        exit 1
-    fi
     if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
         echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
         exit 1
@@ -410,12 +400,9 @@ if [ "$SYSTEM_PROMPT_SETTING" != "vanilla" ]; then
     PROMPT_SUFFIX="-${SYSTEM_PROMPT_SETTING}"
 fi
 
-# Embedding enhancement suffix (pixel + pose combined in one slot)
+# Embedding enhancement suffix
 EMBED_SUFFIX="-noembed"
 _EMBED_PARTS=()
-if [ "$USE_PIXEL_EMBED" = true ] || [ "$USE_PIXEL_EMBED" = "true" ]; then
-    _EMBED_PARTS+=("pixel")
-fi
 if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
     if [ "$POSE_FUSION_METHOD" = "film" ]; then
         _EMBED_PARTS+=("posefilm")
@@ -549,7 +536,6 @@ fi
 echo "Overlap: num_overlap=$NUM_OVERLAP, window_stride=$WINDOW_STRIDE"
 echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with start_idx > 0"
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
-echo "Pixel Embed: $USE_PIXEL_EMBED"
 echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
 echo "UAV Adapter: $USE_UAV_ADAPTER (type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE)"
 [ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
@@ -696,7 +682,6 @@ torchrun \
     --num_overlap $NUM_OVERLAP \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
     $MEMORY_ARGS \
-    --use_pixel_embed $USE_PIXEL_EMBED \
     --use_pose_embed $USE_POSE_EMBED \
     --use_uav_adapter $USE_UAV_ADAPTER \
     --uav_adapter_path "$UAV_ADAPTER_PATH" \

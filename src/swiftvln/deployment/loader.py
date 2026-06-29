@@ -15,7 +15,6 @@ def load_swiftvln_policy(spec: SwiftVLNDeploySpec) -> SwiftVLNBaselinePolicy:
         torch_dtype=torch.bfloat16,
         device_map="auto",
         attn_impl="flash_attn",
-        use_pixel_embed=False,
         use_pose_embed=False,
         use_uav_adapter=False,
     )
