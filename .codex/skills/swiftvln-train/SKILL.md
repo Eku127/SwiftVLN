@@ -19,8 +19,7 @@ Related skills:
   - `NUM_OVERLAP>0` 时固定使用 stride-aligned tail window，不再提供 tail-adjust 控制参数
   - `SAVE_STEPS=1000`
   - `SAVE_TOTAL_LIMIT=1`
-  - SatNav 默认训练数据：`ver_260418`
-  - QA 默认路径：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl`
+  - SatNav 默认训练数据：`SatNav-v0.1`
   - 当前 0418 默认 eval split 口径：
     - `val_seen = 4574`
     - `val_unseen = 8756`
@@ -30,7 +29,8 @@ Related skills:
 - 主训练脚本默认 base model 仍是本地 `3B`：
   - `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
 - 如需训练 `7B`，现在可以直接通过环境变量覆盖，而不必改脚本默认值：
-  - `STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct`
+  - `BASE_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct`
+  - 或 `MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct`
   - 关键训练超参也支持 env 覆盖，如：
     - `BATCH_SIZE`
     - `LEARNING_RATE`
@@ -102,7 +102,6 @@ Before starting, confirm with the user:
 | Model(s) | `swiftvln` | `baseline`/ambiguous → `swiftvln` |
 | Environment | — | `satnav` or `habitat` |
 | Server(s) | — | One or more of: `98`, `73`, `17` |
-| QA mixed training | — | Whether to mix QA data |
 | Base model path | `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct` | Default script path; use this absolute local cache path to avoid ModelScope hub resolution |
 
 ---
@@ -137,7 +136,7 @@ Before starting, confirm with the user:
 ## Step 3 → Pin Dataset Version & Config
 
 1. Discover latest SatNav dataset under `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_*`.
-2. Resolve data paths (trajectory, QA).
+2. Resolve trajectory data paths.
 3. Verify offline base model: `test -d /mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct && echo OK`
    If missing, fail fast instead of falling back to a remote `model_id`.
 4. If user requests, sync `satnav_task.yaml` and `train_queue.sh`.

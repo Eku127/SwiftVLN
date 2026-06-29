@@ -12,7 +12,7 @@
 - Rename status（Updated: 2026-05-11）：
   - 主线 active 标识已切到 `swiftvln` / `SwiftVLN` / `SWIFTVLN`
   - 新训练输出默认写入 `output/swiftvln/<swiftvln-exp-name>`
-  - 新训练实验名不再包含 `stage1`、SatNav `data...` 版本标签、`-notailadj` 默认行为标签；末尾运行标识只保留 `HHMMSS`
+  - 新训练实验名不再包含旧阶段标签、SatNav `data...` 版本标签、`-notailadj` 默认行为标签；末尾运行标识只保留 `HHMMSS`
   - 旧本地输出已迁移：`output/overlapvln/*` 已改名并移动到 `output/swiftvln/*`
   - data4 archive legacy 模型目录已迁移：`/mnt/data4/jiangjiajun/archive/**/overlapvln*` 已改名为 `swiftvln*`
   - 主线按名评测只接受 `swiftvln-*`，默认结果路径为 `results/eval/swiftvln/<exp>/<split>/<timestamp>`
@@ -208,7 +208,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 主训练脚本默认 base model **仍是 3B**：
     - `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
   - 当前脚本已支持通过环境变量覆盖关键训练参数，而不修改默认值：
-    - `STAGE1_MODEL_PATH`
+    - `BASE_MODEL_PATH`
     - `MODEL_PATH`
     - `BATCH_SIZE`
     - `LEARNING_RATE`
@@ -264,7 +264,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `HISTORY_PROCESSOR_TYPE=per_frame`
     - `NUM_HISTORY=8`
     - `COMPRESS_STRIDE=2`
-    - no pixel/pose/uav embed
+    - no pose/uav embed
   - `zero3_offload` 在当前 17 环境会触发
     `AttributeError: 'DeepSpeedCPUAdam' object has no attribute 'ds_opt_adam'`，
     因此不作为默认选择。
@@ -337,7 +337,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - 当前仅支持 `vln_env_type=satnav`
     - 当前仅支持 `history_processor_type=per_frame`
     - 当前要求 `use_tome=false`
-    - **当前禁用所有 embed 增强**：`use_pixel_embed` / `use_pose_embed` / `use_uav_adapter` 必须同时为 `false`
+    - **当前禁用所有 embed 增强**：`use_pose_embed` / `use_uav_adapter` 必须同时为 `false`
       - 原因：map 是合成的俯视图，不是真实 RGB 相机帧，RGB-frame 对齐的 embed 语义不适用
       - 训练/评测在 `trainer._validate_memory_method` 与 `evaluator.__init__` 中硬校验，shell 脚本入口也会提前 `exit 1`
     - system prompt 仍复用统一的 `<history_memory>` 占位；只是视觉来源从历史帧切换为 `global map + local map`
@@ -1308,8 +1308,6 @@ Stage-B smoke / regression 测试：
 - Stage-B 单测：`tests/test_uav_adapter_enhancement.py`
 - Stage-B loader smoke：
   `src/swiftvln/model/script/test/test_uav_adapter_strategy.py`
-- 现有 pixel/pose loader smoke：
-  `src/swiftvln/model/script/test/test_pixel_embed_strategy.py`
 - 全模型导航 eval smoke 已通过（2026-04-07）：
   - 环境：`satnav`
   - 模式：`1 GPU / max_episodes=1 / val_seen`
@@ -1458,7 +1456,7 @@ Stage-A 当前验证状态（2026-04-03）：
     - `MODEL_FAMILY=qwen3_vl` -> `MODEL_TYPE=swiftvln_qwen3_vl`
     - Qwen3 默认 base model：
       `/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct`
-    - Qwen3 8B 可通过 `STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct` 覆盖
+    - Qwen3 8B 可通过 `BASE_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct` 或 `MODEL_PATH=...` 覆盖
   - 实验命名：
     - Qwen2.5 保持旧格式，不额外加 family tag
     - Qwen3 名字包含 `qwen3vl-`，例如 `swiftvln-satnav-qwen3vl-2b-...`
