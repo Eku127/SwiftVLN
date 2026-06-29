@@ -1,8 +1,8 @@
 # Landmark Navigation Failure Analysis Report
 
 **Date**: 2026-02-06  
-**Model**: SwiftVLN (swiftvln-satnav-stage1-3b, per_frame, log_base=2.0)
-**Best Model**: `swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-pf-h8-b2.0-pool-s2-bs64-lr2e-5-20260204-230157`
+**Model**: SwiftVLN (swiftvln-satnav-3b, per_frame, log_base=2.0)
+**Best Model**: `swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b2.0-pool-s2-bs64-lr2e-5-20260204-230157`
 
 ## 1. 问题概述
 
@@ -137,7 +137,6 @@ Boundary任务的闭环特性使得模型可以"大致跟随边界"就能成功�
 
 ### 4.2 增强视觉Grounding（优先级：高）
 - 在训练数据中加入更多视觉Landmark识别的样本
-- 考虑增加QA混合训练，让模型学会识别卫星图中的地物
 - 训练时增加距离感知的数据增强
 
 ### 4.3 改进Landmark训练数据质量（优先级：高）

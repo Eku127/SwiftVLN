@@ -60,7 +60,7 @@ AUTO_ENQUEUE_EVAL="${AUTO_ENQUEUE_EVAL:-true}"
 EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL="${EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL:-false}"
 EVAL_ENQUEUE_RETRIES="${EVAL_ENQUEUE_RETRIES:-3}"
 EVAL_ENQUEUE_RETRY_SLEEP="${EVAL_ENQUEUE_RETRY_SLEEP:-3}"
-USE_SWANLAB=true
+USE_SWANLAB="${USE_SWANLAB:-false}"
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
 SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
 TRAIN_CUDA_DEVICES="${TRAIN_CUDA_DEVICES:-}"
@@ -74,11 +74,6 @@ MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
 MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
 MAP_RENDER_PX="${MAP_RENDER_PX:-448}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
-
-# QA 混合训练配置
-USE_QA_MIXED_TRAINING=false
-QA_RATIO=0.15
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl"
 
 send_webhook() {
     local title="$1"
@@ -439,13 +434,12 @@ interactive_setup() {
     # and skip the interactive wizard entirely.
     #
     # The file must define (at minimum):
-    #   EXPERIMENTS=("model|config|changes|ds_names|ds_paths||qa_ratio" ...)
+    #   EXPERIMENTS=("model|config|changes|ds_names|ds_paths" ...)
     #   ENV_TYPE="satnav"      (or "habitat")
     #
     # Optional:
-    #   SWANLAB_PROJECT="YourProject"   # train_queue 默认强制启用 SwanLab
-    #   USE_QA_MIXED_TRAINING="false"
-    #   QA_DATASET="..."
+    #   USE_SWANLAB="true"
+    #   SWANLAB_PROJECT="YourProject"
     if [[ -n "${TRAIN_EXPERIMENTS_FILE:-}" ]]; then
         if [[ ! -f "$TRAIN_EXPERIMENTS_FILE" ]]; then
             print_error "TRAIN_EXPERIMENTS_FILE 指定的文件不存在: $TRAIN_EXPERIMENTS_FILE"
@@ -454,7 +448,7 @@ interactive_setup() {
         print_info "非交互模式：从文件加载实验配置 → $TRAIN_EXPERIMENTS_FILE"
         # shellcheck source=/dev/null
         source "$TRAIN_EXPERIMENTS_FILE"
-        USE_SWANLAB="${USE_SWANLAB:-true}"
+        USE_SWANLAB="${USE_SWANLAB:-false}"
         SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
         if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
             print_error "TRAIN_EXPERIMENTS_FILE 加载后 EXPERIMENTS 数组为空，请检查文件内容"
@@ -627,7 +621,7 @@ interactive_setup() {
         fi
     else
         # SatNav 环境
-        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data"
+        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data"
         echo "默认 SatNav 数据路径:"
         echo "  $default_satnav_path"
         echo ""
@@ -647,77 +641,6 @@ interactive_setup() {
         fi
         IFS='|' read -r _ satnav_path <<< "${DATASET_CONFIGS[0]}"
         print_success "数据集: SatNav ($satnav_path)"
-    fi
-
-    # 4.5. QA 混合训练配置 (仅 SatNav 环境)
-    # QA_RATIOS 数组存储所有要测试的比例，0 表示不使用 QA
-    QA_RATIOS=()
-
-    if [[ "$ENV_TYPE" == "satnav" ]]; then
-        print_header "🔀 Step 4.5: QA 混合训练配置"
-        echo "QA 数据可以帮助模型更好地理解地标和位置"
-        echo "QA 数据路径: $QA_DATASET"
-        echo ""
-        echo "QA_RATIO 说明: 控制 QA 数据在训练集中的比例"
-        echo "  0    = 不使用 QA (仅 VLN)"
-        echo "  0.15 = 15% QA + 85% VLN (推荐)"
-        echo "  0.20 = 20% QA + 80% VLN"
-        echo ""
-        echo -e "${YELLOW}提示: 可输入多个比例用分号分隔，将分别训练${NC}"
-        echo "  示例: 0;0.15 = 分别训练 [无QA] 和 [15% QA] 两个版本"
-        echo ""
-        read -p "输入 QA 比例 [0.15]: " qa_ratio_input
-        qa_ratio_input=${qa_ratio_input:-0.15}
-
-        # 解析多个比例（分号分隔）
-        IFS=';' read -ra ratio_inputs <<< "$qa_ratio_input"
-        for ratio in "${ratio_inputs[@]}"; do
-            # trim 空白字符
-            ratio=$(echo "$ratio" | tr -d '[:space:]')
-            # 跳过空字符串
-            [[ -z "$ratio" ]] && continue
-            # 验证输入是有效数字（0, 1, 0.xx, .xx 格式）
-            if [[ "$ratio" =~ ^[0-9]*\.?[0-9]+$ ]]; then
-                # 检查范围 0-1 (使用 awk 替代 bc)
-                if awk "BEGIN {exit !($ratio >= 0 && $ratio <= 1)}"; then
-                    QA_RATIOS+=("$ratio")
-                else
-                    print_warning "无效的比例值: $ratio (应在 0-1 范围内)"
-                fi
-            else
-                print_warning "无效的比例值: $ratio (已跳过)"
-            fi
-        done
-
-        # 如果没有有效的比例，使用默认值
-        if [[ ${#QA_RATIOS[@]} -eq 0 ]]; then
-            QA_RATIOS=("0.15")
-            print_warning "未输入有效比例，使用默认 0.15"
-        fi
-
-        # 显示配置
-        if [[ ${#QA_RATIOS[@]} -eq 1 ]]; then
-            local ratio="${QA_RATIOS[0]}"
-            if [[ "$ratio" == "0" ]]; then
-                print_success "QA 混合训练: 禁用 (仅 VLN)"
-            else
-                local qa_pct=$(awk "BEGIN {printf \"%.0f\", $ratio * 100}")
-                print_success "QA 混合训练: 启用 (${qa_pct}% QA)"
-            fi
-        else
-            print_success "QA 混合训练: ${#QA_RATIOS[@]} 组配置"
-            for ratio in "${QA_RATIOS[@]}"; do
-                if [[ "$ratio" == "0" ]]; then
-                    echo "  - 无 QA (仅 VLN)"
-                else
-                    local qa_pct=$(awk "BEGIN {printf \"%.0f\", $ratio * 100}")
-                    echo "  - ${qa_pct}% QA + $((100 - qa_pct))% VLN"
-                fi
-            done
-        fi
-    else
-        # 非 satnav 环境不使用 QA
-        QA_RATIOS=("0")
     fi
 
     # 配置实验参数
@@ -752,14 +675,12 @@ interactive_setup() {
                 done
             fi
 
-            # 组合模型配置、数据集配置与 QA 比例
+            # 组合模型配置与数据集配置
             for model_cfg in "${model_configs[@]}"; do
                 changes=$(get_experiment_changes "$model_cfg")
                 for ds_config in "${DATASET_CONFIGS[@]}"; do
                     IFS='|' read -r ds_names ds_paths <<< "$ds_config"
-                    for qa_ratio in "${QA_RATIOS[@]}"; do
-                        EXPERIMENTS+=("${model}|${model_cfg}|${changes}|${ds_names}|${ds_paths}||${qa_ratio}")
-                    done
+                    EXPERIMENTS+=("${model}|${model_cfg}|${changes}|${ds_names}|${ds_paths}")
                 done
             done
         done
@@ -776,19 +697,6 @@ interactive_setup() {
 }
 
 # ============================================================================
-# 格式化 QA 比例显示
-# ============================================================================
-format_qa_ratio() {
-    local ratio="$1"
-    if [[ "$ratio" == "0" ]]; then
-        echo "无QA"
-    else
-        local pct=$(awk "BEGIN {printf \"%.0f\", $ratio * 100}")
-        echo "QA${pct}%"
-    fi
-}
-
-# ============================================================================
 # 显示实验汇总
 # ============================================================================
 show_summary() {
@@ -799,31 +707,22 @@ show_summary() {
     echo -e "${BOLD}基础配置:${NC}"
     echo "  SwanLab:    $([ "$USE_SWANLAB" = true ] && echo "启用 ($SWANLAB_PROJECT)" || echo "禁用")"
     echo "  环境类型:   $ENV_TYPE"
-    if [[ "$ENV_TYPE" == "satnav" && ${#QA_RATIOS[@]} -gt 0 ]]; then
-        echo -n "  QA配置:     "
-        local qa_display=""
-        for r in "${QA_RATIOS[@]}"; do
-            qa_display+="$(format_qa_ratio "$r"), "
-        done
-        echo "${qa_display%, }"
-    fi
     echo ""
 
     echo -e "${BOLD}实验列表 (共 ${#EXPERIMENTS[@]} 个实验):${NC}"
 
-    echo "┌────┬──────────────┬──────────────────────────────────────┬──────────────────────┬────────┐"
-    echo "│ #  │ 模型         │ 配置改动                             │ 数据集               │ QA     │"
-    echo "├────┼──────────────┼──────────────────────────────────────┼──────────────────────┼────────┤"
+    echo "┌────┬──────────────┬──────────────────────────────────────┬──────────────────────┐"
+    echo "│ #  │ 模型         │ 配置改动                             │ 数据集               │"
+    echo "├────┼──────────────┼──────────────────────────────────────┼──────────────────────┤"
 
     local idx=1
     for exp in "${EXPERIMENTS[@]}"; do
-        IFS='|' read -r model config changes ds_names ds_paths _unused_path qa_ratio <<< "$exp"
-        local qa_display=$(format_qa_ratio "$qa_ratio")
-        printf "│ %-2d │ %-12s │ %-36s │ %-20s │ %-6s │\n" "$idx" "$model" "${changes:0:36}" "${ds_names:0:20}" "$qa_display"
+        IFS='|' read -r model config changes ds_names ds_paths <<< "$exp"
+        printf "│ %-2d │ %-12s │ %-36s │ %-20s │\n" "$idx" "$model" "${changes:0:36}" "${ds_names:0:20}"
         ((idx++))
     done
 
-    echo "└────┴──────────────┴──────────────────────────────────────┴──────────────────────┴────────┘"
+    echo "└────┴──────────────┴──────────────────────────────────────┴──────────────────────┘"
 }
 
 # ============================================================================
@@ -836,7 +735,6 @@ run_experiment() {
     local changes=$4
     local ds_names=$5
     local ds_paths=$6
-    local qa_ratio=$8
 
     if [[ "$model" != "swiftvln" ]]; then
         print_error "当前主线 train_queue 仅支持 swiftvln，收到不受支持的模型: $model"
@@ -847,7 +745,6 @@ run_experiment() {
     echo "配置: $changes"
     echo "数据集: $ds_names"
     echo "环境: $ENV_TYPE"
-    echo "QA 配置: $(format_qa_ratio "$qa_ratio")"
     if [[ -n "$TRAIN_CUDA_DEVICES" ]]; then
         echo "GPU 配置: TRAIN_CUDA_DEVICES=$TRAIN_CUDA_DEVICES"
     elif [[ -n "$TRAIN_NUM_GPUS" ]]; then
@@ -909,21 +806,6 @@ run_experiment() {
         sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=true/" "$temp_script"
     else
         sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=false/" "$temp_script"
-    fi
-
-    # 修改 QA 混合训练配置 (根据实验的 qa_ratio)
-    if [[ -n "$qa_ratio" && "$qa_ratio" != "0" ]]; then
-        sed -i "s/^USE_QA_MIXED_TRAINING=.*/USE_QA_MIXED_TRAINING=true/" "$temp_script"
-        sed -i "s/^QA_RATIO=.*/QA_RATIO=$qa_ratio/" "$temp_script"
-        print_info "QA 混合训练: 启用 (比例: $(format_qa_ratio "$qa_ratio"))"
-    else
-        sed -i "s/^USE_QA_MIXED_TRAINING=.*/USE_QA_MIXED_TRAINING=false/" "$temp_script"
-        print_info "QA 混合训练: 禁用"
-    fi
-
-    if [[ -n "$QA_DATASET" ]]; then
-        sed -i "s|^QA_DATASET=.*|QA_DATASET=\"$QA_DATASET\"|" "$temp_script"
-        print_info "QA 数据集: $QA_DATASET"
     fi
 
     if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
@@ -1069,8 +951,8 @@ if meta:
 " 2>/dev/null || true
         fi
 
-        # 格式: idx|model|changes|ds_names|status|duration|exp_name|reserved|qa_ratio
-        EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|SUCCESS|$duration_str|$exp_name||$qa_ratio")
+        # 格式: idx|model|changes|ds_names|status|duration|exp_name
+        EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|SUCCESS|$duration_str|$exp_name")
         if [[ "$dry_run_completed" == "true" ]]; then
             print_success "实验 $exp_idx Dry Run 完成! 耗时: $duration_str"
             _emit_train_event "EXPERIMENT_DRY_RUN_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${run_log_file}|$(date -Iseconds)"
@@ -1087,7 +969,7 @@ if meta:
         local error_msg=$(tail -50 "$run_log_file" | grep -iE "(error|oom|cuda|exception)" | head -5)
         error_msg=${error_msg:-"未知错误"}
 
-        EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|FAILED|--|--||$qa_ratio")
+        EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|FAILED|--|--")
         EXP_ERRORS+=("实验 $exp_idx ($model): $error_msg")
         print_error "实验 $exp_idx 失败!"
         send_webhook "Train Failed" "experiment=${exp_idx}\nmodel=${model}\nerror=${error_msg}\nlog=${run_log_file}\nattempted_fixes=${attempted_fixes:-none}\nresult=marked FAILED and continue queue"
@@ -1125,27 +1007,17 @@ show_final_results() {
         echo "基础配置:"
         echo "  SwanLab:    $([ "$USE_SWANLAB" = true ] && echo "启用 ($SWANLAB_PROJECT)" || echo "禁用")"
         echo "  环境类型:   $ENV_TYPE"
-        if [[ "$ENV_TYPE" == "satnav" && ${#QA_RATIOS[@]} -gt 0 ]]; then
-            echo -n "  QA配置:     "
-            local qa_display=""
-            for r in "${QA_RATIOS[@]}"; do
-                qa_display+="$(format_qa_ratio "$r"), "
-            done
-            echo "${qa_display%, }"
-        fi
         echo ""
-        echo "┌────┬──────────────┬──────────────────────────────────────┬──────────────────────┬────────┬─────────┬──────────┐"
-        echo "│ #  │ 模型         │ 配置改动                             │ 数据集               │ QA     │ 状态    │ 耗时     │"
-        echo "├────┼──────────────┼──────────────────────────────────────┼──────────────────────┼────────┼─────────┼──────────┤"
+        echo "┌────┬──────────────┬──────────────────────────────────────┬──────────────────────┬─────────┬──────────┐"
+        echo "│ #  │ 模型         │ 配置改动                             │ 数据集               │ 状态    │ 耗时     │"
+        echo "├────┼──────────────┼──────────────────────────────────────┼──────────────────────┼─────────┼──────────┤"
 
         for result in "${EXP_RESULTS[@]}"; do
-            IFS="|" read -r idx model changes ds_names status duration exp_name _reserved qa_ratio <<< "$result"
-            local qa_display
-            qa_display=$(format_qa_ratio "$qa_ratio")
-            printf "│ %-2s │ %-12s │ %-36s │ %-20s │ %-6s │ %-7s │ %-8s │\n" "$idx" "$model" "${changes:0:36}" "${ds_names:0:20}" "$qa_display" "$status" "$duration"
+            IFS="|" read -r idx model changes ds_names status duration exp_name <<< "$result"
+            printf "│ %-2s │ %-12s │ %-36s │ %-20s │ %-7s │ %-8s │\n" "$idx" "$model" "${changes:0:36}" "${ds_names:0:20}" "$status" "$duration"
         done
 
-        echo "└────┴──────────────┴──────────────────────────────────────┴──────────────────────┴────────┴─────────┴──────────┘"
+        echo "└────┴──────────────┴──────────────────────────────────────┴──────────────────────┴─────────┴──────────┘"
         echo ""
         echo "统计: 成功 $success_count / 失败 $fail_count / 总计 ${#EXP_RESULTS[@]}"
 
@@ -1164,7 +1036,7 @@ show_final_results() {
         echo "成功实验输出目录"
         echo "════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
         for result in "${EXP_RESULTS[@]}"; do
-            IFS="|" read -r idx model changes ds_names status duration exp_name _reserved _qa <<< "$result"
+            IFS="|" read -r idx model changes ds_names status duration exp_name <<< "$result"
             if [[ "$status" == "SUCCESS" ]]; then
                 echo "  • 实验 $idx ($model, $ds_names): output/${model}/${exp_name}"
             fi
@@ -1190,7 +1062,7 @@ _write_train_completion_status() {
 
     local success_list="" failed_list=""
     for result in "${EXP_RESULTS[@]}"; do
-        IFS='|' read -r _idx _model _changes _ds _status _dur exp_name _base _qa <<< "$result"
+        IFS='|' read -r _idx _model _changes _ds _status _dur exp_name <<< "$result"
         if [[ "$_status" == "SUCCESS" ]]; then
             [[ -n "$success_list" ]] && success_list="${success_list},"
             success_list="${success_list}\"${exp_name}\""
@@ -1254,7 +1126,7 @@ main() {
     local total=${#EXPERIMENTS[@]}
 
     for exp in "${EXPERIMENTS[@]}"; do
-        IFS='|' read -r model config changes ds_names ds_paths _unused_path qa_ratio <<< "$exp"
+        IFS='|' read -r model config changes ds_names ds_paths <<< "$exp"
 
         echo ""
         echo -e "${BOLD}════════════════════════════════════════════════════════════════${NC}"
@@ -1262,7 +1134,7 @@ main() {
         echo -e "${BOLD}════════════════════════════════════════════════════════════════${NC}"
 
         # 运行实验
-        run_experiment "$exp_idx" "$model" "$config" "$changes" "$ds_names" "$ds_paths" "" "$qa_ratio" || true
+        run_experiment "$exp_idx" "$model" "$config" "$changes" "$ds_names" "$ds_paths" || true
 
         # 如果不是最后一个实验，等待GPU清空
         if [[ $exp_idx -lt $total ]]; then

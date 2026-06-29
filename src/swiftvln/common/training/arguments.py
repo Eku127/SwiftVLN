@@ -3,7 +3,6 @@
 Base VLN Training Arguments
 
 Provides common training arguments used across all VLN variants (StreamVLN, CompressVLN, SwiftVLN).
-Includes QA mixed training parameters that can be shared.
 """
 
 from dataclasses import dataclass, field
@@ -16,10 +15,9 @@ from swift.arguments import SftArguments as TrainArguments
 class BaseVLNTrainArguments(TrainArguments):
     """
     Base VLN training arguments.
-    
+
     Contains parameters shared across all VLN variants:
     - Basic VLN parameters (num_frames, num_history, etc.)
-    - QA mixed training parameters
     """
     
     # ============================================================================
@@ -41,7 +39,6 @@ class BaseVLNTrainArguments(TrainArguments):
         default=False, 
         metadata={"help": "Use random sampling for history (false=uniform)"}
     )
-    
     # Environment type: determines forward distance in prompts
     vln_env_type: str = field(
         default="habitat",
@@ -50,39 +47,9 @@ class BaseVLNTrainArguments(TrainArguments):
                     "This affects the action description in prompts."
         }
     )
-    
+
     # Limit dataset size
     vln_max_samples: Optional[int] = field(
-        default=None, 
+        default=None,
         metadata={"help": "Limit number of VLN training samples"}
-    )
-    
-    # ============================================================================
-    # QA Mixed Training Parameters
-    # ============================================================================
-    qa_dataset: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "Path to QA dataset (jsonl format) for mixed training with VLN data. "
-                    "The QA dataset should be in ms-swift standard format with 'messages' and 'images' fields. "
-                    "When provided, VLN and QA data will be interleaved during training. "
-                    "Example: /path/to/qa_swift.jsonl"
-        }
-    )
-    
-    qa_ratio: float = field(
-        default=0.2,
-        metadata={
-            "help": "Ratio of QA samples in each training batch when mixed training is enabled. "
-                    "For example, 0.2 means 20%% QA samples and 80%% VLN samples. "
-                    "Only effective when qa_dataset is provided. Default: 0.2"
-        }
-    )
-    
-    qa_max_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "Maximum number of QA samples to use. If None or 0, use all available samples. "
-                    "Useful for balancing dataset sizes when VLN data is much larger/smaller than QA data."
-        }
     )

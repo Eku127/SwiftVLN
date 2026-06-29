@@ -86,9 +86,6 @@ def infer_plan(model_name: str, model_type: str) -> str:
         # Additive modifiers stacked on top of the base method
         if "-initial-" in model_name:
             base += " + initial"
-        m_qa = re.search(r"-qa(\d+)(?:-|$)", model_name)
-        if m_qa:
-            base += f" + qa{m_qa.group(1)}"
         return base
 
     if model_type in ("streamvln", "navila", "uninavid", "openfly"):
@@ -107,8 +104,6 @@ def plan_rank(plan: str) -> int:
         "baseline + log2.0": 30,
         "baseline + log3.0": 32,
         "baseline + initial": 35,
-        "baseline + qa15": 40,
-        "baseline + qa30": 50,
         "baseline + gtc-k256": 55,
         "baseline + gtc-k512": 60,
         "baseline + gtc": 62,
@@ -135,8 +130,6 @@ def overlap_variant_rank(model_name: str) -> int:
         return 70
     if "-gtc-k" in model_name:
         return 60
-    if re.search(r"-qa\d+", model_name):
-        return 50
     if "-initial-" in model_name:
         return 40
     if re.search(r"-tome-s\d+", model_name):
@@ -159,7 +152,6 @@ def normalize_overlap_setting_key(model_name: str) -> str:
     # Remove variant markers so experiments with the same base config are grouped.
     key = re.sub(r"-sgtc-k\d+", "", key)
     key = re.sub(r"-gtc-k\d+", "", key)
-    key = re.sub(r"-qa\d+", "", key)
     key = key.replace("-initial", "")
     # Normalize method slot: -tome-s{N} and -pool-s{N} both → -s{N}
     key = re.sub(r"-(tome|pool)-s(\d+)", r"-s\2", key)

@@ -31,7 +31,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 
 `src/swiftvln/common` 已按职责拆分：
 
-- `common/training/*`: arguments / base_sft / dataset / mixed_dataset / trainer_mixin
+- `common/training/*`: arguments / base_sft / dataset
 - `common/eval/*`: runner / evaluator / reporting
 - `common/env/*`: base / habitat / satnav
 - `common/history_processors/compressor.py`: 原 `common/compressor.py` 已迁入
@@ -394,7 +394,11 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 当 `USE_SWANLAB=true` 时，训练脚本默认会清理 `http_proxy/https_proxy/HTTP_PROXY/HTTPS_PROXY/all_proxy/ALL_PROXY`
   - 目的：避免误继承本地 `127.0.0.1:7890` 一类代理，导致 SwanLab 登录失败
   - 如需保留代理，可显式设置 `SWANLAB_DIRECT_NETWORK=false`
-  - `train_queue.sh` 现在也会把全局 `QA_DATASET` 显式写入临时训练脚本，避免 `qa*` 实验回退到模型脚本内的旧默认 QA 路径
+- SwiftVLN 训练侧辅助数据分支已移除（Updated: 2026-06-29）：
+  - `BaseVLNTrainArguments` 只保留 VLN 训练参数
+  - `BaseVLNSft` 只构建和包装 VLN 数据集
+  - `train_queue.sh` 和 `train_swiftvln_qwen2_5_vl.sh` 不再生成或透传辅助数据参数
+  - 新 SwiftVLN 实验名只包含 VLN 训练配置、模型配置和运行标识
 - SwiftVLN 训练恢复支持（Updated: 2026-04-08）：
   - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
   - `src/swiftvln/scripts/train/train_queue.sh`
@@ -1154,13 +1158,13 @@ TRAIN_EXPERIMENTS_FILE='/path/to/experiments.sh' bash src/swiftvln/scripts/train
 ```
 
 该文件需 source 可读，至少定义：
-- `EXPERIMENTS` 数组（格式：`model|config|changes|ds_names|ds_paths|reserved|qa_ratio`；第 6 列保留为空）
+- `EXPERIMENTS` 数组（格式：`model|config|changes|ds_names|ds_paths`）
 - `ENV_TYPE`（`satnav` 或 `habitat`）
 
 `train_queue.sh` 的 SwanLab 约定（Updated: 2026-04-21）：
-- 交互式默认启用 SwanLab
-- 非交互模式默认仍为 `USE_SWANLAB=true`
-- 非交互配置文件现在可显式写 `USE_SWANLAB=false` 关闭 SwanLab；`train_queue.sh` 不再强制改回 `true`
+- 交互式默认不启用 SwanLab
+- 非交互模式默认仍为 `USE_SWANLAB=false`
+- 非交互配置文件可显式写 `USE_SWANLAB=true` 开启 SwanLab
 - 默认 `SWANLAB_PROJECT=SatNav`
 
 由 `orchestrate-plan` skill 在运行时通过 Write tool 生成，放在 `runtime/plans/generated/` 下。

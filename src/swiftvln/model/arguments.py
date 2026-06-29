@@ -3,7 +3,6 @@
 SwiftVLN Training Arguments
 
 Extends StreamVLN training arguments with overlap and compression parameters.
-QA mixed training parameters are inherited from BaseVLNTrainArguments.
 """
 
 from dataclasses import dataclass, field
@@ -19,9 +18,6 @@ class SwiftVLNTrainArguments(BaseVLNTrainArguments):
     Extends BaseVLNTrainArguments with:
     - History processor parameters (processor_type, compress_stride, etc.)
     - Overlap parameters (num_overlap)
-    
-    QA mixed training parameters (qa_dataset, qa_ratio, qa_max_samples) are
-    inherited from BaseVLNTrainArguments.
     
     History Processing Options:
     - processor_type='per_frame': Per-frame compression (default)

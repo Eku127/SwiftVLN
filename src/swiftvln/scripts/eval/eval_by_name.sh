@@ -31,7 +31,7 @@
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pixel+pose-bs64-lr2e-5-123456
 #
 #   # SwiftVLN 评估 (SegmentGTC, no embedding)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-123456
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-bs64-lr2e-5-123456
 #
 # 环境变量:
 #   ENV_TYPE     - habitat (默认) 或 satnav (如果模型名包含 env_type，会自动解析)
@@ -121,10 +121,9 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # 解析模型参数 (基于EXP_NAME格式)
 # ============================================================================
 # 新格式 (带 env_type):
-# 注: qa 参数(混合训练比例)不影响 eval，解析时会被忽略
-# SwiftVLN (per_frame):   swiftvln-{env_type}-[qwen3vl-]{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-# SwiftVLN (gtc):         swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-# SwiftVLN (segment_gtc): swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
+# SwiftVLN (per_frame):   swiftvln-{env_type}-[qwen3vl-]{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
+# SwiftVLN (gtc):         swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
+# SwiftVLN (segment_gtc): swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
 #   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
 
 # ============================================================================
@@ -147,12 +146,12 @@ parse_env_type() {
 
 parse_swiftvln_params() {
     local name="$1"
-    # 新格式 (map):         swiftvln-satnav-3b-1ep-f32s4-overlap16-map-g1000-l400-r448-d20-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # 新格式 (per_frame):   swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # random 示例:          swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # no-memory 示例:       swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # 新格式 (gtc):         swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # 新格式 (segment_gtc): swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
+    # 新格式 (map):         swiftvln-satnav-3b-1ep-f32s4-overlap16-map-g1000-l400-r448-d20-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # 新格式 (per_frame):   swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # random 示例:          swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # no-memory 示例:       swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # 新格式 (gtc):         swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # 新格式 (segment_gtc): swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
     # embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
     # 注: -initial 是可选的，vanilla 模式下不显示（默认）
     

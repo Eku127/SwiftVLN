@@ -131,13 +131,13 @@ case "$MODEL_FAMILY" in
     qwen2_5_vl|qwen25|qwen2.5)
         MODEL_FAMILY="qwen2_5_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen2_5_vl"
-        DEFAULT_STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
+        DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
         MODEL_FAMILY_NAME_TAG=""
         ;;
     qwen3_vl|qwen3)
         MODEL_FAMILY="qwen3_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen3_vl"
-        DEFAULT_STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct"
+        DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct"
         MODEL_FAMILY_NAME_TAG="qwen3vl-"
         ;;
     *)
@@ -150,11 +150,11 @@ MODEL_TYPE="${MODEL_TYPE:-$DEFAULT_MODEL_TYPE}"
 # Base model path
 # Defaults to the local offline cache path to avoid ModelScope hub resolution.
 # Default remains the local 3B cache path for Qwen2.5 and 2B for Qwen3.
-# For larger models, override STAGE1_MODEL_PATH or MODEL_PATH
+# For larger models, override BASE_MODEL_PATH or MODEL_PATH
 # via env, e.g.:
-#   STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
-STAGE1_MODEL_PATH="${STAGE1_MODEL_PATH:-$DEFAULT_STAGE1_MODEL_PATH}"
-MODEL_PATH="${MODEL_PATH:-$STAGE1_MODEL_PATH}"
+#   BASE_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
+BASE_MODEL_PATH="${BASE_MODEL_PATH:-$DEFAULT_BASE_MODEL_PATH}"
+MODEL_PATH="${MODEL_PATH:-$BASE_MODEL_PATH}"
 
 # Extract model size for experiment naming
 MODEL_SIZE=$(echo "$MODEL_PATH" | grep -oE '[0-9]+B' | tr '[:upper:]' '[:lower:]')
@@ -173,7 +173,7 @@ HABITAT_DATA_PATHS=(
     # "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/EnvDrop"
 )
 SATNAV_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data"
+    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data"
 )
 
 # Select data paths based on VLN_ENV_TYPE (using nameref)
@@ -193,15 +193,6 @@ USE_RANDOM="${USE_RANDOM:-false}"
 # Default to baseline full-data training.
 # 0 means "use all available samples".
 MAX_SAMPLES="${MAX_SAMPLES:-0}"
-
-# ============================================================================
-# Mixed Training: QA Dataset Configuration (Optional)
-# ============================================================================
-# Set USE_QA_MIXED_TRAINING=true to enable mixed training with VLN + QA data
-USE_QA_MIXED_TRAINING="${USE_QA_MIXED_TRAINING:-false}"
-QA_DATASET="${QA_DATASET:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl}"
-QA_RATIO="${QA_RATIO:-0.15}"             # Ratio of QA samples (0.15 = 15% QA, 85% VLN)
-QA_MAX_SAMPLES="${QA_MAX_SAMPLES:-0}"    # Max QA samples (0 = use all available)
 
 # ============================================================================
 # SwiftVLN-Specific Parameters
@@ -264,7 +255,7 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 # Caches rendered (global, local) PNG pairs on disk to eliminate rasterio
 # re-rendering cost across epochs. Default ("auto"): the Python layer uses
 #   {dataset_root}/map_cache
-# (i.e. co-located with ver_260418). Override with any absolute path, or set
+# (i.e. co-located with SatNav-v0.1). Override with any absolute path, or set
 # to one of {off,false,none,0,disable,disabled,no} to disable caching.
 # Only has effect when MEMORY_METHOD=map.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
@@ -413,14 +404,6 @@ elif [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
     MEMORY_SUFFIX="sgtc-k${GTC_OUTPUT_TOKENS}"
 fi
 
-# Add QA suffix if mixed training is enabled
-QA_SUFFIX=""
-if [ "$USE_QA_MIXED_TRAINING" = true ]; then
-    # Convert ratio to percentage (e.g., 0.15 -> 15)
-    QA_PCT=$(awk "BEGIN {printf \"%.0f\", ${QA_RATIO} * 100}")
-    QA_SUFFIX="-qa${QA_PCT}"
-fi
-
 # Add system prompt setting suffix (vanilla = no suffix, others = -<setting>)
 PROMPT_SUFFIX=""
 if [ "$SYSTEM_PROMPT_SETTING" != "vanilla" ]; then
@@ -447,7 +430,7 @@ if [ ${#_EMBED_PARTS[@]} -gt 0 ]; then
     EMBED_SUFFIX="-$(IFS='+'; echo "${_EMBED_PARTS[*]}")"
 fi
 
-EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 OUTPUT_DIR="output/swiftvln/${EXP_NAME}"
 if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
     OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
@@ -574,16 +557,6 @@ if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
     echo "Resume: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
 fi
 echo "------------------------------------------"
-# Mixed training info
-if [ "$USE_QA_MIXED_TRAINING" = true ]; then
-    echo "Mixed Training: ENABLED"
-    echo "  QA Dataset: $QA_DATASET"
-    echo "  QA Ratio: ${QA_RATIO} (QA $(awk "BEGIN {printf \"%.0f\", ${QA_RATIO} * 100}")%, VLN $(awk "BEGIN {printf \"%.0f\", (1 - ${QA_RATIO}) * 100}")%)"
-    [ "$QA_MAX_SAMPLES" -gt 0 ] 2>/dev/null && echo "  QA Max Samples: $QA_MAX_SAMPLES"
-else
-    echo "Mixed Training: DISABLED (VLN only)"
-fi
-echo "------------------------------------------"
 echo "Freeze ViT: $FREEZE_VIT | LLM: $FREEZE_LLM | Aligner: $FREEZE_ALIGNER"
 echo "DeepSpeed: $USE_DEEPSPEED ($DEEPSPEED_CONFIG)"
 echo "------------------------------------------"
@@ -639,13 +612,6 @@ fi
 # Attention implementation argument
 ATTN_ARG=""
 [ -n "$ATTN_IMPL" ] && ATTN_ARG="--attn_impl $ATTN_IMPL"
-
-# QA dataset arguments (for mixed training)
-QA_ARGS=""
-if [ "$USE_QA_MIXED_TRAINING" = true ]; then
-    QA_ARGS="--qa_dataset $QA_DATASET --qa_ratio $QA_RATIO"
-    [ "$QA_MAX_SAMPLES" -gt 0 ] 2>/dev/null && QA_ARGS="$QA_ARGS --qa_max_samples $QA_MAX_SAMPLES"
-fi
 
 # History processor arguments
 HISTORY_ARGS="--history_processor_type $HISTORY_PROCESSOR_TYPE"
@@ -746,7 +712,6 @@ torchrun \
     $ATTN_ARG \
     $DEEPSPEED_ARG \
     $SWANLAB_ARGS \
-    $QA_ARGS \
     $HISTORY_ARGS \
     $RESUME_ARGS \
     $MAX_STEPS_ARG

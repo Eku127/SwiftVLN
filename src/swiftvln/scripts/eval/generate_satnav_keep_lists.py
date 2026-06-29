@@ -301,7 +301,6 @@ def is_overlap_anchor_model(model_name: str, version: str) -> bool:
     if token not in model_name:
         return False
     forbidden_tokens = (
-        "-qa",
         "-initial-",
         "-pose-",
         "-posefilm-",

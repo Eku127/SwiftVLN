@@ -24,8 +24,6 @@ from .training import (
     BaseVLNDataset,
     BaseVLNSft,
     BaseVLNTrainArguments,
-    MixedVLNQADataset,
-    VLNMixedTrainingMixin,
 )
 
 _lazy_imports = {
@@ -60,8 +58,6 @@ def __getattr__(name):
 __all__ = [
     'BaseVLNTrainArguments',
     'BaseVLNSft',
-    'MixedVLNQADataset',
-    'VLNMixedTrainingMixin',
     'BaseVLNDataset',
     'DEFAULT_IMAGE_TOKEN',
     'HISTORY_MEMORY_TOKEN',

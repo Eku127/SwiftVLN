@@ -5,7 +5,6 @@ Base VLN SFT Trainer
 Provides shared trainer logic for VLN variants:
 - Detect VLN dataset paths (annotations.json)
 - Build model-specific VLN datasets
-- Optional QA mixed training integration
 - LazyLLMDataset wrapping and dataset info logging
 """
 
@@ -18,13 +17,10 @@ from swift.dataset import LazyLLMDataset
 from swift.pipelines.train.sft import SwiftSft
 from swift.utils import get_logger
 
-from .mixed_dataset import MixedVLNQADataset
-from .trainer_mixin import VLNMixedTrainingMixin
-
 logger = get_logger()
 
 
-class BaseVLNSft(VLNMixedTrainingMixin, SwiftSft):
+class BaseVLNSft(SwiftSft):
     """
     Shared base class for VLN trainers.
 
@@ -87,15 +83,8 @@ class BaseVLNSft(VLNMixedTrainingMixin, SwiftSft):
             vln_dataset = self.dataset_class(**self._build_dataset_kwargs(data_path))
             self._log_dataset_created(vln_dataset)
 
-        # Load QA dataset via mixin.
-        self._qa_dataset = self._load_qa_dataset()
-
         if vln_dataset is not None:
-            if self._qa_dataset is not None:
-                self._log("Mixed training enabled: VLN + QA")
             return vln_dataset, None
-        if self._qa_dataset is not None:
-            return self._qa_dataset, None
         return super()._get_dataset()
 
     def _encode_dataset(self, train_dataset, val_dataset, pre_process=True):
@@ -121,13 +110,11 @@ class BaseVLNSft(VLNMixedTrainingMixin, SwiftSft):
                     strict=args.strict,
                     random_state=args.data_seed,
                 )
-                final_dataset, _ = self._wrap_vln_with_qa(vln_lazy)
-                datasets[i] = final_dataset
+                datasets[i] = vln_lazy
 
         non_vln_type = (
             self.dataset_class,
             LazyLLMDataset,
-            MixedVLNQADataset,
         )
         has_other = any(
             d is not None and not isinstance(d, non_vln_type)
@@ -138,10 +125,6 @@ class BaseVLNSft(VLNMixedTrainingMixin, SwiftSft):
         return datasets
 
     def _show_dataset(self, train_dataset, val_dataset):
-        if isinstance(train_dataset, MixedVLNQADataset):
-            self._show_mixed_dataset_info(train_dataset)
-            return
-
         inner_dataset = train_dataset.dataset if isinstance(train_dataset, LazyLLMDataset) else train_dataset
         if self.dataset_class is not None and isinstance(inner_dataset, self.dataset_class):
             self._log(f"Dataset: {len(inner_dataset)} samples")

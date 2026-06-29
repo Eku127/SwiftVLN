@@ -370,7 +370,7 @@ interactive_setup() {
         echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-123456  # initial + pose"
         echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-123456  # pixel+pose"
         echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-123456  # GTC, no embed"
-        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-123456  # SegmentGTC"
+        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-bs64-lr2e-5-123456  # SegmentGTC"
         echo ""
         read -p "请输入模型名称: " model_input
         

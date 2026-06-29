@@ -27,7 +27,7 @@ def _preview_text(text: str, limit: int = 260) -> str:
 
 
 class SwiftVLNSft(BaseVLNSft):
-    """SwiftVLN SFT trainer with overlap context and mixed training."""
+    """SwiftVLN SFT trainer with overlap context."""
 
     args_class = SwiftVLNTrainArguments
     args: SwiftVLNTrainArguments
