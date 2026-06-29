@@ -26,7 +26,8 @@ export SATNAV_REPO="${SATNAV_REPO:-${WORKSPACE}/SatNav}"
 - Conda 已安装，并可通过 `${CONDA_HOME}/etc/profile.d/conda.sh` 激活。
 - SatNav 仓库已 clone 至 `${SATNAV_REPO}`。
 - `continue` 后端需要 HF OpenFly 模型目录：`baseline/openfly/model/openfly-agent-7b`。
-- `scratch` 后端还需要本地 Prismatic/OpenVLA checkpoint：`baseline/openfly/model/openvlaopenvla-7b-prismatic`。
+- `scratch` 后端还需要本地 Prismatic/OpenVLA native checkpoint：
+  `baseline/openfly/model/openvlaopenvla-7b-prismatic/checkpoints/*.pt`。
 - OpenFly baseline 不需要 AirSim / UnrealCV / ROS2 / TFDS。
 
 ---
@@ -161,4 +162,7 @@ satnav: <SATNAV_REPO>/satnav/__init__.py
 
 - `scratch` 后端第一次加载 native checkpoint 时会转换为 HF safetensors cache；默认 cache 根目录可通过 `OPENFLY_NATIVE_HF_CACHE_DIR` 覆盖。
 - `continue` 与 `scratch` 后端都复用 `baseline/openfly/scripts/train_satnav.sh` 和 `baseline/openfly/scripts/eval_satnav.sh`。
-- 若模型目录不存在，先运行 `baseline/openfly/scripts/download_model.sh` 或手动准备对应 checkpoint。
+- 若模型目录不存在，先运行：
+  - `bash baseline/openfly/scripts/download_model.sh` 下载 continue 默认模型
+  - `bash baseline/openfly/scripts/download_model.sh --backend scratch` 下载 scratch native checkpoint
+  - `bash baseline/openfly/scripts/download_model.sh --backend all` 同时下载两套起训资产
