@@ -32,29 +32,6 @@ conda activate streamvln-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 ```
 
-### Webhook（强制）
-
-本 skill 强制发送 4 个通知：`训练开始`、`训练结束`、`评测开始`、`评测结束`。
-
-Webhook URL（与现有 skill 保持一致）：
-
-- Train webhook  
-  `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e`
-- Eval webhook  
-  `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e`
-
-建议先定义一个通用发送函数（后续步骤直接复用）：
-
-```bash
-send_wecom_markdown() {
-  local webhook_url="$1"
-  local content="$2"
-  curl -sS -X POST "$webhook_url" \
-    -H "Content-Type: application/json" \
-    -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}"
-}
-```
-
 ### 固定路径（无需额外搜索）
 
 | 用途 | 路径 |
@@ -115,7 +92,6 @@ streamvln-baseline-scratch-1ep-f32h8s4-data260306-bs32-lr2e-5-20260309-150000
 | Target server | — | `98` / `73` / `17`，需用户明确指定 |
 | SatNav dataset | `SatNav-v0.1` | 如不指定则默认用 `SatNav-v0.1` |
 | SwanLab | `false` | 是否开启 SwanLab 上报 |
-| Webhook notification | `true` | 强制开启，发送 train/eval 开始和结束通知 |
 
 **继续前需等待用户确认。**
 
@@ -210,7 +186,7 @@ ls "${DATASET_DIR}/episodes/eval/val_unseen/all_episodes.json"
 
 **除非用户明确要求"只训练不评测"，否则默认使用 `train_eval_satnav.sh`。**
 
-该脚本自动完成全流程：训练 → 解析 EXP_NAME → 评测 → 4 条 webhook 全自动发送。训练失败时不进入 eval。
+该脚本自动完成全流程：训练 → 解析 EXP_NAME → 评测。训练失败时不进入 eval。
 
 ### tmux 会话命名
 
@@ -281,21 +257,11 @@ ssh 10.246.132.17 "
 
 ### 仅训练模式（不自动 eval）
 
-当用户明确要求"只训练"时，改用 `train_satnav.sh`，需手动发送 webhook：
+当用户明确要求"只训练"时，改用 `train_satnav.sh`：
 
 ```bash
 SESSION="train_streamvln_baseline_$(date +%H%M%S)"
 LOG="/tmp/${SESSION}.log"
-
-TRAIN_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
-TRAIN_START_TS="$(date +%s)"
-TRAIN_START_MSG="## StreamVLN Baseline Train Started
-server: <98|73|17>
-mode: <continue|scratch>
-satnav_dataset: <SatNav-v0.1>
-tmux_session: ${SESSION}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_START_MSG}"
 
 tmux new-session -d -s "${SESSION}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
@@ -316,7 +282,6 @@ LEARNING_RATE=2e-5 \
 BATCH_SIZE=2 \
 GRAD_ACCUM=2 \
 USE_SWANLAB=true \
-USE_WXWORK_NOTIFICATION=true \
   bash baseline/streamvln/scripts/train_satnav.sh continue
 ```
 
@@ -333,7 +298,6 @@ USE_WXWORK_NOTIFICATION=true \
 | `GRAD_ACCUM` | `2` | Gradient accumulation steps |
 | `GPUS_PER_NODE` | `8` | Number of GPUs |
 | `USE_SWANLAB` | `false` | Enable SwanLab cloud logging |
-| `USE_WXWORK_NOTIFICATION` | `false` | Enable WXWork webhook on completion |
 | `SMOKE_TEST` | `false` | Save under `output/streamvln-baseline/smoketest/` when `true` |
 | `SAVE_STRATEGY` | `epoch` | `epoch` or `steps` |
 | `SAVE_STEPS` | `1000` | Save interval (when `SAVE_STRATEGY=steps`) |
@@ -392,7 +356,7 @@ pgrep -f "train_satnav" >/dev/null && echo "PROCESS_ALIVE" || echo "PROCESS_GONE
 **退出条件：**
 
 - 训练正常完成（日志出现 `Training completed!`）→ 退出循环，进入校验步骤
-- 训练失败且自动修复无效 → 退出循环，发送失败 webhook，报告用户
+- 训练失败且自动修复无效 → 退出循环，报告用户
 - 用户主动中断 → 退出循环
 
 ### 校验训练产物
@@ -410,40 +374,15 @@ ls output/streamvln-baseline/<EXP_NAME>/checkpoint-*/*.bin
 - [ ] `train.log` 无 `Traceback` / `RuntimeError`
 - [ ] 训练 loss 有下降趋势
 
-### 发送训练结束 webhook（仅训练模式需要，一键串行模式自动发送）
-
-训练结束后（无论成功失败）发送：
-
-```bash
-TRAIN_END_TS="$(date +%s)"
-TRAIN_DURATION_SEC=$((TRAIN_END_TS - TRAIN_START_TS))
-TRAIN_STATUS="SUCCESS"   # 失败时改为 FAILED
-TRAIN_OUTPUT_DIR="output/streamvln-baseline/<EXP_NAME>"
-TRAIN_LOG_PATH="${TRAIN_OUTPUT_DIR}/train.log"
-
-TRAIN_END_MSG="## StreamVLN Baseline Train Finished
-status: ${TRAIN_STATUS}
-exp_name: <EXP_NAME>
-duration_sec: ${TRAIN_DURATION_SEC}
-output_dir: ${TRAIN_OUTPUT_DIR}
-log: ${TRAIN_LOG_PATH}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-
-send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_END_MSG}"
-```
-
----
-
 ## 步骤 5 — 执行评测
 
-> **必须发送 eval 开始 / 结束通知。**
 > 本 skill 当前约定：eval split 和 eval 数据只由
 > `baseline/streamvln/configs/satnav_task.yaml` 控制。默认 `SPLIT: all`，
 > 即顺序评测 `val_seen` 和 `val_unseen`。如需单 split，先把 YAML 中
 > `DATASET.SPLIT` 改为 `val_seen` 或 `val_unseen`，不要给
 > `eval_satnav.sh` 或 `train_eval_satnav.sh` 传位置 split 参数。
 >
-> 如果使用了一键串行模式（`train_eval_satnav.sh`），eval 已自动执行且 webhook 已自动发送，可跳过本步骤中的手动 eval 和手动 webhook 部分，直接进入"校验评测产物"。
+> 如果使用了一键串行模式（`train_eval_satnav.sh`），eval 已自动执行，可跳过本步骤中的手动 eval 部分，直接进入"校验评测产物"。
 
 ### 评测前清理（必做）
 
@@ -496,39 +435,6 @@ bash baseline/streamvln/scripts/eval_satnav.sh \
 如需只跑单个 split，先把 `baseline/streamvln/configs/satnav_task.yaml` 中的
 `DATASET.SPLIT` 改成 `val_seen` 或 `val_unseen`，再运行同一个命令。
 
-如需发送 webhook，围绕这一次 eval 命令发送开始/结束通知即可：
-
-```bash
-EVAL_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
-EVAL_START_TS="$(date +%s)"
-EVAL_START_MSG="## StreamVLN Baseline Eval Started
-exp_name: <EXP_NAME>
-gpus: 8
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
-
-if bash baseline/streamvln/scripts/eval_satnav.sh \
-    --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
-    --model_name <EXP_NAME> \
-    --gpus 8; then
-  eval_rc=0
-else
-  eval_rc=$?
-fi
-
-EVAL_END_TS="$(date +%s)"
-EVAL_DURATION_SEC=$((EVAL_END_TS - EVAL_START_TS))
-EVAL_STATUS="SUCCESS"
-[ $eval_rc -ne 0 ] && EVAL_STATUS="FAILED"
-
-EVAL_END_MSG="## StreamVLN Baseline Eval Finished
-status: ${EVAL_STATUS}
-exp_name: <EXP_NAME>
-duration_sec: ${EVAL_DURATION_SEC}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
-```
-
 ### 校验评测产物
 
 - [ ] `results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/eval.log` 存在
@@ -554,7 +460,6 @@ send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
 2. 关键日志 / checkpoint / 结果路径
 3. 训练耗时和 GPU 利用情况
 4. 任何异常或告警
-5. 4 条 webhook 已发送的证据（时间戳 + 阶段）
 
 ---
 
@@ -580,7 +485,7 @@ send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
    - 运行环境/资源问题（GPU、端口、路径、权限、依赖）
    - 数据或checkpoint问题
    - 命令参数/流程问题
-   - **skill 本身问题**（文档命令错误、步骤顺序错误、缺少关键前置条件、webhook示例不正确等）
+   - **skill 本身问题**（文档命令错误、步骤顺序错误、缺少关键前置条件等）
 
 2. 若是运行问题：
    - 先修复并重试当前任务；

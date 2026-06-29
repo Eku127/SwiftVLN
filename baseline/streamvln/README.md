@@ -162,8 +162,7 @@ bash baseline/streamvln/scripts/train_satnav.sh continue
 - 训练脚本使用上游 StreamVLN/LLaVA 代码路径，不在本仓库复制完整模型实现。
 - `baseline/streamvln/src/train_satnav.py` 负责 SatNav trajectory 数据接入。
 - 默认使用 `baseline/streamvln/configs/zero2.json` 做 DeepSpeed 训练。
-- 可通过 `USE_SWANLAB=true` 开启 SwanLab；如需企业微信通知，必须同时显式设置
-  `USE_WXWORK_NOTIFICATION=true` 和 `SWANLAB_WEBHOOK_URL=<url>`。
+- 可通过 `USE_SWANLAB=true` 开启 SwanLab。
 
 ## 5. 评测
 

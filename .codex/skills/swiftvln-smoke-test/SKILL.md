@@ -60,7 +60,6 @@ If any item fails, stop and report the exact missing path / dependency.
 | `SAVE_STEPS` | `1` |
 | `SAVE_TOTAL_LIMIT` | `1` |
 | `USE_SWANLAB` | `false` |
-| `USE_WXWORK_NOTIFICATION` | `false` |
 
 ## Train Smoke
 
@@ -72,7 +71,7 @@ conda activate swift-vln-train
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 
 MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
-USE_SWANLAB=false USE_WXWORK_NOTIFICATION=false \
+USE_SWANLAB=false \
 TRAIN_NUM_GPUS=2 \
   bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh \
   2>&1 | tee /tmp/smoke_swiftvln_train.log

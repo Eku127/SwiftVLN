@@ -1,11 +1,11 @@
 ---
 name: swiftvln-train
-description: "Launch VLN training with tmux-based async execution and webhook watchdog monitoring. Supports multi-server parallel launch and webhook notifications on completion/failure/stall."
+description: "Launch VLN training with tmux-based async execution and watchdog monitoring. Supports multi-server parallel launch and Codex callbacks on completion/failure/stall."
 ---
 
 # SwiftVLN Train Skill
 
-Launch VLN training on one or more servers. Codex acts as a **launch operator**: confirm plan, pick hosts, start training in tmux, register watchdog, do quick health check, then exit. The watchdog runs in background and sends webhook notifications on key events.
+Launch VLN training on one or more servers. Codex acts as a **launch operator**: confirm plan, pick hosts, start training in tmux, register watchdog, do quick health check, then exit. The watchdog runs in background and records key events for Codex callbacks and later inspection.
 
 Related skills:
 - **`swiftvln-eval`**: run eval after training completes (triggered manually or by user).
@@ -199,7 +199,7 @@ ssh 10.246.132.17 "docker exec -d streamvln-container bash -c \
 ## Step 5 → Register Watchdog & Quick Health Check (MANDATORY)
 
 > **🚨 此步骤为 MANDATORY（强制），不可跳过。**
-> Watchdog 负责：训练结束/崩溃/停滞时发 webhook 通知，训练结束后**自动退出**。
+> Watchdog 负责：训练结束/崩溃/停滞时写入状态并触发可选 Codex 回调，训练结束后**自动退出**。
 
 ### 5.1 — 注册 watchdog（每台服务器各一个）
 
@@ -259,7 +259,7 @@ Report to user:
 - **Watchdog PID**: `<pid>`（若为空则说明 Step 5 未执行）
 - 进度查看：`tmux attach -t <name>`
 - Watchdog 日志：`runtime/train_queue/runs/<hostname>_<session>/watchdog.log`
-- 训练完成/崩溃/停滞时：webhook 通知
+- 训练完成/崩溃/停滞时：查看 watchdog 状态与日志
 
 **The Codex session can safely end here.**
 

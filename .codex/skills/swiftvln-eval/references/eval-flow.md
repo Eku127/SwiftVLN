@@ -44,4 +44,3 @@ No SSH is required for queue-file operations.
 
 - Eval queue continues after single-task failure.
 - Failed tasks move to `eval_failed_todo.txt` and are recorded in queue logs.
-- Webhook sent for each failure with issue and attempted fix.

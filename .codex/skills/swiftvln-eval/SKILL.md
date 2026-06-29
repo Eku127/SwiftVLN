@@ -1,6 +1,6 @@
 ---
 name: swiftvln-eval
-description: "Run and supervise VLN evaluation with tmux-based async execution, watchdog monitoring, and Codex callback via `codex exec resume`. Supports queue consumption, auto-recovery, webhook notifications, and CSV result collection."
+description: "Run and supervise VLN evaluation with tmux-based async execution, watchdog monitoring, and Codex callback via `codex exec resume`. Supports queue consumption, auto-recovery, and CSV result collection."
 ---
 
 # SwiftVLN Eval Skill
@@ -29,7 +29,7 @@ Watchdog (background, nohup):
   - Polls tmux session status every 30s
   - On completion → codex exec resume → Codex comes back for reporting
   - On failure → codex exec resume → Codex comes back for error analysis & fix
-  - On timeout/stall → webhook + optional Codex callback
+  - On timeout/stall → watchdog status + optional Codex callback
 ```
 
 **Key benefit**: eval runs in tmux (survives session disconnect), watchdog ensures Codex is notified asynchronously. No more session timeout issues.
@@ -234,7 +234,7 @@ If early errors detected, attempt to fix before proceeding to Step 4.
 ## Step 4 → Register Watchdog & Report (MANDATORY)
 
 > **🚨 此步骤为 MANDATORY（强制），不可跳过。**
-> Watchdog 负责：eval 结束/崩溃/停滞时发 webhook 通知，eval 结束后自动退出。
+> Watchdog 负责：eval 结束/崩溃/停滞时写入状态并触发可选 Codex 回调，eval 结束后自动退出。
 
 ### 4.1 — 启动 watchdog
 
@@ -265,7 +265,7 @@ ssh 10.246.152.73 "cd ${SWIFTVLN_ROOT} && \
     > /dev/null 2>&1 & echo \$!"
 ```
 
-> Watchdog 逻辑：每 30s 检查 tmux session 是否存活；eval 结束（tmux 退出）后发 webhook 并**自动退出**；停滞 ~10 分钟发 webhook 告警。
+> Watchdog 逻辑：每 30s 检查 tmux session 是否存活；eval 结束（tmux 退出）后写入状态并**自动退出**；停滞 ~10 分钟写入告警日志。
 
 ### 4.2 — 验证 watchdog 存活
 
@@ -281,7 +281,7 @@ kill -0 "$WATCHDOG_PID" 2>/dev/null && echo "✅ Watchdog alive (PID=${WATCHDOG_
 - Eval 运行在：tmux session `<name>`，服务器 `<host>`
 - Watchdog PID：`<pid>`（eval 结束后自动退出）
 - 进度查看：`tmux attach -t <name>`
-- 完成/报错时：webhook 通知
+- 完成/报错时：查看 watchdog 状态与日志
 
 ### Mode: Stay (user explicitly requests "monitor until done")
 
@@ -370,15 +370,6 @@ runtime/eval_queue/runs/<hostname>_<session_name>/
 - CSV columns: model_name, model_type, plan, **swanlab_url**, collected_time, plus ALL / Boundary / LandmarkSet / Road metrics.
 - `swanlab_url` 来源优先级：`evaluation_summary.json` 中的 `swanlab_url` → fallback 到训练输出目录下的 `train_metadata.json`。
 
-### Webhook notifications
-
-- Built into `eval_queue.sh` (uses env var `WEBHOOK_URL`).
-- Default URL: `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=87cd9c07-52f0-4cec-a7a8-9586a9dc68c8`
-- Triggers: eval started, eval finished (success/failed), queue completed.
-- Watchdog also sends independent notifications on completion/failure/stall.
-
----
-
 ## Default Script Paths
 
 | Purpose | Path |
@@ -406,7 +397,7 @@ When the watchdog or an external script triggers `codex exec resume`, the resume
 2. **Check queue files** (`eval_done.txt`, `eval_failed_todo.txt`) for authoritative status.
 3. **Read `eval_queue_last_run.json`** for structured completion data.
 4. **For failures**: analyze error, check if auto-fixable, apply fix, re-enqueue and re-launch.
-5. **For success**: collect CSV, summarize results, notify user via webhook.
+5. **For success**: collect CSV and summarize results for the user.
 6. **For timeouts**: check if eval is still running (`tmux has-session`), diagnose stall.
 
 ### Resumed session behavior
@@ -450,7 +441,7 @@ If `ls ~/.codex/sessions/...` returns empty, fall back to `--last` flag:
 codex exec resume --last --full-auto "..."
 ```
 
-Or skip Codex callback and rely on webhook-only mode.
+Or skip Codex callback and inspect watchdog logs manually.
 
 ---
 
@@ -458,7 +449,7 @@ Or skip Codex callback and rely on webhook-only mode.
 
 1. **Eval hosts are `98` and `73` only**. Never eval on `17`.
 2. **Always launch eval in tmux**. Never run eval in a bare shell. Use naming convention `eval_<short_desc>_<HHMMSS>`.
-3. **🚨 MANDATORY: tmux 启动后必须立即注册 watchdog（Step 4）并验证存活。** Watchdog 负责 webhook 通知和自动退出，不可跳过。
+3. **🚨 MANDATORY: tmux 启动后必须立即注册 watchdog（Step 4）并验证存活。** Watchdog 负责状态记录和自动退出，不可跳过。
 4. **Watchdog 在 tmux session 结束后自动退出**，无需手动清理。
 5. **报告中必须包含 watchdog PID**。没有 PID 说明 Step 4 被跳过了。
 6. **Prefer existing project scripts** over ad-hoc one-off logic.

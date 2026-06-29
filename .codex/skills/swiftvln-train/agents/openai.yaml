@@ -1,4 +1,4 @@
 interface:
   display_name: "SwiftVLN Train"
   short_description: "Queue-first SwiftVLN训练流程与监督规范"
-  default_prompt: "Use $swiftvln-train to launch and supervise SwiftVLN training with latest SatNav data and completion webhook notification."
+  default_prompt: "Use $swiftvln-train to launch and supervise SwiftVLN training with latest SatNav data."

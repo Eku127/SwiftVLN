@@ -154,7 +154,6 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - 可见 GPU 数量低于期望值
     - 基线 UUID 丢失（用于检测“下卡”）
     - `temperature.gpu >= 85C`
-  - 默认 webhook：使用 Codex Webhook（企业微信机器人）
   - 默认 tmux session 名：
     - `gpu_health_98`
     - `gpu_health_73`
@@ -465,8 +464,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 入口脚本：`baseline/streamvln/scripts/*.sh`
   - `scripts/train_satnav.sh` -> 调用 `baseline/streamvln/src/train_satnav.py`
   - `scripts/eval_satnav.sh` -> 调用 `baseline/streamvln/src/eval_satnav.py`
-  - `scripts/train_eval_satnav.sh` -> 串行执行 train 后自动 eval；默认不带 webhook，
-    仅当显式设置 `TRAIN_WEBHOOK_URL` / `EVAL_WEBHOOK_URL` 时发送通知
+  - `scripts/train_eval_satnav.sh` -> 串行执行 train 后自动 eval
   - `scripts/download_model.sh`
 - 源码目录：`baseline/streamvln/src/*`
   - `src/train_satnav.py`
@@ -1525,11 +1523,6 @@ Stage-A 当前验证状态（2026-04-03）：
 - 使用 conventional commit：`feat/fix/refactor/docs/test/perf/chore`
 - commit message 优先简洁中文
 - 保持原子提交，避免混入无关改动
-
-## Webhook
-
-- 企业微信 / Codex webhook 不在仓库文档中硬编码。
-- 如需发送 webhook 通知，必须由调用方通过环境变量或外部 secret 注入 URL。
 
 ## Operating Rules for Codex
 

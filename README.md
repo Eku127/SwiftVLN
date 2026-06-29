@@ -201,7 +201,6 @@ VLN_ENV_TYPE=satnav \
 TRAIN_NUM_GPUS=1 \
 TRAIN_DRY_RUN=true \
 USE_SWANLAB=false \
-USE_WXWORK_NOTIFICATION=false \
 bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh
 ```
 
@@ -222,7 +221,6 @@ MAX_STEPS=2 \
 SAVE_STEPS=1 \
 SAVE_TOTAL_LIMIT=1 \
 USE_SWANLAB=false \
-USE_WXWORK_NOTIFICATION=false \
 TRAIN_NUM_GPUS=2 \
 bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh
 ```
