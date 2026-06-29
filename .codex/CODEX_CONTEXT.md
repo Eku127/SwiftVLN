@@ -62,11 +62,13 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - NaVILA train/eval 等待逻辑中的 `pgrep -f` 现使用 bracketed regex，避免匹配到
     `pgrep` 自身命令行后误判训练仍在运行，导致后续 overlap 队列或 98 eval 无法启动。
 - 训练 watchdog：`src/swiftvln/scripts/train/train_watchdog.sh`
-- StreamVLN baseline 训练版本标签命名（Updated: 2026-04-20）：
+- StreamVLN baseline 训练数据与标签命名（Updated: 2026-06-29）：
   - 脚本：`baseline/streamvln/scripts/train_satnav.sh`
-  - `EXP_NAME` 中的 `data...` 段现在直接使用 `SATNAV_VERSION` 去掉 `ver_` 后的完整后缀
-  - 例如：`ver_260418p80 -> data260418p80`，不再因 `grep -oP '\d+'` 提取多段数字而在目录名中引入换行
-  - 这使得 `p80` / `p75` 这类子集训练目录、日志与后续链式调度可以稳定按名字管理
+  - 当前默认数据集标识为 `SATNAV_DATASET=SatNav-v0.1`，训练默认读取：
+    `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
+  - `SATNAV_VERSION` 仅作为旧启动脚本兼容 alias，不再作为新文档主变量
+  - `EXP_NAME` 中的 `data...` 段来自 `SATNAV_DATASET`，会清理非法路径字符；例如：
+    `SatNav-v0.1 -> dataSatNav-v0.1`
 - Baseline 0418 model zoo（Updated: 2026-05-26）：
   - `baseline_0418_seen_unseen_all.csv` 中本仓库内可定位的收口 baseline 模型已集中移动到：
     `output/model_zoo/baseline/`
@@ -75,11 +77,18 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - StreamVLN model zoo 目录名已精简为 eval 所需窗口参数加训练摘要：
     `streamvln-baseline-continue-1ep-f32h8s4-lr2e-5`、
     `streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
+  - StreamVLN 另有 Hugging Face upload-ready 精简副本：
+    `streamvln-satnav-continue-1ep-f32h8s4-lr2e-5`、
+    `streamvln-satnav-scratch-1ep-f32h8s4-lr2e-5`；二者与对应
+    `streamvln-baseline-*` 权重一致，但只保留 eval/inference 所需文件
 - Baseline eval by name with model root（Updated: 2026-05-26）：
   - 脚本：`baseline/streamvln/scripts/eval_satnav.sh`、`baseline/navila/scripts/eval_satnav.sh`、`baseline/uninavid/scripts/eval_satnav.sh`、`baseline/openfly/scripts/eval_satnav.sh`
   - StreamVLN eval 已收敛为命名参数主路径，只支持 `--model_dir`、`--model_name`、`--gpus`、`--max_episodes`、`--dry_run`；不再支持位置参数、`--checkpoint_path`、`--split` 或 `--satnav_version`
   - by-name 默认模型根目录仍是各自 `output/<baseline>-baseline`；StreamVLN 可用 `--model_dir output/model_zoo/baseline` 评测 model zoo 模型
+  - StreamVLN eval 会直接把 `<model_dir>/<model_name>` 作为 Hugging Face 模型目录传给 `from_pretrained()`；该目录必须包含 `config.json` 与 safetensors/bin 权重，不再查找或加载 `checkpoint-*` 子目录
+  - StreamVLN eval 会从模型 `config.json` 读取 `mm_vision_tower` / `vision_tower`，先搜索本地同名视觉塔目录（如 `baseline/streamvln/model/siglip-so400m-patch14-384`）；若本地不存在，则保留原始 Hugging Face id 交给 Transformers 使用 cache 或下载；也可用 `--vision_tower <path-or-hf-id>` 强制覆盖
   - StreamVLN eval 不再从模型名中的 `data{version}` 解析 `SATNAV_VERSION`；默认读取 `baseline/streamvln/configs/satnav_task.yaml` 中的 `DATASET.SPLIT` / `DATA_PATH` / `SCENES_DIR`；`SPLIT: all` 默认跑 `val_seen` + `val_unseen`；`DATA_PATH` 必须填写 eval split 父目录（当前为 `SatNav-v0.1/episodes/eval`），脚本解析为 `<DATA_PATH>/<split>/all_episodes.json`
+  - `baseline/streamvln/scripts/train_eval_satnav.sh` 已同步为新 by-name eval 调用；不再接受位置 split 参数，split 只由 `satnav_task.yaml` 控制
   - StreamVLN eval 仍会从模型名中的 `f{frames}h{history}s{future}` 解析窗口参数
   - NaVILA / UniNaVid / OpenFly eval 脚本仍保留历史兼容路径和命名参数入口
   - OpenFly eval 会从模型名中的 `data{version}`、`actcompact|actoriginal`、`hist{N}` 解析数据版本、动作格式和 action history 长度
@@ -385,10 +394,12 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - `collect_eval_results.py` 的 `ALL_*` 列直接读顶层指标
   - 同等清理已同步至所有 baseline：
     `baseline/{streamvln,navila,uninavid,openfly}/src/eval_satnav.py`
-- StreamVLN baseline 默认训练口径（Updated: 2026-04-18）：
+- StreamVLN baseline 默认训练口径（Updated: 2026-06-29）：
   - 训练脚本：`baseline/streamvln/scripts/train_satnav.sh`
   - 当前默认 SatNav 正式训练配置：
-    - `SATNAV_VERSION=ver_260418`
+    - `SATNAV_DATASET=SatNav-v0.1`
+    - 训练目录：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
+    - 可用 `SATNAV_TRAIN_DATA_DIR=<trajectory_data_dir>` 显式覆盖训练 trajectory 目录
     - `NUM_EPOCHS=1`
     - `LEARNING_RATE=2e-5`
     - `BATCH_SIZE=3`
@@ -422,24 +433,14 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 训练模型：`output/streamvln-baseline/<EXP_NAME>/`
   - smoke test 模型：`output/streamvln-baseline/smoketest/<EXP_NAME>/`
   - 评测结果：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
-- baseline eval 默认：`8` 卡；SatNav 默认不显式传 split 时顺序跑 `val_seen + val_unseen`
-  - SatNav eval split 路由约定：
-    - `DATA_PATH` 使用 `{split}` 占位符：`episodes/eval/{split}/all_episodes.json`
-    - `--eval_split val_seen` → 展开为 `episodes/eval/val_seen/all_episodes.json`
-    - `--eval_split val_unseen` → 展开为 `episodes/eval/val_unseen/all_episodes.json`
-    - 路径不存在时直接报错（`FileNotFoundError`），无 fallback
-    - 当前 `ver_260418` 实际存在的 eval 子目录只有：
-      - `val_seen/`（`4574` episodes）
-      - `val_unseen/`（`8756` episodes）
-    - `val_seen_update/` 已不再作为当前默认 eval split 使用，也不应继续假定其存在
-    - 路由逻辑：`src/swiftvln/common/eval/evaluator.py` 的 `_init_satnav_config()`
-    - 配置文件：`src/swiftvln/configs/satnav_task.yaml` 的 `DATASET.DATA_PATH`
-  - baseline SatNav eval 默认 split 约定（0319 更新）：
-    - `baseline/streamvln/scripts/eval_satnav.sh`
-    - `baseline/navila/scripts/eval_satnav.sh`
-    - `baseline/uninavid/scripts/eval_satnav.sh`
-    - 若**未显式传 split 参数**，默认顺序运行 `val_seen` 和 `val_unseen`
-    - 若显式传 `val_seen` / `val_unseen` / `test`，则只跑该单个 split
+- StreamVLN baseline eval 默认：`8` 卡；eval split 和数据只由
+  `baseline/streamvln/configs/satnav_task.yaml` 控制
+  - 当前默认：
+    - `SPLIT: all`
+    - `DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
+    - `SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes`
+  - `SPLIT: all` 顺序展开为 `val_seen` + `val_unseen`
+  - `eval_satnav.sh` 和 `train_eval_satnav.sh` 均不接受位置 split 参数
   - 评测结果目录约定（0319 起）：
     - SwiftVLN 主线模型（swiftvln）：
       `results/eval/<arch>/<model_name>/<split>/<timestamp>/`
@@ -845,11 +846,15 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 ## Current SatNav Dataset Defaults
 
 - Dataset root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets`
-- 当前训练 / eval 默认版本：`ver_260418`
-- Eval episodes (val_seen):
+- 当前 StreamVLN baseline 默认发布数据集：`SatNav-v0.1`
+  - train trajectory root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
+  - eval root: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
+  - eval 默认 split: `all` (`val_seen` + `val_unseen`)
+- `ver_260418` 为 0418 历史训练 / eval 快照，仍保留如下路径记录：
+- Legacy eval episodes (val_seen):
   `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/eval/val_seen/all_episodes.json`
   （当前：4574 条；2026-04-20 在 2026-04-19 重建 split 基础上移除了 `27` 个与 train 路线重复的 episodes）
-- Eval episodes (val_unseen):
+- Legacy eval episodes (val_unseen):
   `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/eval/val_unseen/all_episodes.json`
   （当前：8756 条；`val_unseen` 默认评测集）
 - **注意**：`episodes/eval/` 下当前默认只有 `val_seen/` 和 `val_unseen/` 两个子目录
@@ -866,8 +871,8 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 
 ### SatNav ver_260418 Snapshot (Updated: 2026-05-01)
 
-- 当前主线 `SwiftVLN` 与 `baseline/*` 默认训练 / eval 版本已统一切到 `ver_260418`
-- 默认路径已同步到：
+- 这是 0418 历史快照；StreamVLN baseline 当前默认已切到 `SatNav-v0.1`
+- 当时默认路径已同步到：
   - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
   - `src/swiftvln/scripts/train/train_queue.sh`
   - `src/swiftvln/configs/satnav_task.yaml`

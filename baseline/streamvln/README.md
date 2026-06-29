@@ -93,7 +93,9 @@ pip install -e "$SATNAV_REPO"
 
 - 若通过 ModelScope 下载模型，需额外安装 `modelscope`。
 - 训练脚本会把 `$STREAMVLN_REPO` 加入 `PYTHONPATH`，因此该上游源码目录必须存在。
-- 目标 SatNav 数据版本需包含 `trajectory_data` 和 `episodes/eval`。
+- 默认 SatNav 数据集为 `SatNav-v0.1`；训练需要
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data/annotations.json`
+  以及对应 image folders，评测需要 `SatNav-v0.1/episodes/eval`。
 - H100 上如需编译 CUDA op，可设置 `CUDA_HOME` 指向支持 `sm_90` 的 CUDA Toolkit。
 
 ## 4. 训练
@@ -125,7 +127,7 @@ bash baseline/streamvln/scripts/train_satnav.sh scratch
 常用覆盖项：
 
 ```bash
-SATNAV_VERSION=ver_260418 \
+SATNAV_DATASET=SatNav-v0.1 \
 GPUS_PER_NODE=8 \
 BATCH_SIZE=3 \
 GRAD_ACCUM=2 \
@@ -136,7 +138,8 @@ bash baseline/streamvln/scripts/train_satnav.sh continue
 
 当前默认训练配置：
 
-- `SATNAV_VERSION=ver_260418`
+- `SATNAV_DATASET=SatNav-v0.1`
+- `SATNAV_TRAIN_DATA_DIR=/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
 - `NUM_FRAMES=32`
 - `NUM_HISTORY=8`
 - `NUM_FUTURE_STEPS=4`
@@ -152,7 +155,7 @@ bash baseline/streamvln/scripts/train_satnav.sh continue
 
 - 普通训练输出：`output/streamvln-baseline/<EXP_NAME>/`
 - smoke 输出：`output/streamvln-baseline/smoketest/<EXP_NAME>/`
-- 默认实验名格式：`streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
+- 默认实验名格式：`streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{dataset}-bs{effective_bs}-lr{lr}-{timestamp}`
 
 实现方式：
 
@@ -200,12 +203,22 @@ bash baseline/streamvln/scripts/eval_satnav.sh \
 ```text
 streamvln-baseline-continue-1ep-f32h8s4-lr2e-5
 streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5
+streamvln-satnav-continue-1ep-f32h8s4-lr2e-5
+streamvln-satnav-scratch-1ep-f32h8s4-lr2e-5
 ```
+
+模型名约定：
+
+- `streamvln-baseline-*`：本地 model zoo 归档版，保留训练日志、`trainer_state.json` 和历史 `checkpoint-*` 目录。
+- `streamvln-satnav-*`：对应权重的 Hugging Face upload-ready 精简版，只保留 eval/inference 所需的 safetensors、config、tokenizer 等文件。
+- 两组都可以用当前 `eval_satnav.sh` 直接评测；`baseline_0418` 报告当前主引用 `streamvln-baseline-*`，对外发布/复现实验优先使用 `streamvln-satnav-*`。
 
 ### 5.3 行为说明
 
-- 脚本会在 `<model_dir>/<model_name>/` 下选择编号最大的 `checkpoint-*`。
+- 脚本会直接加载 `<model_dir>/<model_name>/` 下的 Hugging Face safetensors/bin 模型文件。
 - 脚本会从模型名里的 `f32h8s4` 解析 `frames=32`、`history=8`、`future_steps=4`。
+- 脚本会从模型 `config.json` 读取 `mm_vision_tower` / `vision_tower`，优先搜索本地同名视觉塔目录；若本地不存在，则保留原始 Hugging Face id 交给 Transformers 解析或下载。
+- 如需手动指定视觉塔，可加 `--vision_tower /path/or/hf-id`。
 - 脚本不会从模型名里的数据版本字段选择 eval 数据；eval 数据和 split 都由 `satnav_task.yaml` 控制。
 - 输出目录：`results/streamvln-baseline/<model_name>/<split>/`。
 - 评测日志：`results/streamvln-baseline/<model_name>/<split>/eval.log`。
