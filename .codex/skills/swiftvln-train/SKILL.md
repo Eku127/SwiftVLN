@@ -110,7 +110,7 @@ Before starting, confirm with the user:
 
 1. Read current scripts:
    - `src/swiftvln/scripts/train/train_queue.sh`
-   - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+   - `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
 2. Produce **run checklist**: model set, environment, offline model path, launch mode, expected output naming.
    Confirm the resolved base model path is the absolute local cache path above, not `Qwen/Qwen2.5-VL-3B-Instruct`.
    If `MEMORY_METHOD=map`, checklist 里必须额外确认：
@@ -285,7 +285,7 @@ Auto-cleanup: watchdog cleans dirs older than 7 days at startup.
 |---|---|
 | Training queue | `src/swiftvln/scripts/train/train_queue.sh` |
 | **Train watchdog** | `src/swiftvln/scripts/train/train_watchdog.sh` |
-| SwiftVLN single run | `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh` |
+| SwiftVLN single run | `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh` |
 | Eval todo queue | `runtime/eval_queue/eval_todo.txt` |
 | Eval enqueue helper | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
 

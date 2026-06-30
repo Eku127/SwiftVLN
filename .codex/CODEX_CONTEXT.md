@@ -46,11 +46,16 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 实验计划目录：`runtime/plans/` （自然语言实验计划文件，供 orchestrate-plan skill 读取）
 - 实验计划 skill：`.codex/skills/orchestrate-plan/SKILL.md`
 - 训练队列：`src/swiftvln/scripts/train/train_queue.sh`
+- 单次训练主入口（Updated: 2026-06-30）：
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
+  - 该脚本是 Qwen-VL family 入口，通过 `MODEL_FAMILY=qwen2_5_vl|qwen3_vl`
+    选择 Qwen2.5-VL 或 Qwen3-VL
+  - 旧的 Qwen2.5 专名脚本已移除；新文档、队列和 skills 统一使用该入口
 - 训练队列端口/重试与配置注入（Updated: 2026-06-30）：
   - `src/swiftvln/scripts/train/train_queue.sh`
   - `train_queue.sh` 不再复制单次训练脚本并用 `sed/awk` 改写变量或数据路径；
     当前通过 per-run env map 注入配置，直接执行原始
-    `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+    `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
   - 单次训练脚本支持通过环境变量覆盖：
     - `VLN_DATA_PATH`：覆盖默认 habitat/satnav data path arrays
     - `TORCH_DTYPE`：默认 `bfloat16`，auto-fix 可改为 `float16`
@@ -170,7 +175,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `gpu_health_98`
     - `gpu_health_73`
 - SwiftVLN 单机训练 GPU 选择（Updated: 2026-04-07）：
-  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
   - 默认不再硬编码 `0-7`，而是自动使用当前环境里**全部可见 GPU**
   - 可选覆盖：
     - `TRAIN_NUM_GPUS=<N>`：从当前可见 GPU 集合中取前 N 张
@@ -178,7 +183,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `TRAIN_DRY_RUN=true`：仅做配置与 GPU 解析检查，不实际启动 `torchrun`
   - `src/swiftvln/scripts/train/train_queue.sh` 会把以上三个变量透传给单次训练脚本
 - SwiftVLN 训练默认值与 smoke 隔离（Updated: 2026-04-17）：
-  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
   - 当前仓库默认值按**正式训练**维护，不再使用 smoke 残留默认：
     - `MAX_SAMPLES=0`（显式表示全量）
     - `NUM_OVERLAP=0`（当前 baseline 默认）
@@ -291,7 +296,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - 日志：`logs/train_launch/train_q25vl32b73_restart_224552.log`
     - 输出：`output/swiftvln/swiftvln-satnav-32b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-224602`
 - SwiftVLN no-memory / per-frame naming 配置约定（Updated: 2026-04-20）：
-  - 训练脚本：`src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+  - 训练脚本：`src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
   - 数据集：`src/swiftvln/model/dataset.py`
   - 队列展示/解析：`src/swiftvln/scripts/train/train_queue.sh`
   - 评测按名解析说明：`src/swiftvln/scripts/eval/eval_by_name.sh`
@@ -401,17 +406,17 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
       DataLoader 近乎零 CPU 渲染成本（首 epoch 负责 warm-up）
 - SwanLab 直连默认（Updated: 2026-04-08）：
   - `src/swiftvln/scripts/train/train_queue.sh`
-  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
   - 当 `USE_SWANLAB=true` 时，训练脚本默认会清理 `http_proxy/https_proxy/HTTP_PROXY/HTTPS_PROXY/all_proxy/ALL_PROXY`
   - 目的：避免误继承本地 `127.0.0.1:7890` 一类代理，导致 SwanLab 登录失败
   - 如需保留代理，可显式设置 `SWANLAB_DIRECT_NETWORK=false`
 - SwiftVLN 训练侧辅助数据分支已移除（Updated: 2026-06-29）：
   - `BaseVLNTrainArguments` 只保留 VLN 训练参数
   - `BaseVLNSft` 只构建和包装 VLN 数据集
-  - `train_queue.sh` 和 `train_swiftvln_qwen2_5_vl.sh` 不再生成或透传辅助数据参数
+  - `train_queue.sh` 和 `train_swiftvln_qwen_vl.sh` 不再生成或透传辅助数据参数
   - 新 SwiftVLN 实验名只包含 VLN 训练配置、模型配置和运行标识
 - SwiftVLN 训练恢复支持（Updated: 2026-04-08）：
-  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
   - `src/swiftvln/scripts/train/train_queue.sh`
   - 单次训练脚本新增：
     - `RESUME_FROM_CHECKPOINT=<abs_path>`：传给 ms-swift 的 `--resume_from_checkpoint`
@@ -987,7 +992,7 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 
 - 这是 0418 历史快照；四个 baseline 当前默认已切到 `SatNav-v0.1`
 - 当时默认路径已同步到：
-  - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+  - `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
   - `src/swiftvln/scripts/train/train_queue.sh`
   - `src/swiftvln/configs/satnav_task.yaml`
   - `baseline/{streamvln,navila,uninavid,openfly}/configs/satnav_task.yaml`
@@ -1292,7 +1297,7 @@ SwiftVLN 已接入 `uav_adapter` 的 Stage-B 最小链路：
 - SwiftVLN 分布式评测脚本参数透传：
   `src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
 - 训练脚本参数透传：
-  `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+  `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
 
 Stage-B 当前参数约定：
 

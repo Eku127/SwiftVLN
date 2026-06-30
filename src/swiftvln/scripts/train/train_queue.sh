@@ -768,7 +768,7 @@ run_experiment() {
     echo ""
 
     # 获取训练脚本路径
-    local train_script="${VLN_ROOT}/model/script/train/train_swiftvln_qwen2_5_vl.sh"
+    local train_script="${VLN_ROOT}/model/script/train/train_swiftvln_qwen_vl.sh"
 
     if [[ ! -f "$train_script" ]]; then
         print_error "找不到训练脚本: $train_script"

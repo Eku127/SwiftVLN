@@ -2,7 +2,7 @@
 # SwiftVLN Training Script - Qwen VL families (ms-swift)
 # 
 # Usage:
-#   bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh
+#   bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
 #
 # This script trains SwiftVLN with history frame compression.
 # Key difference from StreamVLN: adds compress_stride parameter

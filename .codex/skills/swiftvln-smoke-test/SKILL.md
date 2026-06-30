@@ -21,7 +21,7 @@ Use this skill when the user asks for主线 SwiftVLN 的 smoke test / 冒烟测�
 
 | Purpose | Path |
 |---|---|
-| SwiftVLN train | `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh` |
+| SwiftVLN train | `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh` |
 | Eval entry | `src/swiftvln/scripts/eval/eval_by_name.sh` |
 | Eval queue | `src/swiftvln/scripts/eval/eval_queue.sh` |
 | Enqueue eval | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
@@ -51,7 +51,7 @@ If any item fails, stop and report the exact missing path / dependency.
 
 ## Smoke Values
 
-`train_swiftvln_qwen2_5_vl.sh` 的仓库默认值是正式训练口径；smoke 必须显式覆盖为下面这些值：
+`train_swiftvln_qwen_vl.sh` 的仓库默认值是正式训练口径；smoke 必须显式覆盖为下面这些值：
 
 | Variable | Smoke Value |
 |---|---|
@@ -73,7 +73,7 @@ cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
 MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
 USE_SWANLAB=false \
 TRAIN_NUM_GPUS=2 \
-  bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh \
+  bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh \
   2>&1 | tee /tmp/smoke_swiftvln_train.log
 ```
 

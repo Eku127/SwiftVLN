@@ -48,8 +48,6 @@ from .template import (
     CURRENT_IMAGE_TOKEN,
 )
 
-print("[SwiftVLN] Templates registered successfully!")
-
 
 # =============================================================================
 # Model Registration
@@ -85,7 +83,6 @@ if 'swiftvln_qwen2_5_vl' not in MODEL_MAPPING:
     )
     model_meta_kwargs['loader'] = SwiftVLNQwen25VLLoader
     register_model(ModelMeta(**model_meta_kwargs))
-    print("[SwiftVLN] Model 'swiftvln_qwen2_5_vl' registered successfully!")
 
 if 'swiftvln_qwen3_vl' not in MODEL_MAPPING:
     model_meta_kwargs = dict(
@@ -106,7 +103,6 @@ if 'swiftvln_qwen3_vl' not in MODEL_MAPPING:
     )
     model_meta_kwargs['loader'] = SwiftVLNQwen3VLLoader
     register_model(ModelMeta(**model_meta_kwargs))
-    print("[SwiftVLN] Model 'swiftvln_qwen3_vl' registered successfully!")
 
 
 # =============================================================================

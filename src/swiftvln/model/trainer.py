@@ -6,7 +6,6 @@ Usage:
     python src/swiftvln/model/trainer.py --custom_register_path src/swiftvln/model ...
 """
 
-import os
 from typing import List, Optional, Union
 
 from swift.utils import get_logger
@@ -16,13 +15,6 @@ from swiftvln.model.arguments import SwiftVLNTrainArguments
 from swiftvln.model.dataset import SwiftVLNDataset
 
 logger = get_logger()
-
-
-def _preview_text(text: str, limit: int = 260) -> str:
-    text = str(text).replace('\n', '\\n')
-    if len(text) <= limit:
-        return text
-    return text[:limit] + '...'
 
 
 class SwiftVLNSft(BaseVLNSft):
@@ -108,16 +100,6 @@ class SwiftVLNSft(BaseVLNSft):
                 compress_method = "tome" if use_tome else "pool"
                 logger.info(f"  - num_history: {num_history}, log_base: {log_base}")
                 logger.info(f"  - compress: {compress_method}, stride: {compress_stride}")
-                # Debug output
-                if os.environ.get('SWIFTVLN_DEBUG'):
-                    logger.info(f"  [DEBUG] Per-frame configuration verified:")
-                    logger.info(f"    -> num_history={num_history} (frames to sample)")
-                    logger.info(
-                        f"    -> log_base={log_base} "
-                        f"({'uniform' if log_base == 1.0 else 'logarithmic'} sampling)"
-                    )
-                    logger.info(f"    -> compress_method={compress_method}")
-                    logger.info(f"    -> compress_stride={compress_stride} ({compress_stride**2}x compression)")
             elif history_processor_type in ('gtc', 'segment_gtc'):
                 logger.info(f"  - output_tokens: {gtc_output_tokens}")
                 logger.info(f"  - temperature: {gtc_temperature}")
@@ -226,19 +208,12 @@ class SwiftVLNSft(BaseVLNSft):
             num_initial = sample.get('num_initial_images', 0)
             self._log(f"num_initial_images: {num_initial}")
             self._log(f"memory_method: {sample.get('memory_method', 'history')}")
-            self._log(f"system_prompt preview: {_preview_text(sys_content)}")
             self._log(
                 f"system_prompt tags: <history_memory>={sys_content.count('<history_memory>')}, "
                 f"<image>={sys_content.count('<image>')}, map_phrase={'explored map memories' in sys_content}"
             )
             self._log(f"images total: {len(sample.get('images', []))}")
             self._log(f"frame_poses total: {len(sample.get('frame_poses', []))}")
-            user_msgs = [m for m in sample['messages'] if m.get('role') == 'user']
-            assistant_msgs = [m for m in sample['messages'] if m.get('role') == 'assistant']
-            if user_msgs:
-                self._log(f"first user turn: {_preview_text(user_msgs[0].get('content', ''), limit=160)}")
-            if assistant_msgs:
-                self._log(f"first assistant turn: {_preview_text(assistant_msgs[0].get('content', ''), limit=160)}")
             if num_initial > 0:
                 has_initial_tag = 'initial observation' in sys_content
                 self._log(f"[INITIAL] System prompt contains 'initial observation': {has_initial_tag}")

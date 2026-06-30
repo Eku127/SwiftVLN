@@ -3,9 +3,9 @@
 ## Core Scripts
 
 - Queue mode: `src/swiftvln/scripts/train/train_queue.sh`
-- SwiftVLN single run: `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+- SwiftVLN single run: `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
 
-## Important Variables in `train_swiftvln_qwen2_5_vl.sh`
+## Important Variables in `train_swiftvln_qwen_vl.sh`
 
 - Conda env: `conda activate swift-vln-train-update`
 - Model family: `MODEL_FAMILY="qwen2_5_vl"` or `"qwen3_vl"`
