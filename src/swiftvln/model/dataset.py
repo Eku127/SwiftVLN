@@ -317,38 +317,6 @@ class SwiftVLNDataset(Dataset):
             act_text = self.idx2actions.get(int(action), "STOP")
             converted_sequence.append(act_text)
         return "".join(converted_sequence)
-        print(f"  system_prompt_setting={self.system_prompt_setting}")
-        print(f"  memory_method={self.memory_method}")
-        if self.system_prompt_setting == "initial":
-            print(f"  [INITIAL] Initial view ENABLED: first frame (uncompressed) will be added to system prompt")
-        if self.memory_method == "map":
-            print(
-                f"  map: global={self.map_global_side_m:.0f}m, local={self.map_local_side_m:.0f}m, "
-                f"render={self.map_render_px}px, mask={self.map_mask_method}"
-            )
-            if os.environ.get('SWIFTVLN_DEBUG'):
-                print(f"  [MAP DEBUG] scenes_dir={self._map_scenes_dir}")
-        if self.history_processor_type == 'per_frame':
-            print(f"  history: per_frame (h={self.num_history}, log_base={self.log_base})")
-            # Debug: show sampling distribution
-            if os.environ.get('SWIFTVLN_DEBUG'):
-                import math
-                print(f"  [DEBUG] Sampling distribution preview (for 32 history frames -> {self.num_history} samples):")
-                num_frames = 32
-                num_samples = min(self.num_history, num_frames)
-                indices = []
-                for i in range(num_samples):
-                    t_sample = i / (num_samples - 1) if num_samples > 1 else 1.0
-                    t_frame = 1.0 - math.pow(1.0 - t_sample, self.log_base)
-                    frame_idx = int(round(t_frame * (num_frames - 1)))
-                    indices.append(frame_idx)
-                print(f"  [DEBUG] Sampled indices: {indices}")
-                if self.log_base == 1.0:
-                    print(f"  [DEBUG] -> Uniform distribution (linear)")
-                else:
-                    print(f"  [DEBUG] -> Logarithmic distribution (more recent frames)")
-        else:
-            print(f"  history: {self.history_processor_type}")
 
     def _sample_history_frames(
         self,
