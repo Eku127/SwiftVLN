@@ -3,8 +3,46 @@
 本说明面向在 SwiftVLN 仓库内运行 Uni-NaVid baseline 的训练与评测流程。
 
 - 论文/项目：Uni-NaVid（RSS 2025）
-- 上游仓库：[Uni-NaVid GitHub](https://github.com/jzhzhang/Uni-NaVid)（默认通过 `$UNINAVID_REPO` 指向本地 clone）
+- 上游仓库：[Uni-NaVid GitHub](https://github.com/jzhzhang/Uni-NaVid)（按第 0 节的 `$UNINAVID_REPO` 路径准备本地 clone）
 - 训练与评测约定：详见 `baseline/uninavid/doc/train_eval_conventions.md`
+
+## 0. 上游源码 clone 与路径
+
+当前 Uni-NaVid baseline 只在本仓库维护 SatNav 数据接入、启动脚本和评测 wrapper；
+模型定义、trainer 逻辑以及 `uninavid/processor/clip-patch14-224` image processor
+仍来自本地 Uni-NaVid 上游 clone。SatNav 评测环境也需要本地 SatNav editable
+install。建议按当前 workspace 使用的 commit 固定版本：
+
+| 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
+|------|--------------|----------|-----------------|
+| Uni-NaVid | `/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid` | `git@github.com:jzhzhang/Uni-NaVid.git` | `79ef5ea3fea14c205342d1ab070563d84c7a966a` |
+| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+
+从空 workspace 准备源码：
+
+```bash
+WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+
+git clone git@github.com:jzhzhang/Uni-NaVid.git "$WORKSPACE/Uni-NaVid"
+git -C "$WORKSPACE/Uni-NaVid" checkout 79ef5ea3fea14c205342d1ab070563d84c7a966a
+
+git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
+```
+
+路径约定：
+
+```bash
+export UNINAVID_REPO=/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid
+export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+```
+
+`baseline/uninavid/scripts/train_satnav.sh` 当前默认读取
+`/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid/uninavid/processor/clip-patch14-224`
+作为 `IMAGE_PROCESSOR`，因此推荐直接 clone 到上表路径。若使用其他路径，需要同步
+调整训练脚本里的 `UNINAVID_REPO`，或在手动启动 Python 入口前确保上游
+Uni-NaVid 代码和对应 processor 路径可用。环境安装阶段仍需
+`pip install -e "$SATNAV_REPO"`。
 
 ## 1. 模型
 
@@ -137,8 +175,7 @@ bash baseline/uninavid/scripts/train_satnav.sh continue my_uninavid_exp
 常用覆盖项：
 
 ```bash
-DATA_PATH=$SATNAV_DATA_ROOT/ver_260418/trajectory_data/annotations.json \
-VIDEO_FOLDER=$SATNAV_DATA_ROOT/ver_260418/trajectory_data \
+SATNAV_DATASET=SatNav-v0.1 \
 NUM_GPUS=8 \
 TRAIN_BSZ=24 \
 GRAD_ACCUM=1 \
@@ -149,8 +186,10 @@ bash baseline/uninavid/scripts/train_satnav.sh continue
 
 当前默认训练配置：
 
-- `DATA_PATH=$SATNAV_DATA_ROOT/ver_260418/trajectory_data/annotations.json`
-- `VIDEO_FOLDER=$SATNAV_DATA_ROOT/ver_260418/trajectory_data`
+- `SATNAV_DATASET=SatNav-v0.1`
+- `SATNAV_TRAIN_DATA_DIR=$SATNAV_DATA_ROOT/SatNav-v0.1/trajectory_data`
+- `DATA_PATH=$SATNAV_TRAIN_DATA_DIR/annotations.json`
+- `VIDEO_FOLDER=$SATNAV_TRAIN_DATA_DIR`
 - `NUM_GPUS=8`
 - `TRAIN_BSZ=24`
 - `GRAD_ACCUM=1`
@@ -180,33 +219,57 @@ bash baseline/uninavid/scripts/train_satnav.sh continue
 SatNav 评测入口：
 
 ```bash
-bash baseline/uninavid/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618 \
+  --gpus 8
 ```
-
-支持两种模式：
-
-- 按实验名评测：从 `output/uninavid-baseline/<EXP_NAME>/` 自动解析最新 checkpoint。
-- 按 checkpoint 路径评测：直接传入绝对路径。
 
 SatNav 评测 split 约定：
 
-- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
-- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
+- split 和 eval 数据只由 `baseline/uninavid/configs/satnav_task.yaml` 控制。
+- `SPLIT: all` 会顺序运行 `val_seen` 和 `val_unseen`。
+- `DATA_PATH` 必须是 eval split 父目录，例如
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`。
 
 常用覆盖项：
 
 ```bash
-SATNAV_VERSION=ver_260418 \
 bash baseline/uninavid/scripts/eval_satnav.sh \
-  uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-<timestamp> \
-  val_seen 8
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_name uninavid-satnav-continue-1ep-lr1e-5 \
+  --gpus 8 \
+  --max_episodes 10
+```
+
+当前 model zoo 中可直接评测的 UniNaVid 模型名：
+
+```text
+uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618
+uninavid-baseline-scratch-1ep-data260418-bs192-lr1e-5-20260418-203618
+```
+
+当前 Hugging Face upload-ready 公开版目录名：
+
+```text
+uninavid-satnav-continue-1ep-lr1e-5
+uninavid-satnav-scratch-1ep-lr1e-5
+```
+
+```bash
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_name uninavid-satnav-scratch-1ep-lr1e-5 \
+  --gpus 8
 ```
 
 评测实现约定：
 
 - 输出目录：`results/uninavid-baseline/<EXP_NAME_or_subpath>/<split>/`
 - 评测日志：`results/uninavid-baseline/<EXP_NAME_or_subpath>/<split>/eval.log`
-- eval by name 会从实验名中的 `data{ver}` 自动解析 `SATNAV_VERSION`；也可用环境变量显式覆盖。
+- eval 不再从模型名中的 `data{ver}` 自动解析数据版本；数据选择只来自
+  `baseline/uninavid/configs/satnav_task.yaml`。
+- UniNaVid eval 没有额外需要从模型名解析的窗口参数。
 - `MODEL_BASE` 可用于 adapter-only checkpoint 的底座模型路径。
 - `LOCAL_CACHE_DIR` 可用于指定本地 checkpoint cache。
 - 评测默认使用确定性解码，prompt 语义是预测 next four actions，评测端按动作词正则提取并截断到最多 4 个动作。

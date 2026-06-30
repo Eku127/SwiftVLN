@@ -2,7 +2,7 @@
 # SwiftVLN Training Script - Qwen VL families (ms-swift)
 # 
 # Usage:
-#   bash src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh
+#   bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
 #
 # This script trains SwiftVLN with history frame compression.
 # Key difference from StreamVLN: adds compress_stride parameter
@@ -131,13 +131,13 @@ case "$MODEL_FAMILY" in
     qwen2_5_vl|qwen25|qwen2.5)
         MODEL_FAMILY="qwen2_5_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen2_5_vl"
-        DEFAULT_STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
+        DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
         MODEL_FAMILY_NAME_TAG=""
         ;;
     qwen3_vl|qwen3)
         MODEL_FAMILY="qwen3_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen3_vl"
-        DEFAULT_STAGE1_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct"
+        DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct"
         MODEL_FAMILY_NAME_TAG="qwen3vl-"
         ;;
     *)
@@ -150,11 +150,11 @@ MODEL_TYPE="${MODEL_TYPE:-$DEFAULT_MODEL_TYPE}"
 # Base model path
 # Defaults to the local offline cache path to avoid ModelScope hub resolution.
 # Default remains the local 3B cache path for Qwen2.5 and 2B for Qwen3.
-# For larger models, override STAGE1_MODEL_PATH or MODEL_PATH
+# For larger models, override BASE_MODEL_PATH or MODEL_PATH
 # via env, e.g.:
-#   STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
-STAGE1_MODEL_PATH="${STAGE1_MODEL_PATH:-$DEFAULT_STAGE1_MODEL_PATH}"
-MODEL_PATH="${MODEL_PATH:-$STAGE1_MODEL_PATH}"
+#   BASE_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
+BASE_MODEL_PATH="${BASE_MODEL_PATH:-$DEFAULT_BASE_MODEL_PATH}"
+MODEL_PATH="${MODEL_PATH:-$BASE_MODEL_PATH}"
 
 # Extract model size for experiment naming
 MODEL_SIZE=$(echo "$MODEL_PATH" | grep -oE '[0-9]+B' | tr '[:upper:]' '[:lower:]')
@@ -165,6 +165,7 @@ MODEL_SIZE=${MODEL_SIZE:-"3b"}
 # ============================================================================
 # Environment type: "habitat" (forward=0.25m) or "satnav" (forward=10m)
 VLN_ENV_TYPE="${VLN_ENV_TYPE:-satnav}"
+VLN_DATA_PATH_OVERRIDE="${VLN_DATA_PATH:-}"
 
 # Define data paths for each environment
 HABITAT_DATA_PATHS=(
@@ -173,17 +174,22 @@ HABITAT_DATA_PATHS=(
     # "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/EnvDrop"
 )
 SATNAV_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data"
+    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data"
 )
 
-# Select data paths based on VLN_ENV_TYPE (using nameref)
-declare -n VLN_DATA_PATHS="${VLN_ENV_TYPE^^}_DATA_PATHS"
-if [ ${#VLN_DATA_PATHS[@]} -eq 0 ]; then
-    echo "[ERROR] Unknown VLN_ENV_TYPE: $VLN_ENV_TYPE. Available: habitat, satnav"
-    exit 1
-fi
+# Select data paths based on VLN_ENV_TYPE (using nameref), unless explicitly
+# injected by train_queue or a caller.
+if [[ -n "$VLN_DATA_PATH_OVERRIDE" ]]; then
+    VLN_DATA_PATH="$VLN_DATA_PATH_OVERRIDE"
+else
+    declare -n VLN_DATA_PATHS="${VLN_ENV_TYPE^^}_DATA_PATHS"
+    if [ ${#VLN_DATA_PATHS[@]} -eq 0 ]; then
+        echo "[ERROR] Unknown VLN_ENV_TYPE: $VLN_ENV_TYPE. Available: habitat, satnav"
+        exit 1
+    fi
 
-VLN_DATA_PATH=$(IFS=','; echo "${VLN_DATA_PATHS[*]}")
+    VLN_DATA_PATH=$(IFS=','; echo "${VLN_DATA_PATHS[*]}")
+fi
 
 # VLN-Specific Parameters
 NUM_FRAMES="${NUM_FRAMES:-32}"
@@ -193,15 +199,6 @@ USE_RANDOM="${USE_RANDOM:-false}"
 # Default to baseline full-data training.
 # 0 means "use all available samples".
 MAX_SAMPLES="${MAX_SAMPLES:-0}"
-
-# ============================================================================
-# Mixed Training: QA Dataset Configuration (Optional)
-# ============================================================================
-# Set USE_QA_MIXED_TRAINING=true to enable mixed training with VLN + QA data
-USE_QA_MIXED_TRAINING="${USE_QA_MIXED_TRAINING:-false}"
-QA_DATASET="${QA_DATASET:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl}"
-QA_RATIO="${QA_RATIO:-0.15}"             # Ratio of QA samples (0.15 = 15% QA, 85% VLN)
-QA_MAX_SAMPLES="${QA_MAX_SAMPLES:-0}"    # Max QA samples (0 = use all available)
 
 # ============================================================================
 # SwiftVLN-Specific Parameters
@@ -264,16 +261,10 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 # Caches rendered (global, local) PNG pairs on disk to eliminate rasterio
 # re-rendering cost across epochs. Default ("auto"): the Python layer uses
 #   {dataset_root}/map_cache
-# (i.e. co-located with ver_260418). Override with any absolute path, or set
+# (i.e. co-located with SatNav-v0.1). Override with any absolute path, or set
 # to one of {off,false,none,0,disable,disabled,no} to disable caching.
 # Only has effect when MEMORY_METHOD=map.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
-
-# ---------- Embedding enhancement ----------
-# Pixel coordinate embedding enhancement (Fourier + MLP)
-# - false: disable (default)
-# - true: enable and train pixel embedding module
-USE_PIXEL_EMBED="${USE_PIXEL_EMBED:-false}"
 
 # Pose embedding enhancement (MLP, per-image pose injection)
 # - false: disable (default)
@@ -364,12 +355,8 @@ if [ "$MEMORY_METHOD" = "map" ]; then
         exit 1
     fi
     # Map images are synthesized top-down views, so RGB-frame embed
-    # enhancements (pixel / pose / uav_adapter) are not meaningful and must
+    # enhancements (pose / uav_adapter) are not meaningful and must
     # stay disabled to avoid silent semantic mismatches.
-    if [ "$USE_PIXEL_EMBED" = true ] || [ "$USE_PIXEL_EMBED" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_PIXEL_EMBED=false."
-        exit 1
-    fi
     if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
         echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
         exit 1
@@ -413,26 +400,15 @@ elif [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
     MEMORY_SUFFIX="sgtc-k${GTC_OUTPUT_TOKENS}"
 fi
 
-# Add QA suffix if mixed training is enabled
-QA_SUFFIX=""
-if [ "$USE_QA_MIXED_TRAINING" = true ]; then
-    # Convert ratio to percentage (e.g., 0.15 -> 15)
-    QA_PCT=$(awk "BEGIN {printf \"%.0f\", ${QA_RATIO} * 100}")
-    QA_SUFFIX="-qa${QA_PCT}"
-fi
-
 # Add system prompt setting suffix (vanilla = no suffix, others = -<setting>)
 PROMPT_SUFFIX=""
 if [ "$SYSTEM_PROMPT_SETTING" != "vanilla" ]; then
     PROMPT_SUFFIX="-${SYSTEM_PROMPT_SETTING}"
 fi
 
-# Embedding enhancement suffix (pixel + pose combined in one slot)
+# Embedding enhancement suffix
 EMBED_SUFFIX="-noembed"
 _EMBED_PARTS=()
-if [ "$USE_PIXEL_EMBED" = true ] || [ "$USE_PIXEL_EMBED" = "true" ]; then
-    _EMBED_PARTS+=("pixel")
-fi
 if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
     if [ "$POSE_FUSION_METHOD" = "film" ]; then
         _EMBED_PARTS+=("posefilm")
@@ -447,7 +423,7 @@ if [ ${#_EMBED_PARTS[@]} -gt 0 ]; then
     EMBED_SUFFIX="-$(IFS='+'; echo "${_EMBED_PARTS[*]}")"
 fi
 
-EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}${QA_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
 OUTPUT_DIR="output/swiftvln/${EXP_NAME}"
 if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
     OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
@@ -458,6 +434,11 @@ fi
 # explicitly if they need per-step checkpointing.
 SAVE_STEPS="${SAVE_STEPS:-1000}"
 SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-1}"
+SAVE_SAFETENSORS="${SAVE_SAFETENSORS:-}"
+SAVE_SAFETENSORS_ARG=""
+if [[ -n "$SAVE_SAFETENSORS" ]]; then
+    SAVE_SAFETENSORS_ARG="--save_safetensors $SAVE_SAFETENSORS"
+fi
 LOGGING_STEPS="${LOGGING_STEPS:-10}"
 
 # Note: MAX_SAMPLES is a soft cap - if actual samples < MAX_SAMPLES, all available samples are used.
@@ -477,15 +458,9 @@ fi
 # SwanLab Configuration
 # ============================================================================
 USE_SWANLAB="${USE_SWANLAB:-false}"
-SWANLAB_PROJECT="${SWANLAB_PROJECT:-StreamVLN}"
+SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
 SWANLAB_EXP_NAME="${EXP_NAME}"
 SWANLAB_MODE="${SWANLAB_MODE:-cloud}"
-
-# WXWork Notification
-USE_WXWORK_NOTIFICATION="${USE_WXWORK_NOTIFICATION:-false}"
-SWANLAB_NOTIFICATION_METHOD="${SWANLAB_NOTIFICATION_METHOD:-wxwork}"
-SWANLAB_WEBHOOK_URL="${SWANLAB_WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d78d3128-7b16-4bf1-a6a7-403bf0915fe0}"
-SWANLAB_SECRET="${SWANLAB_SECRET:-}"
 
 # ============================================================================
 # Environment Setup
@@ -566,22 +541,11 @@ fi
 echo "Overlap: num_overlap=$NUM_OVERLAP, window_stride=$WINDOW_STRIDE"
 echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with start_idx > 0"
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
-echo "Pixel Embed: $USE_PIXEL_EMBED"
 echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
 echo "UAV Adapter: $USE_UAV_ADAPTER (type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE)"
 [ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
 if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
     echo "Resume: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
-fi
-echo "------------------------------------------"
-# Mixed training info
-if [ "$USE_QA_MIXED_TRAINING" = true ]; then
-    echo "Mixed Training: ENABLED"
-    echo "  QA Dataset: $QA_DATASET"
-    echo "  QA Ratio: ${QA_RATIO} (QA $(awk "BEGIN {printf \"%.0f\", ${QA_RATIO} * 100}")%, VLN $(awk "BEGIN {printf \"%.0f\", (1 - ${QA_RATIO}) * 100}")%)"
-    [ "$QA_MAX_SAMPLES" -gt 0 ] 2>/dev/null && echo "  QA Max Samples: $QA_MAX_SAMPLES"
-else
-    echo "Mixed Training: DISABLED (VLN only)"
 fi
 echo "------------------------------------------"
 echo "Freeze ViT: $FREEZE_VIT | LLM: $FREEZE_LLM | Aligner: $FREEZE_ALIGNER"
@@ -627,25 +591,11 @@ DEEPSPEED_ARG=""
 SWANLAB_ARGS=""
 if [ "$USE_SWANLAB" = true ]; then
     SWANLAB_ARGS="--report_to swanlab --swanlab_project $SWANLAB_PROJECT --swanlab_exp_name $SWANLAB_EXP_NAME --swanlab_mode $SWANLAB_MODE"
-    
-    if [ "$USE_WXWORK_NOTIFICATION" = true ]; then
-        SWANLAB_ARGS="$SWANLAB_ARGS --swanlab_notification_method $SWANLAB_NOTIFICATION_METHOD --swanlab_webhook_url $SWANLAB_WEBHOOK_URL"
-        if [ -n "$SWANLAB_SECRET" ]; then
-            SWANLAB_ARGS="$SWANLAB_ARGS --swanlab_secret $SWANLAB_SECRET"
-        fi
-    fi
 fi
 
 # Attention implementation argument
 ATTN_ARG=""
 [ -n "$ATTN_IMPL" ] && ATTN_ARG="--attn_impl $ATTN_IMPL"
-
-# QA dataset arguments (for mixed training)
-QA_ARGS=""
-if [ "$USE_QA_MIXED_TRAINING" = true ]; then
-    QA_ARGS="--qa_dataset $QA_DATASET --qa_ratio $QA_RATIO"
-    [ "$QA_MAX_SAMPLES" -gt 0 ] 2>/dev/null && QA_ARGS="$QA_ARGS --qa_max_samples $QA_MAX_SAMPLES"
-fi
 
 # History processor arguments
 HISTORY_ARGS="--history_processor_type $HISTORY_PROCESSOR_TYPE"
@@ -681,6 +631,8 @@ if [[ "$USE_SWANLAB" == "true" && "$SWANLAB_DIRECT_NETWORK" == "true" ]]; then
     unset_proxy_for_swanlab
 fi
 
+TORCH_DTYPE="${TORCH_DTYPE:-bfloat16}"
+
 torchrun \
     --nnodes=1 \
     --node_rank=0 \
@@ -693,7 +645,7 @@ torchrun \
     --model $MODEL_PATH \
     --dataset $VLN_DATA_PATH \
     "${TRAIN_MODE_ARGS[@]}" \
-    --torch_dtype bfloat16 \
+    --torch_dtype $TORCH_DTYPE \
     --num_train_epochs $NUM_EPOCHS \
     --learning_rate $LEARNING_RATE \
     --per_device_train_batch_size $BATCH_SIZE \
@@ -703,6 +655,7 @@ torchrun \
     --output_dir $OUTPUT_DIR \
     --save_steps $SAVE_STEPS \
     --save_total_limit $SAVE_TOTAL_LIMIT \
+    $SAVE_SAFETENSORS_ARG \
     --logging_steps $LOGGING_STEPS \
     --save_strategy steps \
     --warmup_ratio $WARMUP_RATIO \
@@ -730,7 +683,6 @@ torchrun \
     --num_overlap $NUM_OVERLAP \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
     $MEMORY_ARGS \
-    --use_pixel_embed $USE_PIXEL_EMBED \
     --use_pose_embed $USE_POSE_EMBED \
     --use_uav_adapter $USE_UAV_ADAPTER \
     --uav_adapter_path "$UAV_ADAPTER_PATH" \
@@ -746,7 +698,6 @@ torchrun \
     $ATTN_ARG \
     $DEEPSPEED_ARG \
     $SWANLAB_ARGS \
-    $QA_ARGS \
     $HISTORY_ARGS \
     $RESUME_ARGS \
     $MAX_STEPS_ARG
@@ -770,21 +721,5 @@ if [ "$USE_SWANLAB" = true ]; then
     _SWANLAB_PROJECT="$SWANLAB_PROJECT" \
     _SWANLAB_EXP="$SWANLAB_EXP_NAME" \
     _OUTPUT_DIR="$OUTPUT_DIR" \
-    python3 -c "
-import json, pathlib, os
-meta = {}
-url = os.environ.get('_SWANLAB_URL', '')
-if url:
-    meta['swanlab_url'] = url
-proj = os.environ.get('_SWANLAB_PROJECT', '')
-if proj:
-    meta['swanlab_project'] = proj
-exp = os.environ.get('_SWANLAB_EXP', '')
-if exp:
-    meta['swanlab_exp_name'] = exp
-if meta:
-    out = pathlib.Path(os.environ['_OUTPUT_DIR']) / 'train_metadata.json'
-    out.write_text(json.dumps(meta, indent=2))
-    print(f'Saved train metadata: {out}')
-" 2>/dev/null || true
+    python3 "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/_write_train_metadata.py" 2>/dev/null || true
 fi

@@ -10,24 +10,27 @@
 #   scratch             — start from LLaVA-Video-7B-Qwen2 base model
 #
 # Environment variables (all optional):
-#   SATNAV_VERSION   — Data version dir name, e.g. ver_260418 (default: ver_260418)
+#   SATNAV_DATASET   — Data dir name under satnav_datasets (default: SatNav-v0.1)
+#   SATNAV_VERSION   — Deprecated alias for SATNAV_DATASET, kept for old launchers
+#   SATNAV_TRAIN_DATA_DIR — Explicit trajectory_data dir override
+#   SATNAV_MAX_EPISODES / SATNAV_MAX_SAMPLES — Optional dataset caps for smoke tests
 #   NUM_EPOCHS       — Training epochs (default: 1)
 #   LEARNING_RATE    — Learning rate (default: 2e-5)
 #   BATCH_SIZE       — Per-device batch size (default: 3)
 #   GRAD_ACCUM       — Gradient accumulation steps (default: 2)
 #   GPUS_PER_NODE    — Number of GPUs (default: 8)
 #   USE_SWANLAB      — Enable SwanLab reporting (default: false)
-#   USE_WXWORK_NOTIFICATION — Enable WXWork webhook notification (default: false)
 #   SAVE_STRATEGY    — "epoch" or "steps" (default: epoch)
 #   SAVE_STEPS       — Save every N steps when SAVE_STRATEGY=steps (default: 1000)
 #   SMOKE_TEST       — true/false, when true save under output/streamvln-baseline/smoketest (default: false)
+#   STREAMVLN_OFFLINE — true/false, keep HF/Transformers offline for local model dirs (default: true)
 #
 # Output:
 #   output/streamvln-baseline/<EXP_NAME>/                (normal)
 #   output/streamvln-baseline/smoketest/<EXP_NAME>/      (smoke test)
 #
 # EXP_NAME format:
-#   streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{ver}-bs{eff_bs}-lr{lr}-{timestamp}
+#   streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{dataset}-bs{eff_bs}-lr{lr}-{timestamp}
 #
 # Environment: conda env streamvln-baseline
 # ==============================================================================
@@ -49,18 +52,25 @@ REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
 TRAIN_SCRIPT="${BASELINE_DIR}/src/train_satnav.py"
 DEEPSPEED_CFG="${BASELINE_DIR}/configs/zero2.json"
 
-# ---- SatNav Data Version ----
+# ---- SatNav Data ----
 SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
-SATNAV_VERSION="${SATNAV_VERSION:-ver_260418}"
-echo "[INFO] Using SatNav version: ${SATNAV_VERSION}"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
+echo "[INFO] Using SatNav dataset: ${SATNAV_DATASET}"
 
-SATNAV_DATA_DIR="${SATNAV_DATA_ROOT}/${SATNAV_VERSION}/trajectory_data"
+SATNAV_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}"
 if [ ! -d "$SATNAV_DATA_DIR" ]; then
     echo "[ERROR] SatNav trajectory data not found: ${SATNAV_DATA_DIR}"
+    echo "[ERROR] StreamVLN training expects <dataset>/trajectory_data/annotations.json and image folders."
+    echo "[ERROR] Set SATNAV_DATASET or SATNAV_TRAIN_DATA_DIR if the training trajectory export lives elsewhere."
     exit 1
 fi
 
-VERSION_TAG="$(echo "$SATNAV_VERSION" | sed -E 's/^ver_//')"
+if [ ! -f "${SATNAV_DATA_DIR}/annotations.json" ]; then
+    echo "[ERROR] SatNav trajectory annotations not found: ${SATNAV_DATA_DIR}/annotations.json"
+    exit 1
+fi
+
+VERSION_TAG="$(echo "$SATNAV_DATASET" | sed -E 's/^ver_//; s/[^A-Za-z0-9._-]+/-/g')"
 
 # ---- Vision model (local copy to avoid network download) ----
 VISION_MODEL_VERSION="${BASELINE_DIR}/model/siglip-so400m-patch14-384"
@@ -76,15 +86,18 @@ SAVE_STEPS="${SAVE_STEPS:-1000}"
 MAX_STEPS="${MAX_STEPS:-}"
 LOGGING_STEPS="${LOGGING_STEPS:-10}"
 SMOKE_TEST="${SMOKE_TEST:-false}"
+STREAMVLN_OFFLINE="${STREAMVLN_OFFLINE:-true}"
+
+if [ "${STREAMVLN_OFFLINE}" = "true" ]; then
+    export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+    export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
+fi
+export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 
 # ---- SwanLab configuration ----
 USE_SWANLAB="${USE_SWANLAB:-false}"
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-baseline}"
 SWANLAB_MODE="cloud"
-USE_WXWORK_NOTIFICATION="${USE_WXWORK_NOTIFICATION:-false}"
-SWANLAB_NOTIFICATION_METHOD="wxwork"
-SWANLAB_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
-SWANLAB_SECRET=""
 
 # ---- VLN parameters ----
 NUM_FRAMES=32
@@ -121,22 +134,15 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 
 # ---- SwanLab args ----
-SWANLAB_ARGS=""
+SWANLAB_ARGS=()
 if [ "$USE_SWANLAB" = "true" ]; then
     # SwanLab HuggingFace Trainer integration uses environment variables
     export SWANLAB_PROJECT="${SWANLAB_PROJECT}"
     export SWANLAB_NAME="${EXP_NAME}"
     export SWANLAB_MODE="${SWANLAB_MODE}"
-    SWANLAB_ARGS="--report_to swanlab"
-
-    if [ "$USE_WXWORK_NOTIFICATION" = "true" ]; then
-        SWANLAB_ARGS="${SWANLAB_ARGS} --swanlab_notification_method ${SWANLAB_NOTIFICATION_METHOD} --swanlab_webhook_url ${SWANLAB_WEBHOOK_URL}"
-        if [ -n "$SWANLAB_SECRET" ]; then
-            SWANLAB_ARGS="${SWANLAB_ARGS} --swanlab_secret ${SWANLAB_SECRET}"
-        fi
-    fi
+    SWANLAB_ARGS=(--report_to swanlab)
 else
-    SWANLAB_ARGS="--report_to none"
+    SWANLAB_ARGS=(--report_to none)
 fi
 
 # ---- Save strategy args ----
@@ -156,7 +162,7 @@ echo "StreamVLN Baseline Training"
 echo "=========================================="
 echo "  Mode        : ${MODE}"
 echo "  Model       : ${MODEL_NAME_OR_PATH}"
-echo "  Data version: ${SATNAV_VERSION}"
+echo "  Dataset     : ${SATNAV_DATASET}"
 echo "  Data dir    : ${SATNAV_DATA_DIR}"
 echo "  Output      : ${OUTPUT_DIR}"
 echo "  EXP_NAME    : ${EXP_NAME}"
@@ -166,7 +172,6 @@ echo "  LR          : ${LEARNING_RATE}"
 echo "  Epochs      : ${NUM_EPOCHS}"
 echo "  Save        : ${SAVE_STRATEGY}"
 echo "  SwanLab     : ${USE_SWANLAB}"
-echo "  WXWork      : ${USE_WXWORK_NOTIFICATION}"
 echo "  Smoke Test  : ${SMOKE_TEST}"
 echo "=========================================="
 
@@ -175,11 +180,28 @@ export PYTHONPATH="/mnt/data1/home/jiangjiajun/workspace/StreamVLN:\
 /mnt/data1/home/jiangjiajun/workspace/StreamVLN/streamvln:\
 ${BASELINE_DIR}:${PYTHONPATH:-}"
 
-# ---- Distributed launcher ----
+# ---- Python / distributed launcher ----
+DEFAULT_STREAMVLN_PYTHON="/mnt/data1/home/jiangjiajun/miniconda3/envs/streamvln-baseline/bin/python"
+if [ -z "${PYTHON_BIN:-}" ]; then
+    if [ -x "$DEFAULT_STREAMVLN_PYTHON" ]; then
+        PYTHON_BIN="$DEFAULT_STREAMVLN_PYTHON"
+    else
+        PYTHON_BIN="$(command -v python3 || command -v python || true)"
+    fi
+fi
+if [ -z "$PYTHON_BIN" ]; then
+    echo "[ERROR] Python interpreter not found. Set PYTHON_BIN=/path/to/python." >&2
+    exit 1
+fi
+PYTHON_BIN_DIR="$(dirname "$PYTHON_BIN")"
+if [ -d "$PYTHON_BIN_DIR" ]; then
+    export PATH="${PYTHON_BIN_DIR}:${PATH}"
+fi
+
 if command -v torchrun >/dev/null 2>&1; then
     DIST_LAUNCH=(torchrun)
 else
-    DIST_LAUNCH=(python -m torch.distributed.run)
+    DIST_LAUNCH=("${PYTHON_BIN}" -m torch.distributed.run)
 fi
 
 # Prefer CUDA 13 nvcc on H100 (CUDA 11.5 nvcc cannot compile sm_90 ops).
@@ -240,7 +262,7 @@ fi
     --torch_compile True \
     --torch_compile_backend "inductor" \
     --dataloader_drop_last True \
-    ${SWANLAB_ARGS} \
+    "${SWANLAB_ARGS[@]}" \
     2>&1 | tee "${OUTPUT_DIR}/train.log"
 
 echo ""

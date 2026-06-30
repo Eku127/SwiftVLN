@@ -63,6 +63,7 @@ print_header() { echo -e "\n${BOLD}${CYAN}$1${NC}\n"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
+source "${SCRIPT_DIR}/eval_lib.sh"
 EVAL_BY_NAME_SCRIPT="${SCRIPT_DIR}/eval_by_name.sh"
 COLLECT_SCRIPT="${SCRIPT_DIR}/collect_eval_results.py"
 EVAL_QUEUE_DIR="${EVAL_QUEUE_DIR:-${SWIFTVLN_ROOT}/runtime/eval_queue}"
@@ -86,12 +87,6 @@ SLEEP_BETWEEN_EVALS=30         # 评估间隔（秒）
 DYNAMIC_TODO=false             # 是否动态读取 todo 文件
 WAIT_FOR_NEW_TASKS=false       # 动态模式下空队列是否持续等待
 TODO_POLL_INTERVAL="${TODO_POLL_INTERVAL:-60}"
-MAX_EVAL_AUTO_FIX_RETRIES="${MAX_EVAL_AUTO_FIX_RETRIES:-2}"
-
-# Webhook 通知配置
-USE_WEBHOOK_NOTIFICATION="${USE_WEBHOOK_NOTIFICATION:-true}"
-WEBHOOK_URL="${WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=87cd9c07-52f0-4cec-a7a8-9586a9dc68c8}"
-LAST_AUTO_FIX_ACTIONS=""
 
 # ============================================================================
 # Todo Queue File Helpers
@@ -132,42 +127,6 @@ mark_model_failed() {
     append_unique_line "$FAILED_FILE" "$model"
 }
 
-send_webhook() {
-    local title="$1"
-    local body="$2"
-    if [[ "$USE_WEBHOOK_NOTIFICATION" != "true" ]]; then
-        return 0
-    fi
-    local content="## ${title}\n${body}\ntime: $(date '+%Y-%m-%d %H:%M:%S')"
-    curl -sS -m 8 -X POST "$WEBHOOK_URL" \
-      -H "Content-Type: application/json" \
-      -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" >/dev/null 2>&1 || true
-}
-
-apply_auto_fix_for_eval_failure() {
-    local log_file="$1"
-    local fixed=false
-    local actions=()
-
-    if grep -qiE "address already in use|Address already in use" "$log_file"; then
-        export MASTER_PORT=$((29600 + RANDOM % 1000))
-        fixed=true
-        actions+=("set MASTER_PORT=$MASTER_PORT")
-        print_warning "自动修复: 更换 MASTER_PORT=$MASTER_PORT"
-    fi
-
-    if grep -qi "Your setup doesn't support bf16/gpu" "$log_file"; then
-        export TORCH_DTYPE="float16"
-        fixed=true
-        actions+=("set TORCH_DTYPE=float16")
-        print_warning "自动修复: bf16 -> float16"
-    fi
-
-    LAST_AUTO_FIX_ACTIONS="$(IFS='; '; echo "${actions[*]}")"
-
-    [[ "$fixed" == "true" ]]
-}
-
 # ============================================================================
 # 检查依赖
 # ============================================================================
@@ -180,24 +139,6 @@ if [ ! -f "$COLLECT_SCRIPT" ]; then
 fi
 
 # ============================================================================
-# 从模型名解析环境类型（和 eval_by_name.sh 保持一致）
-# ============================================================================
-parse_env_type_from_model() {
-    local name="$1"
-    
-    # 新格式: {arch}-{env_type}-{model_size}-...
-    # 检测第二个字段是否是 habitat 或 satnav
-    local second_field=$(echo "$name" | cut -d'-' -f2)
-    
-    if [[ "$second_field" == "habitat" ]] || [[ "$second_field" == "satnav" ]]; then
-        echo "$second_field"
-    else
-        # 旧格式，默认 habitat
-        echo "habitat"
-    fi
-}
-
-# ============================================================================
 # 从模型名解析 embedding 增强开关（和 swiftvln exp_name 保持一致）
 # ============================================================================
 parse_embed_slot_from_model() {
@@ -206,16 +147,10 @@ parse_embed_slot_from_model() {
         echo "-"
         return
     fi
-    if [[ "$name" == *"-pixel+posefilm-"* ]]; then
-        echo "pixel+posefilm"
-    elif [[ "$name" == *"-pixel+pose-"* ]]; then
-        echo "pixel+pose"
-    elif [[ "$name" == *"-posefilm-"* ]]; then
+    if [[ "$name" == *"-posefilm-"* ]]; then
         echo "posefilm"
     elif [[ "$name" == *"-pose-"* ]]; then
         echo "pose"
-    elif [[ "$name" == *"-pixel-"* ]]; then
-        echo "pixel"
     elif [[ "$name" == *"-noembed-"* ]]; then
         echo "noembed"
     else
@@ -368,9 +303,9 @@ interactive_setup() {
         echo "  swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456  # per_frame, random"
         echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-123456  # per_frame, no embed"
         echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-123456  # initial + pose"
-        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pixel+pose-bs64-lr2e-5-123456  # pixel+pose"
+        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pose-bs64-lr2e-5-123456  # pose"
         echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-123456  # GTC, no embed"
-        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-123456  # SegmentGTC"
+        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-bs64-lr2e-5-123456  # SegmentGTC"
         echo ""
         read -p "请输入模型名称: " model_input
         
@@ -561,36 +496,11 @@ run_evaluation() {
     print_info "日志文件: $log_file"
     print_info "开始评估..."
     
-    local original_cuda_devices="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
-    local original_master_port="${MASTER_PORT:-}"
-    local original_torch_dtype="${TORCH_DTYPE:-}"
     local eval_status=1
     local run_log_file="$log_file"
-    local attempt=1
-    local max_attempts=$((MAX_EVAL_AUTO_FIX_RETRIES + 1))
 
-    # 运行评估（自动修复重试）
-    send_webhook "Eval Started" "model=${model}\nindex=${exp_idx}/${total}\nsplit=${EVAL_SPLIT}"
-    while true; do
-        if [[ $attempt -eq 1 ]]; then
-            run_log_file="$log_file"
-        else
-            run_log_file="${log_file%.log}_retry${attempt}.log"
-            print_warning "开始第 ${attempt} 次评估尝试..."
-        fi
-
-        bash "$EVAL_BY_NAME_SCRIPT" "$model" 2>&1 | tee "$run_log_file" || true
-        eval_status=${PIPESTATUS[0]}
-        if [[ $eval_status -eq 0 ]]; then
-            break
-        fi
-
-        if [[ $attempt -lt $max_attempts ]] && apply_auto_fix_for_eval_failure "$run_log_file"; then
-            ((attempt++))
-            continue
-        fi
-        break
-    done
+    bash "$EVAL_BY_NAME_SCRIPT" "$model" 2>&1 | tee "$run_log_file" || true
+    eval_status=${PIPESTATUS[0]}
     
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
@@ -603,21 +513,13 @@ run_evaluation() {
     fi
 
     # 确定本次实际评测的 split 列表（与 eval_by_name.sh 的逻辑保持一致）
+    local _model_env_type
     local _actual_splits
-    if [[ -n "${EVAL_SPLIT:-}" ]]; then
-        _actual_splits="${EVAL_SPLIT}"
-    else
-        local _model_env_type
-        _model_env_type=$(parse_env_type_from_model "$model")
-        if [[ "$_model_env_type" == "satnav" ]]; then
-            _actual_splits="val_seen val_unseen"
-        else
-            _actual_splits="val_unseen"
-        fi
-    fi
+    _model_env_type=$(parse_env_type_from_model "$model")
+    _actual_splits="$(infer_eval_splits "$_model_env_type" "${EVAL_SPLIT:-}")"
 
     # 查找各 split 结果路径（格式: results/eval/<arch>/<model>/<split>/<timestamp>/）
-    local result_path=""         # 用于 webhook/摘要展示（取第一个有效 split）
+    local result_path=""         # 用于摘要展示（取第一个有效 split）
     declare -a _split_result_paths=()
     if [[ -n "$model_arch" ]]; then
         local results_base="${SWIFTVLN_ROOT}/results/eval/${model_arch}/${model}"
@@ -664,9 +566,8 @@ run_evaluation() {
         EXP_RESULTS+=("$exp_idx|$model|SUCCESS|$duration_str|SR:$sr SPL:$spl NE:$ne")
         RESULT_PATHS+=("$exp_idx|$model|${_paths_str:-${result_path:-N/A}}")
         print_success "评估 $exp_idx 完成! 耗时: $duration_str"
-        send_webhook "Eval Finished" "model=${model}\nindex=${exp_idx}/${total}\nstatus=SUCCESS\nduration=${duration_str}\nmetrics=SR:${sr} SPL:${spl} NE:${ne}\nsplits=${_actual_splits}"
 
-        # 自动收集到 results/eval_collected/<split>/eval_results_data<version>.csv
+        # 自动收集到 results/eval_collected/<split>/eval_results.csv
         # 对每个实际评测的 split 分别收集
         if [[ -f "$COLLECT_SCRIPT" ]]; then
             for _sp in "${_split_result_paths[@]}"; do
@@ -683,9 +584,6 @@ run_evaluation() {
             done
         fi
         
-        export CUDA_DEVICES="$original_cuda_devices"
-        if [[ -n "$original_master_port" ]]; then export MASTER_PORT="$original_master_port"; else unset MASTER_PORT; fi
-        if [[ -n "$original_torch_dtype" ]]; then export TORCH_DTYPE="$original_torch_dtype"; else unset TORCH_DTYPE; fi
         return 0
     else
         local error_msg=$(tail -50 "$run_log_file" | grep -iE "(error|oom|cuda|exception)" | head -3 | tr '\n' ' ')
@@ -695,18 +593,13 @@ run_evaluation() {
         RESULT_PATHS+=("$exp_idx|$model|${run_log_file}")
         EXP_ERRORS+=("评估 $exp_idx ($model): ${error_msg:0:100}")
         print_error "评估 $exp_idx 失败!"
-        send_webhook "Eval Finished" "model=${model}\nindex=${exp_idx}/${total}\nstatus=FAILED\nduration=${duration_str}"
-
-        export CUDA_DEVICES="$original_cuda_devices"
-        if [[ -n "$original_master_port" ]]; then export MASTER_PORT="$original_master_port"; else unset MASTER_PORT; fi
-        if [[ -n "$original_torch_dtype" ]]; then export TORCH_DTYPE="$original_torch_dtype"; else unset TORCH_DTYPE; fi
         
         return 1
     fi
 }
 
 # ============================================================================
-# 写入机器可读的完成状态（供 eval_watchdog / 外部工具使用）
+# 写入机器可读的完成状态（供外部工具使用）
 # ============================================================================
 write_completion_status() {
     local result_file="${1:-}"
@@ -717,12 +610,6 @@ write_completion_status() {
 
     # per-host 状态文件（多服务器并发安全）
     local status_file="${EVAL_QUEUE_DIR}/eval_queue_last_run_${_hostname}.json"
-
-    # 如果调用方设置了 EVAL_RUN_DIR，同时写入 per-run 目录
-    local run_status_file=""
-    if [[ -n "${EVAL_RUN_DIR:-}" && -d "${EVAL_RUN_DIR}" ]]; then
-        run_status_file="${EVAL_RUN_DIR}/eval_queue_status.json"
-    fi
 
     local success_list=""
     local failed_list=""
@@ -755,10 +642,6 @@ EOF
     echo "$json_body" > "$status_file"
     print_info "完成状态已写入: $status_file"
 
-    if [[ -n "$run_status_file" ]]; then
-        echo "$json_body" > "$run_status_file"
-        print_info "Per-run 状态已写入: $run_status_file"
-    fi
 }
 
 # ============================================================================
@@ -857,9 +740,7 @@ show_final_results() {
         fi
     done
 
-    send_webhook "Eval Queue Finished" "success=${success_count}\nfailed=${fail_count}\ntotal=${#EXP_RESULTS[@]}"
-
-    # 写入机器可读的完成状态文件（供 eval_watchdog 等外部工具使用）
+    # 写入机器可读的完成状态文件（供外部工具使用）
     write_completion_status "$RESULT_FILE" "$success_count" "$fail_count"
 
     echo ""

@@ -6,10 +6,8 @@ Usage:
     python src/swiftvln/model/trainer.py --custom_register_path src/swiftvln/model ...
 """
 
-import os
 from typing import List, Optional, Union
 
-import torch
 from swift.utils import get_logger
 
 from swiftvln.common.training.base_sft import BaseVLNSft
@@ -19,15 +17,8 @@ from swiftvln.model.dataset import SwiftVLNDataset
 logger = get_logger()
 
 
-def _preview_text(text: str, limit: int = 260) -> str:
-    text = str(text).replace('\n', '\\n')
-    if len(text) <= limit:
-        return text
-    return text[:limit] + '...'
-
-
 class SwiftVLNSft(BaseVLNSft):
-    """SwiftVLN SFT trainer with overlap context and mixed training."""
+    """SwiftVLN SFT trainer with overlap context."""
 
     args_class = SwiftVLNTrainArguments
     args: SwiftVLNTrainArguments
@@ -44,11 +35,9 @@ class SwiftVLNSft(BaseVLNSft):
             raise ValueError("SwiftVLN memory_method=map currently requires history_processor_type=per_frame.")
         if getattr(self.args, 'use_tome', False):
             raise ValueError("SwiftVLN memory_method=map currently requires use_tome=false.")
-        # Map images are not real camera views, so none of the RGB-frame embed
-        # enhancements (pixel / pose / uav_adapter) apply. Reject them early so
+        # Map images are not real camera views, so RGB-frame embed
+        # enhancements (pose / uav_adapter) do not apply. Reject them early so
         # users do not silently combine conflicting settings.
-        if getattr(self.args, 'use_pixel_embed', False):
-            raise ValueError("SwiftVLN memory_method=map requires use_pixel_embed=false.")
         if getattr(self.args, 'use_pose_embed', False):
             raise ValueError("SwiftVLN memory_method=map requires use_pose_embed=false.")
         if getattr(self.args, 'use_uav_adapter', False):
@@ -111,16 +100,6 @@ class SwiftVLNSft(BaseVLNSft):
                 compress_method = "tome" if use_tome else "pool"
                 logger.info(f"  - num_history: {num_history}, log_base: {log_base}")
                 logger.info(f"  - compress: {compress_method}, stride: {compress_stride}")
-                # Debug output
-                if os.environ.get('SWIFTVLN_DEBUG'):
-                    logger.info(f"  [DEBUG] Per-frame configuration verified:")
-                    logger.info(f"    -> num_history={num_history} (frames to sample)")
-                    logger.info(
-                        f"    -> log_base={log_base} "
-                        f"({'uniform' if log_base == 1.0 else 'logarithmic'} sampling)"
-                    )
-                    logger.info(f"    -> compress_method={compress_method}")
-                    logger.info(f"    -> compress_stride={compress_stride} ({compress_stride**2}x compression)")
             elif history_processor_type in ('gtc', 'segment_gtc'):
                 logger.info(f"  - output_tokens: {gtc_output_tokens}")
                 logger.info(f"  - temperature: {gtc_temperature}")
@@ -131,7 +110,6 @@ class SwiftVLNSft(BaseVLNSft):
             )
 
         # Configure embedding enhancement pipeline
-        use_pixel_embed = getattr(self.args, 'use_pixel_embed', False)
         use_pose_embed = getattr(self.args, 'use_pose_embed', False)
         use_uav_adapter = getattr(self.args, 'use_uav_adapter', False)
         uav_adapter_path = getattr(self.args, 'uav_adapter_path', '')
@@ -139,92 +117,25 @@ class SwiftVLNSft(BaseVLNSft):
         uav_adapter_apply_scope = getattr(self.args, 'uav_adapter_apply_scope', 'all_images')
         pose_fusion_method = getattr(self.args, 'pose_fusion_method', 'additive')
         pose_norm_scale = getattr(self.args, 'pose_norm_scale', 100.0)
-        self.template.use_pixel_embed = use_pixel_embed
         self.template.use_pose_embed = use_pose_embed
         self.template.use_uav_adapter = use_uav_adapter
 
         model = getattr(self, 'model', None)
         if model is not None:
-            desired_enhancements = []
-            if use_pixel_embed:
-                desired_enhancements.append('pixel')
-            if use_pose_embed:
-                desired_enhancements.append('pose')
-            if use_uav_adapter:
-                desired_enhancements.append('uav')
+            from swiftvln.common.embedding_enhancement.runtime import configure_embedding_enhancement
 
-            def _needs_rebuild_pipeline() -> bool:
-                if not hasattr(model, 'embed_enhance') or model.embed_enhance is None:
-                    return True
-                if len(desired_enhancements) == 0:
-                    return False
-                if model.embed_enhance.is_empty:
-                    return True
-                return any(
-                    name not in getattr(model.embed_enhance, 'enhancements', {})
-                    for name in desired_enhancements
-                )
-
-            # Ensure embed_enhance pipeline exists on the model
-            if _needs_rebuild_pipeline():
-                from swiftvln.common.embedding_enhancement import create_embedding_pipeline
-
-                embed_dim = model.config.hidden_size
-                model.embed_enhance = create_embedding_pipeline(
-                    embed_dim=embed_dim,
-                    use_pixel_embed=use_pixel_embed,
-                    use_pose_embed=use_pose_embed,
-                    use_uav_adapter=use_uav_adapter,
-                    pose_fusion=pose_fusion_method,
-                    pose_norm_scale=pose_norm_scale,
-                    uav_adapter_path=uav_adapter_path,
-                    uav_adapter_type=uav_adapter_type,
-                    uav_adapter_apply_scope=uav_adapter_apply_scope,
-                )
-                logger.info(f"[SwiftVLN] Rebuilt embed_enhance pipeline in trainer: {model.embed_enhance}")
-
-            # Move to matching device/dtype
-            if not model.embed_enhance.is_empty:
-                target_dtype = model.visual.dtype if hasattr(model, 'visual') and hasattr(model.visual, 'dtype') else None
-                try:
-                    target_device = next(model.parameters()).device
-                except (StopIteration, AttributeError, TypeError):
-                    target_device = getattr(model, 'device', torch.device('cpu'))
-                to_kwargs = {}
-                if target_dtype is not None:
-                    to_kwargs['dtype'] = target_dtype
-                if target_device is not None:
-                    to_kwargs['device'] = target_device
-                if to_kwargs:
-                    model.embed_enhance = model.embed_enhance.to(**to_kwargs)
-
-                logger.info(f"[SwiftVLN] Embedding enhancement pipeline: {model.embed_enhance}")
-                logger.info(f"  - Enhancements: {model.embed_enhance.enhancement_names}")
-                if use_uav_adapter and uav_adapter_path and 'uav' in model.embed_enhance.enhancements:
-                    resolved_path = model.embed_enhance.enhancements['uav'].load_external_checkpoint(
-                        uav_adapter_path,
-                        strict=True,
-                    )
-                    logger.info(f"[SwiftVLN] Loaded external UAV adapter from: {resolved_path}")
-
-            # Backward compatibility: aliases without duplicate module registration.
-            def _set_alias(alias_name: str, value) -> None:
-                if hasattr(model, '_modules'):
-                    model._modules.pop(alias_name, None)
-                model.__dict__[alias_name] = value
-
-            if use_pixel_embed and hasattr(model.embed_enhance, 'enhancements') and 'pixel' in model.embed_enhance.enhancements:
-                _set_alias('pixel_embed', model.embed_enhance.enhancements['pixel'])
-            elif not hasattr(model, 'pixel_embed'):
-                _set_alias('pixel_embed', None)
-            if use_pose_embed and hasattr(model.embed_enhance, 'enhancements') and 'pose' in model.embed_enhance.enhancements:
-                _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
-            elif not hasattr(model, 'pose_embed'):
-                _set_alias('pose_embed', None)
-            if use_uav_adapter and hasattr(model.embed_enhance, 'enhancements') and 'uav' in model.embed_enhance.enhancements:
-                _set_alias('uav_adapter', model.embed_enhance.enhancements['uav'])
-            elif not hasattr(model, 'uav_adapter'):
-                _set_alias('uav_adapter', None)
+            configure_embedding_enhancement(
+                model,
+                use_pose_embed=use_pose_embed,
+                use_uav_adapter=use_uav_adapter,
+                uav_adapter_path=uav_adapter_path,
+                uav_adapter_type=uav_adapter_type,
+                uav_adapter_apply_scope=uav_adapter_apply_scope,
+                pose_fusion_method=pose_fusion_method,
+                pose_norm_scale=pose_norm_scale,
+                clear_disabled_aliases=False,
+                logger=logger,
+            )
 
     def _build_dataset_kwargs(self, data_path: str):
         return {
@@ -239,6 +150,7 @@ class SwiftVLNSft(BaseVLNSft):
             "history_processor_type": self.args.history_processor_type,
             "log_base": self.args.log_base,
             "system_prompt_setting": self.args.system_prompt_setting,
+            "need_frame_poses": self.args.use_pose_embed,
             "memory_method": self.args.memory_method,
             "map_global_side_m": self.args.map_global_side_m,
             "map_local_side_m": self.args.map_local_side_m,
@@ -296,19 +208,12 @@ class SwiftVLNSft(BaseVLNSft):
             num_initial = sample.get('num_initial_images', 0)
             self._log(f"num_initial_images: {num_initial}")
             self._log(f"memory_method: {sample.get('memory_method', 'history')}")
-            self._log(f"system_prompt preview: {_preview_text(sys_content)}")
             self._log(
                 f"system_prompt tags: <history_memory>={sys_content.count('<history_memory>')}, "
                 f"<image>={sys_content.count('<image>')}, map_phrase={'explored map memories' in sys_content}"
             )
             self._log(f"images total: {len(sample.get('images', []))}")
             self._log(f"frame_poses total: {len(sample.get('frame_poses', []))}")
-            user_msgs = [m for m in sample['messages'] if m.get('role') == 'user']
-            assistant_msgs = [m for m in sample['messages'] if m.get('role') == 'assistant']
-            if user_msgs:
-                self._log(f"first user turn: {_preview_text(user_msgs[0].get('content', ''), limit=160)}")
-            if assistant_msgs:
-                self._log(f"first assistant turn: {_preview_text(assistant_msgs[0].get('content', ''), limit=160)}")
             if num_initial > 0:
                 has_initial_tag = 'initial observation' in sys_content
                 self._log(f"[INITIAL] System prompt contains 'initial observation': {has_initial_tag}")

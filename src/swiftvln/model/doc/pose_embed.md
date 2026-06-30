@@ -4,7 +4,7 @@
 
 Pose Embedding 将智能体的位姿信息（位置 + 朝向）注入到 ViT 视觉特征中，使模型在处理每一帧图像时能感知自身在空间中的位置和方向。
 
-该模块作为 `EmbeddingEnhancementPipeline` 的一个插件，与已有的 Pixel Embedding 并列，在 ViT 编码之后、历史压缩之前对所有图像特征进行增强。
+该模块作为 `EmbeddingEnhancementPipeline` 的一个插件，在 ViT 编码之后、历史压缩之前对所有图像特征进行增强。
 
 ## Pose 表示
 
@@ -42,7 +42,7 @@ Action 到运动的映射：
 embed = embed + β × MLP(pose)
 ```
 
-与 Pixel Embedding 结构一致，简单直接。
+结构简单直接。
 
 **FiLM**
 

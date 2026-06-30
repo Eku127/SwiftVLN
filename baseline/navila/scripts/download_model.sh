@@ -5,6 +5,11 @@
 # Two official models:
 #   1. a8cheng/navila-siglip-llama3-8b-v1.5-pretrain  (pretrain, training start point)
 #   2. a8cheng/navila-llama3-8b-8f                      (SFT trained, for evaluation)
+#
+# ModelScope availability checked via ModelScope API (2026-06-30):
+#   - a8cheng/navila-siglip-llama3-8b-v1.5-pretrain: not found
+#   - a8cheng/navila-llama3-8b-8f: not found
+# Keep these downloads on HF/hf-mirror unless a ModelScope mirror is added later.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

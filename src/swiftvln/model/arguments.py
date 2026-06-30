@@ -3,7 +3,6 @@
 SwiftVLN Training Arguments
 
 Extends StreamVLN training arguments with overlap and compression parameters.
-QA mixed training parameters are inherited from BaseVLNTrainArguments.
 """
 
 from dataclasses import dataclass, field
@@ -19,9 +18,6 @@ class SwiftVLNTrainArguments(BaseVLNTrainArguments):
     Extends BaseVLNTrainArguments with:
     - History processor parameters (processor_type, compress_stride, etc.)
     - Overlap parameters (num_overlap)
-    
-    QA mixed training parameters (qa_dataset, qa_ratio, qa_max_samples) are
-    inherited from BaseVLNTrainArguments.
     
     History Processing Options:
     - processor_type='per_frame': Per-frame compression (default)
@@ -109,7 +105,7 @@ class SwiftVLNTrainArguments(BaseVLNTrainArguments):
     # Overlap parameters for sliding window training
     # ==========================================================================
     num_overlap: int = field(
-        default=16,
+        default=0,
         metadata={
             "help": "Number of overlapping actions between consecutive windows. "
                     "When num_overlap > 0, the sliding window stride = num_frames - num_overlap. "
@@ -172,16 +168,6 @@ class SwiftVLNTrainArguments(BaseVLNTrainArguments):
     # ==========================================================================
     # Embedding Enhancement
     # ==========================================================================
-    use_pixel_embed: bool = field(
-        default=False,
-        metadata={
-            "help": "Enable pixel coordinate embedding enhancement (MLP_xy). "
-                    "When enabled, adds learnable Fourier-encoded pixel coordinate embeddings "
-                    "to ViT features after visual encoding. Uses zero-initialization to ensure "
-                    "no behavior change at the start of training. Default: False."
-        }
-    )
-
     use_pose_embed: bool = field(
         default=False,
         metadata={

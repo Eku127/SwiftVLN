@@ -96,8 +96,6 @@ class SwiftVLNEval(BaseVLNEval):
                             help="[GTC] Temperature for soft assignment (lower = sharper)")
         parser.add_argument("--gtc_num_iterations", type=int, default=1,
                             help="[GTC] Number of soft k-means iterations")
-        parser.add_argument("--use_pixel_embed", action="store_true",
-                            help="Enable pixel coordinate embedding enhancement (must match training)")
         parser.add_argument("--use_pose_embed", action="store_true",
                             help="Enable pose embedding enhancement (must match training)")
         parser.add_argument("--use_uav_adapter", action="store_true",
@@ -117,56 +115,48 @@ class SwiftVLNEval(BaseVLNEval):
     def get_summary_extras(self):
         """Add SwiftVLN-specific summary fields."""
         extras = super().get_summary_extras()
-        if hasattr(self.args, 'model_type'):
-            extras['model_type'] = self.args.model_type
-        if hasattr(self.args, 'template_type'):
-            extras['template_type'] = self.args.template_type
-        if hasattr(self.args, 'num_overlap'):
-            extras['num_overlap'] = self.args.num_overlap
-        if hasattr(self.args, 'history_processor_type'):
-            extras['history_processor_type'] = self.args.history_processor_type
-        if hasattr(self.args, 'system_prompt_setting'):
-            extras['system_prompt_setting'] = self.args.system_prompt_setting
-        if hasattr(self.args, 'memory_method'):
-            extras['memory_method'] = self.args.memory_method
+
+        for field_name in (
+            'model_type',
+            'template_type',
+            'num_overlap',
+            'history_processor_type',
+            'system_prompt_setting',
+            'memory_method',
+            'use_pose_embed',
+            'use_uav_adapter',
+            'uav_adapter_type',
+            'uav_adapter_apply_scope',
+            'pose_fusion_method',
+            'pose_norm_scale',
+        ):
+            if hasattr(self.args, field_name):
+                extras[field_name] = getattr(self.args, field_name)
+
         if getattr(self.args, 'memory_method', 'history') == 'map':
-            extras['map_global_side_m'] = getattr(self.args, 'map_global_side_m', 1000.0)
-            extras['map_local_side_m'] = getattr(self.args, 'map_local_side_m', 400.0)
-            extras['map_render_px'] = getattr(self.args, 'map_render_px', 448)
-            extras['map_mask_method'] = getattr(self.args, 'map_mask_method', 'dilate20')
-        if hasattr(self.args, 'use_pixel_embed'):
-            extras['use_pixel_embed'] = self.args.use_pixel_embed
-        if hasattr(self.args, 'use_pose_embed'):
-            extras['use_pose_embed'] = self.args.use_pose_embed
-        if hasattr(self.args, 'use_uav_adapter'):
-            extras['use_uav_adapter'] = self.args.use_uav_adapter
+            for field_name, default_value in (
+                ('map_global_side_m', 1000.0),
+                ('map_local_side_m', 400.0),
+                ('map_render_px', 448),
+                ('map_mask_method', 'dilate20'),
+            ):
+                extras[field_name] = getattr(self.args, field_name, default_value)
+
         if hasattr(self.args, 'uav_adapter_path') and self.args.uav_adapter_path:
             extras['uav_adapter_path'] = self.args.uav_adapter_path
-        if hasattr(self.args, 'uav_adapter_type'):
-            extras['uav_adapter_type'] = self.args.uav_adapter_type
-        if hasattr(self.args, 'uav_adapter_apply_scope'):
-            extras['uav_adapter_apply_scope'] = self.args.uav_adapter_apply_scope
-        if hasattr(self.args, 'pose_fusion_method'):
-            extras['pose_fusion_method'] = self.args.pose_fusion_method
-        if hasattr(self.args, 'pose_norm_scale'):
-            extras['pose_norm_scale'] = self.args.pose_norm_scale
-        
+
         history_type = getattr(self.args, 'history_processor_type', 'per_frame')
-        
+
         # Add processor-specific fields
         if history_type in ('gtc', 'segment_gtc'):
-            if hasattr(self.args, 'gtc_output_tokens'):
-                extras['gtc_output_tokens'] = self.args.gtc_output_tokens
-            if hasattr(self.args, 'gtc_temperature'):
-                extras['gtc_temperature'] = self.args.gtc_temperature
+            for field_name in ('gtc_output_tokens', 'gtc_temperature'):
+                if hasattr(self.args, field_name):
+                    extras[field_name] = getattr(self.args, field_name)
         else:
             # per_frame
-            if hasattr(self.args, 'log_base'):
-                extras['log_base'] = self.args.log_base
-            if hasattr(self.args, 'use_random'):
-                extras['use_random'] = self.args.use_random
-            if hasattr(self.args, 'use_tome'):
-                extras['use_tome'] = self.args.use_tome
+            for field_name in ('log_base', 'use_random', 'use_tome'):
+                if hasattr(self.args, field_name):
+                    extras[field_name] = getattr(self.args, field_name)
         return extras
     
     def register_module(self):
@@ -177,7 +167,7 @@ class SwiftVLNEval(BaseVLNEval):
             pass
 
     def load_model(self):
-        """Load model and processor with optional pixel embedding module."""
+        """Load model and processor with optional embedding enhancements."""
         from swift.model import get_model_processor
 
         # Device mapping based on mode
@@ -192,7 +182,6 @@ class SwiftVLNEval(BaseVLNEval):
             torch_dtype=torch.bfloat16,
             device_map=device_map,
             attn_impl='flash_attn',
-            use_pixel_embed=getattr(self.args, 'use_pixel_embed', False),
             use_pose_embed=getattr(self.args, 'use_pose_embed', False),
             use_uav_adapter=getattr(self.args, 'use_uav_adapter', False),
             uav_adapter_path=getattr(self.args, 'uav_adapter_path', ''),

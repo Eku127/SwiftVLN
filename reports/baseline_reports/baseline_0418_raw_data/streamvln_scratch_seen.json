@@ -2,10 +2,10 @@
   "eval_split": "val_seen",
   "model_type": "streamvln",
   "model_variant": "scratch",
-  "model_name": "streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524",
+  "model_name": "streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5",
   "eval_protocol": "default_satnav_val_seen_val_unseen",
-  "result_dir": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524",
-  "source_summary_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524/val_seen/evaluation_summary.json",
+  "result_dir": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5",
+  "source_summary_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5/val_seen/evaluation_summary.json",
   "success_rate": 0.642982,
   "mean_spl": 0.636584,
   "oracle_success": 0.717097,
@@ -38,5 +38,5 @@
       "total_episodes": 1559
     }
   },
-  "model_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524/checkpoint-2769"
+  "model_path": "/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5/checkpoint-2769"
 }

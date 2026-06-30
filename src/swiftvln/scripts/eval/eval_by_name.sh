@@ -2,7 +2,7 @@
 # ============================================================================
 # Unified VLN Model Evaluation Script
 # ============================================================================
-# 
+#
 # 支持的模型架构: swiftvln
 #
 # 使用方法:
@@ -14,24 +14,18 @@
 #
 #   # SwiftVLN 评估 (per_frame with random history sampling)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456
-#   
+#
 #   # SwiftVLN 评估 (per_frame with tome, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-noembed-bs64-lr2e-5-123456
-#   
+#
 #   # SwiftVLN 评估 (GTC, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-123456
-#
-#   # SwiftVLN 评估 (Pixel Embed)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-initial-pixel-bs64-lr2e-5-123456
 #
 #   # SwiftVLN 评估 (Pose Embed, additive)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pose-bs64-lr2e-5-123456
 #
-#   # SwiftVLN 评估 (Pixel + Pose Embed)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-pixel+pose-bs64-lr2e-5-123456
-#
 #   # SwiftVLN 评估 (SegmentGTC, no embedding)
-#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-qa15-bs64-lr2e-5-123456
+#   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-bs64-lr2e-5-123456
 #
 # 环境变量:
 #   ENV_TYPE     - habitat (默认) 或 satnav (如果模型名包含 env_type，会自动解析)
@@ -68,6 +62,7 @@ SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 VLN_ROOT="${SWIFTVLN_ROOT}/src/swiftvln"
 OUTPUT_ROOT="${SWIFTVLN_ROOT}/output"
+source "${SCRIPT_DIR}/eval_lib.sh"
 
 # ============================================================================
 # 参数检查
@@ -99,7 +94,7 @@ fi
 # ============================================================================
 parse_model_arch() {
     local name="$1"
-    
+
     if [[ "$name" == swiftvln-* ]]; then
         echo "swiftvln"
     else
@@ -121,57 +116,38 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # 解析模型参数 (基于EXP_NAME格式)
 # ============================================================================
 # 新格式 (带 env_type):
-# 注: qa 参数(混合训练比例)不影响 eval，解析时会被忽略
-# SwiftVLN (per_frame):   swiftvln-{env_type}-[qwen3vl-]{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-# SwiftVLN (gtc):         swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-# SwiftVLN (segment_gtc): swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}[-qa{ratio}]-bs{batch_size}-lr{learning_rate}-{timestamp}
-#   embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
-
-# ============================================================================
-# 解析环境类型 (从模型名中提取 env_type，兼容新旧格式)
-# ============================================================================
-parse_env_type() {
-    local name="$1"
-    
-    # 新格式: {arch}-{env_type}-{model_size}-...
-    # 检测是否为新格式 (第二个字段是 habitat 或 satnav)
-    local second_field=$(echo "$name" | cut -d'-' -f2)
-    
-    if [[ "$second_field" == "habitat" ]] || [[ "$second_field" == "satnav" ]]; then
-        echo "$second_field"
-    else
-        # 旧格式，默认 habitat
-        echo "habitat"
-    fi
-}
+# SwiftVLN (per_frame):   swiftvln-{env_type}-[qwen3vl-]{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
+# SwiftVLN (gtc):         swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
+# SwiftVLN (segment_gtc): swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
+#   embed_slot: noembed | pose | posefilm | uav | pose+uav | posefilm+uav
 
 parse_swiftvln_params() {
     local name="$1"
-    # 新格式 (map):         swiftvln-satnav-3b-1ep-f32s4-overlap16-map-g1000-l400-r448-d20-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # 新格式 (per_frame):   swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # random 示例:          swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # no-memory 示例:       swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # 新格式 (gtc):         swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # 新格式 (segment_gtc): swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}[-qa15]-bs64-lr2e-5-123456
-    # embed_slot: noembed | pixel | pose | posefilm | pixel+pose | pixel+posefilm
+    # 新格式 (map):         swiftvln-satnav-3b-1ep-f32s4-overlap16-map-g1000-l400-r448-d20-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # 新格式 (per_frame):   swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # random 示例:          swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # no-memory 示例:       swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # 新格式 (gtc):         swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # 新格式 (segment_gtc): swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
+    # embed_slot: noembed | pose | posefilm | uav | pose+uav | posefilm+uav
     # 注: -initial 是可选的，vanilla 模式下不显示（默认）
-    
+
     local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
     local model_family="qwen2_5_vl"
     if [[ "$name" == *"-qwen3vl-"* ]]; then
         model_family="qwen3_vl"
     fi
     local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
-    
+
     # 新格式: f{num_frames}s{num_future_steps} (不含 h)
     local frames_steps=$(echo "$name" | grep -oP 'f\d+s\d+' | head -1)
     local num_frames=$(echo "$frames_steps" | sed -n 's/f\([0-9]*\)s.*/\1/p')
     local num_future_steps=$(echo "$frames_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
-    
+
     local num_overlap=$(echo "$name" | sed -n 's/.*-overlap\([0-9]*\)-.*$/\1/p')
     local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
     local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
-    
+
     # 解析 system_prompt_setting: 检查 -initial 后缀
     local system_prompt_setting="vanilla"
     if [[ "$name" == *"-initial-"* ]]; then
@@ -182,7 +158,7 @@ parse_swiftvln_params() {
     local map_local_side_m=""
     local map_render_px=""
     local map_mask_method=""
-    
+
     # 解析历史处理器类型和相关参数
     local history_processor_type="per_frame"
     local num_history="8"
@@ -191,10 +167,9 @@ parse_swiftvln_params() {
     local use_random="false"
     local use_tome="false"
     local gtc_output_tokens=""
-    local use_pixel_embed="false"
     local use_pose_embed="false"
     local pose_fusion_method="additive"
-    
+
     if [[ "$name" == *"-map-g"* ]]; then
         local map_block
         map_block=$(echo "$name" | grep -oP 'map-g[^-]+-l[^-]+-r\d+-[^-]+-s\d+' | head -1)
@@ -238,31 +213,17 @@ parse_swiftvln_params() {
     fi
 
     # 解析 embedding enhancement slot
-    # 匹配顺序: pixel+posefilm > pixel+pose > posefilm > pose > pixel > noembed
-    if [[ "$name" == *"-pixel+posefilm-"* ]]; then
-        use_pixel_embed="true"
+    # 匹配顺序: posefilm > pose > noembed
+    if [[ "$name" == *"-posefilm-"* ]] || [[ "$name" == *"-posefilm" ]]; then
         use_pose_embed="true"
         pose_fusion_method="film"
-    elif [[ "$name" == *"-pixel+pose-"* ]]; then
-        use_pixel_embed="true"
+    elif [[ "$name" == *"-pose-"* ]] || [[ "$name" == *"-pose" ]]; then
         use_pose_embed="true"
         pose_fusion_method="additive"
-    elif [[ "$name" == *"-posefilm-"* ]]; then
-        use_pixel_embed="false"
-        use_pose_embed="true"
-        pose_fusion_method="film"
-    elif [[ "$name" == *"-pose-"* ]]; then
-        use_pixel_embed="false"
-        use_pose_embed="true"
-        pose_fusion_method="additive"
-    elif [[ "$name" == *"-pixel-"* ]]; then
-        use_pixel_embed="true"
-        use_pose_embed="false"
-    elif [[ "$name" == *"-noembed-"* ]]; then
-        use_pixel_embed="false"
+    elif [[ "$name" == *"-noembed-"* ]] || [[ "$name" == *"-noembed" ]]; then
         use_pose_embed="false"
     fi
-    
+
     echo "MODEL_FAMILY=$model_family"
     echo "MODEL_SIZE=$model_size"
     echo "NUM_EPOCHS=$epochs"
@@ -282,18 +243,92 @@ parse_swiftvln_params() {
     echo "MAP_RENDER_PX=$map_render_px"
     echo "MAP_MASK_METHOD=$map_mask_method"
     echo "SYSTEM_PROMPT_SETTING=$system_prompt_setting"
-    echo "USE_PIXEL_EMBED=$use_pixel_embed"
     echo "USE_POSE_EMBED=$use_pose_embed"
     echo "POSE_FUSION_METHOD=$pose_fusion_method"
     echo "BATCH_SIZE=$batch_size"
     echo "LEARNING_RATE=$learning_rate"
 }
 
+print_swiftvln_params() {
+    if [ "$MODEL_ARCH" != "swiftvln" ]; then
+        return
+    fi
+
+    echo "NUM_OVERLAP:    ${NUM_OVERLAP:-N/A}"
+    echo "MEMORY_METHOD:  ${MEMORY_METHOD:-history}"
+    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
+        echo "MAP_GLOBAL_SIDE_M: ${MAP_GLOBAL_SIDE_M:-1000}"
+        echo "MAP_LOCAL_SIDE_M: ${MAP_LOCAL_SIDE_M:-400}"
+        echo "MAP_RENDER_PX: ${MAP_RENDER_PX:-448}"
+        echo "MAP_MASK_METHOD: ${MAP_MASK_METHOD:-dilate20}"
+        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
+    else
+        echo "HISTORY_PROCESSOR_TYPE: ${HISTORY_PROCESSOR_TYPE:-per_frame}"
+    fi
+    if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
+        echo "GTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+    elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+        echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+        echo "SGTC_NUM_SEGMENTS: 8 (fixed)"
+    elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
+        echo "NUM_HISTORY:    ${NUM_HISTORY:-8}"
+        echo "LOG_BASE:       ${LOG_BASE:-1.0}"
+        echo "USE_RANDOM:     ${USE_RANDOM:-false}"
+        if [ "${USE_RANDOM:-false}" = "true" ]; then
+            echo "SAMPLING_MODE:  random (LOG_BASE metadata only)"
+        fi
+        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
+        echo "USE_TOME:       ${USE_TOME:-false}"
+    fi
+    echo "SYSTEM_PROMPT:  ${SYSTEM_PROMPT_SETTING:-vanilla}"
+    echo "USE_POSE_EMBED: ${USE_POSE_EMBED:-false}"
+    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
+    fi
+}
+
+print_swiftvln_env_assignments() {
+    for name in NUM_FRAMES NUM_HISTORY NUM_FUTURE_STEPS COMPRESS_STRIDE NUM_OVERLAP MEMORY_METHOD HISTORY_PROCESSOR_TYPE; do
+        if [ -n "${!name:-}" ]; then
+            echo "${name}=${!name}"
+        fi
+    done
+
+    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
+        for name in MAP_GLOBAL_SIDE_M MAP_LOCAL_SIDE_M MAP_RENDER_PX MAP_MASK_METHOD; do
+            if [ -n "${!name:-}" ]; then
+                echo "${name}=${!name}"
+            fi
+        done
+    elif [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "gtc" ] || [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "segment_gtc" ]; then
+        if [ -n "${GTC_OUTPUT_TOKENS:-}" ]; then
+            echo "GTC_OUTPUT_TOKENS=${GTC_OUTPUT_TOKENS}"
+        fi
+        if [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "segment_gtc" ]; then
+            echo "SGTC_NUM_SEGMENTS=8 (fixed)"
+        fi
+    else
+        for name in LOG_BASE USE_RANDOM USE_TOME; do
+            if [ -n "${!name:-}" ]; then
+                echo "${name}=${!name}"
+            fi
+        done
+    fi
+
+    if [ -n "${SYSTEM_PROMPT_SETTING:-}" ]; then
+        echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
+    fi
+    if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+        echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
+        echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
+    fi
+}
+
 # 解析 swiftvln 参数
 eval "$(parse_swiftvln_params "$MODEL_NAME")"
 
 # 解析环境类型 (从模型名中提取，如果用户没有指定 ENV_TYPE)
-PARSED_ENV_TYPE=$(parse_env_type "$MODEL_NAME" "$MODEL_ARCH")
+PARSED_ENV_TYPE=$(parse_env_type_from_model "$MODEL_NAME")
 
 # 如果用户没有指定 ENV_TYPE，则使用从模型名解析出的值
 if [ -z "$ENV_TYPE" ]; then
@@ -321,40 +356,7 @@ echo "NUM_FRAMES:     ${NUM_FRAMES:-N/A}"
 echo "NUM_HISTORY:    ${NUM_HISTORY:-N/A}"
 echo "NUM_FUTURE_STEPS: ${NUM_FUTURE_STEPS:-N/A}"
 
-# SwiftVLN 特有参数
-if [ "$MODEL_ARCH" == "swiftvln" ]; then
-    echo "NUM_OVERLAP:    ${NUM_OVERLAP:-N/A}"
-    echo "MEMORY_METHOD:  ${MEMORY_METHOD:-history}"
-    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
-        echo "MAP_GLOBAL_SIDE_M: ${MAP_GLOBAL_SIDE_M:-1000}"
-        echo "MAP_LOCAL_SIDE_M: ${MAP_LOCAL_SIDE_M:-400}"
-        echo "MAP_RENDER_PX: ${MAP_RENDER_PX:-448}"
-        echo "MAP_MASK_METHOD: ${MAP_MASK_METHOD:-dilate20}"
-        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
-    else
-        echo "HISTORY_PROCESSOR_TYPE: ${HISTORY_PROCESSOR_TYPE:-per_frame}"
-    fi
-    if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
-        echo "GTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
-    elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-        echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
-        echo "SGTC_NUM_SEGMENTS: 8 (fixed)"
-    elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
-        echo "NUM_HISTORY:    ${NUM_HISTORY:-8}"
-        echo "LOG_BASE:       ${LOG_BASE:-1.0}"
-        echo "USE_RANDOM:     ${USE_RANDOM:-false}"
-        if [ "${USE_RANDOM:-false}" = "true" ]; then
-            echo "SAMPLING_MODE:  random (LOG_BASE metadata only)"
-        fi
-        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
-        echo "USE_TOME:       ${USE_TOME:-false}"
-    fi
-    echo "USE_PIXEL_EMBED: ${USE_PIXEL_EMBED:-false}"
-    echo "USE_POSE_EMBED: ${USE_POSE_EMBED:-false}"
-    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
-    fi
-fi
+print_swiftvln_params
 
 echo "BATCH_SIZE:     ${BATCH_SIZE:-N/A}"
 echo "LEARNING_RATE:  ${LEARNING_RATE:-N/A}"
@@ -365,10 +367,86 @@ echo ""
 # 检查模型目录和checkpoint
 # ============================================================================
 MODEL_DIR="${OUTPUT_ROOT}/${MODEL_ARCH}/${MODEL_NAME}"
+HF_MODEL_DIR="${SWIFTVLN_ROOT}/output/model_zoo/${MODEL_ARCH}/HF_model/${MODEL_NAME}"
+USER_MODEL_PATH="${MODEL_PATH:-}"
+
+is_hf_model_dir() {
+    local model_dir="$1"
+    [ -d "$model_dir" ] || return 1
+    [ -f "$model_dir/config.json" ] || return 1
+    if [ -f "$model_dir/model.safetensors.index.json" ] || \
+       ls "$model_dir"/model-*.safetensors >/dev/null 2>&1 || \
+       [ -f "$model_dir/pytorch_model.bin.index.json" ] || \
+       ls "$model_dir"/pytorch_model-*.bin >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+# 查找最新的checkpoint (按 checkpoint 编号数字排序)
+find_latest_checkpoint() {
+    local model_dir="$1"
+    local latest_checkpoint=""
+
+    # 首先在 v*-* 子目录中查找
+    for version_dir in "$model_dir"/v*; do
+        if [ -d "$version_dir" ]; then
+            # 查找 checkpoint-* 目录，按数字排序取最大
+            local ckpt
+            ckpt=$(ls -d "$version_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+            if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+                latest_checkpoint="$ckpt"
+            fi
+        fi
+    done
+
+    # 如果没有找到，直接在模型目录下查找
+    if [ -z "$latest_checkpoint" ]; then
+        local ckpt
+        ckpt=$(ls -d "$model_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+        if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+            latest_checkpoint="$ckpt"
+        fi
+    fi
+
+    echo "$latest_checkpoint"
+}
+
+resolve_model_path() {
+    # Highest priority: explicit MODEL_PATH from the caller.
+    if [ -n "$USER_MODEL_PATH" ]; then
+        if is_hf_model_dir "$USER_MODEL_PATH" || [ -f "$USER_MODEL_PATH/config.json" ]; then
+            echo "$USER_MODEL_PATH"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Default: prefer live training outputs so same-name in-progress or freshly
+    # trained models are not shadowed by archived HF model-zoo copies.
+    if [ -d "$MODEL_DIR" ]; then
+        local ckpt
+        ckpt=$(find_latest_checkpoint "$MODEL_DIR")
+        if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+            echo "$ckpt"
+            return 0
+        fi
+    fi
+
+    # Fallback: upload-ready HF model zoo directories. They are already complete
+    # model directories and do not need a checkpoint-* wrapper.
+    if is_hf_model_dir "$HF_MODEL_DIR"; then
+        echo "$HF_MODEL_DIR"
+        return 0
+    fi
+
+    return 1
+}
 
 # DRY-RUN 模式下跳过目录检查
 if [ "$DRY_RUN" == "true" ]; then
     print_info "预期模型目录: $MODEL_DIR"
+    print_info "预期HF模型目录: $HF_MODEL_DIR"
     print_success "DRY-RUN 模式完成，参数解析成功!"
     exit 0
 fi
@@ -376,91 +454,41 @@ fi
 # CHECK-ONLY 模式: 跳过模型检查，但验证eval脚本存在
 if [ "$CHECK_ONLY" == "true" ]; then
     print_info "预期模型目录: $MODEL_DIR"
-    
+    print_info "预期HF模型目录: $HF_MODEL_DIR"
+    RESOLVED_MODEL_PATH="$(resolve_model_path || true)"
+    if [ -n "$RESOLVED_MODEL_PATH" ]; then
+        if [ -n "$USER_MODEL_PATH" ]; then
+            print_success "将使用用户指定MODEL_PATH: $RESOLVED_MODEL_PATH"
+        elif [ "$RESOLVED_MODEL_PATH" = "$HF_MODEL_DIR" ]; then
+            print_success "将直接使用HF模型目录: $RESOLVED_MODEL_PATH"
+        else
+            print_success "将使用checkpoint目录: $RESOLVED_MODEL_PATH"
+        fi
+    else
+        print_warning "未找到可用模型路径；CHECK_ONLY 仍继续检查参数和eval脚本"
+    fi
+
     # 检查eval脚本是否存在
-    EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh"
+    EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh"
     if [ ! -f "$EVAL_SCRIPT" ]; then
         print_error "找不到eval脚本: $EVAL_SCRIPT"
         exit 1
     fi
     print_success "找到eval脚本: $EVAL_SCRIPT"
-    
+
     # 显示将要传递的环境变量
     echo ""
     echo "=============================================="
     echo "将传递给eval脚本的环境变量"
     echo "=============================================="
-    echo "MODEL_PATH=<checkpoint_path>"
+    echo "MODEL_NAME=${MODEL_NAME}"
+    echo "MODEL_PATH=${RESOLVED_MODEL_PATH:-<checkpoint_or_hf_model_path>}"
     echo "MODEL_FAMILY=${MODEL_FAMILY:-qwen2_5_vl}"
     echo "ENV_TYPE=${ENV_TYPE}"
     echo "EVAL_SPLIT=${EVAL_SPLIT:-val_unseen}"
     echo "CUDA_DEVICES=${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
     echo "MASTER_PORT=${MASTER_PORT:-29600} (实际运行时会自动检测端口占用)"
-    if [ -n "$NUM_FRAMES" ]; then
-        echo "NUM_FRAMES=${NUM_FRAMES}"
-    fi
-    if [ -n "$NUM_HISTORY" ]; then
-        echo "NUM_HISTORY=${NUM_HISTORY}"
-    fi
-    if [ -n "$NUM_FUTURE_STEPS" ]; then
-        echo "NUM_FUTURE_STEPS=${NUM_FUTURE_STEPS}"
-    fi
-    if [ -n "$COMPRESS_STRIDE" ]; then
-        echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
-    fi
-    # SwiftVLN 特有参数
-    if [ -n "$NUM_OVERLAP" ]; then
-        echo "NUM_OVERLAP=${NUM_OVERLAP}"
-    fi
-    if [ -n "$MEMORY_METHOD" ]; then
-        echo "MEMORY_METHOD=${MEMORY_METHOD}"
-    fi
-    if [ -n "$HISTORY_PROCESSOR_TYPE" ]; then
-        echo "HISTORY_PROCESSOR_TYPE=${HISTORY_PROCESSOR_TYPE}"
-    fi
-    if [ "$MEMORY_METHOD" == "map" ]; then
-        [ -n "$MAP_GLOBAL_SIDE_M" ] && echo "MAP_GLOBAL_SIDE_M=${MAP_GLOBAL_SIDE_M}"
-        [ -n "$MAP_LOCAL_SIDE_M" ] && echo "MAP_LOCAL_SIDE_M=${MAP_LOCAL_SIDE_M}"
-        [ -n "$MAP_RENDER_PX" ] && echo "MAP_RENDER_PX=${MAP_RENDER_PX}"
-        [ -n "$MAP_MASK_METHOD" ] && echo "MAP_MASK_METHOD=${MAP_MASK_METHOD}"
-        if [ -n "$COMPRESS_STRIDE" ]; then
-            echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
-        fi
-    elif [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-        if [ -n "$GTC_OUTPUT_TOKENS" ]; then
-            echo "GTC_OUTPUT_TOKENS=${GTC_OUTPUT_TOKENS}"
-        fi
-        if [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-            echo "SGTC_NUM_SEGMENTS=8 (fixed)"
-        fi
-    else
-        # per_frame 参数
-        if [ -n "$NUM_HISTORY" ]; then
-            echo "NUM_HISTORY=${NUM_HISTORY}"
-        fi
-        if [ -n "$LOG_BASE" ]; then
-            echo "LOG_BASE=${LOG_BASE}"
-        fi
-        if [ -n "$USE_RANDOM" ]; then
-            echo "USE_RANDOM=${USE_RANDOM}"
-        fi
-        if [ -n "$COMPRESS_STRIDE" ]; then
-            echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
-        fi
-        if [ -n "$USE_TOME" ]; then
-            echo "USE_TOME=${USE_TOME}"
-        fi
-    fi
-    if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
-        echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
-    fi
-    if [ "$MODEL_ARCH" == "swiftvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
-        echo "USE_PIXEL_EMBED=${USE_PIXEL_EMBED}"
-    fi
-    if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
-        echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
-    fi
+    print_swiftvln_env_assignments
     echo "SAVE_VIDEO=${SAVE_VIDEO:-false}"
     if [ -n "$MAX_EPISODES" ]; then
         echo "MAX_EPISODES=${MAX_EPISODES}"
@@ -478,45 +506,21 @@ fi
 
 print_info "模型目录: $MODEL_DIR"
 
-# 查找最新的checkpoint (按 checkpoint 编号数字排序)
-find_latest_checkpoint() {
-    local model_dir="$1"
-    local latest_checkpoint=""
-    
-    # 首先在 v*-* 子目录中查找
-    for version_dir in "$model_dir"/v*; do
-        if [ -d "$version_dir" ]; then
-            # 查找 checkpoint-* 目录，按数字排序取最大
-            local ckpt
-            ckpt=$(ls -d "$version_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
-            if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
-                latest_checkpoint="$ckpt"
-            fi
-        fi
-    done
-    
-    # 如果没有找到，直接在模型目录下查找
-    if [ -z "$latest_checkpoint" ]; then
-        local ckpt
-        ckpt=$(ls -d "$model_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
-        if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
-            latest_checkpoint="$ckpt"
-        fi
-    fi
-    
-    echo "$latest_checkpoint"
-}
-
-CHECKPOINT_PATH=$(find_latest_checkpoint "$MODEL_DIR")
+CHECKPOINT_PATH=$(resolve_model_path || true)
 
 if [ -z "$CHECKPOINT_PATH" ]; then
-    print_error "在模型目录下找不到checkpoint!"
-    print_error "模型目录: $MODEL_DIR"
-    print_error "请确保模型训练已完成并保存了checkpoint"
+    print_error "找不到可用模型路径!"
+    print_error "HF模型目录: $HF_MODEL_DIR"
+    print_error "训练输出目录: $MODEL_DIR"
+    print_error "请确保HF_model目录完整，或训练输出目录中存在checkpoint"
     exit 1
 fi
 
-print_success "找到checkpoint: $CHECKPOINT_PATH"
+if [ "$CHECKPOINT_PATH" = "$HF_MODEL_DIR" ]; then
+    print_success "找到HF模型目录: $CHECKPOINT_PATH"
+else
+    print_success "找到checkpoint: $CHECKPOINT_PATH"
+fi
 
 # ============================================================================
 # 验证checkpoint完整性 (检查必要文件)
@@ -525,19 +529,19 @@ check_checkpoint_integrity() {
     local ckpt_path="$1"
     local required_files=("config.json")
     local missing_files=()
-    
+
     for file in "${required_files[@]}"; do
         if [ ! -f "$ckpt_path/$file" ]; then
             missing_files+=("$file")
         fi
     done
-    
+
     # 检查是否有模型权重文件 (可能是 .safetensors 或 .bin)
     if ! ls "$ckpt_path"/*.safetensors >/dev/null 2>&1 && \
        ! ls "$ckpt_path"/*.bin >/dev/null 2>&1; then
         missing_files+=("model weights (.safetensors or .bin)")
     fi
-    
+
     if [ ${#missing_files[@]} -gt 0 ]; then
         print_error "Checkpoint不完整! 缺少以下文件:"
         for file in "${missing_files[@]}"; do
@@ -545,7 +549,7 @@ check_checkpoint_integrity() {
         done
         return 1
     fi
-    
+
     return 0
 }
 
@@ -558,7 +562,7 @@ print_success "Checkpoint完整性检查通过"
 # ============================================================================
 # 确定eval脚本路径
 # ============================================================================
-EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh"
+EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh"
 
 if [ ! -f "$EVAL_SCRIPT" ]; then
     print_error "找不到eval脚本: $EVAL_SCRIPT"
@@ -587,7 +591,7 @@ find_available_port() {
     local start_port=${1:-29600}
     local max_attempts=100
     local port=$start_port
-    
+
     for ((i=0; i<max_attempts; i++)); do
         if check_port_available $port; then
             echo $port
@@ -595,7 +599,7 @@ find_available_port() {
         fi
         port=$((port + 1))
     done
-    
+
     # 如果找不到可用端口，返回原始端口（让后续程序报错）
     echo $start_port
     return 1
@@ -624,20 +628,13 @@ fi
 # 准备环境变量
 # ============================================================================
 export MODEL_PATH="$CHECKPOINT_PATH"
+export MODEL_NAME
 export ENV_TYPE="$ENV_TYPE"  # 已在前面从模型名解析或使用用户指定值
 export MODEL_FAMILY="${MODEL_FAMILY:-qwen2_5_vl}"
 
 # 确定要评测的 split 列表
 # 若用户已显式设置 EVAL_SPLIT，仅跑该 split；否则 SatNav 默认同时跑两个 split，Habitat 默认 val_unseen
-if [ -n "$EVAL_SPLIT" ]; then
-    EVAL_SPLITS_LIST="$EVAL_SPLIT"
-else
-    if [ "$ENV_TYPE" == "satnav" ]; then
-        EVAL_SPLITS_LIST="val_seen val_unseen"
-    else
-        EVAL_SPLITS_LIST="val_unseen"
-    fi
-fi
+EVAL_SPLITS_LIST="$(infer_eval_splits "$ENV_TYPE" "${EVAL_SPLIT:-}")"
 export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
 export MASTER_PORT
 export SAVE_VIDEO="${SAVE_VIDEO:-false}"
@@ -697,9 +694,6 @@ fi
 if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
     export SYSTEM_PROMPT_SETTING
 fi
-if [ "$MODEL_ARCH" == "swiftvln" ] && [ -n "$USE_PIXEL_EMBED" ]; then
-    export USE_PIXEL_EMBED
-fi
 if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
     export USE_POSE_EMBED
     export POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
@@ -726,38 +720,7 @@ fi
 # SwiftVLN 特有参数
 if [ "$MODEL_ARCH" == "swiftvln" ]; then
     echo "--- SwiftVLN Parameters ---"
-    echo "NUM_OVERLAP:        ${NUM_OVERLAP:-N/A}"
-    echo "MEMORY_METHOD:      ${MEMORY_METHOD:-history}"
-    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
-        echo "MAP_GLOBAL_SIDE_M:  ${MAP_GLOBAL_SIDE_M:-1000}"
-        echo "MAP_LOCAL_SIDE_M:   ${MAP_LOCAL_SIDE_M:-400}"
-        echo "MAP_RENDER_PX:      ${MAP_RENDER_PX:-448}"
-        echo "MAP_MASK_METHOD:    ${MAP_MASK_METHOD:-dilate20}"
-        echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"
-    else
-        echo "HISTORY_PROCESSOR:  ${HISTORY_PROCESSOR_TYPE:-per_frame}"
-    fi
-    if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
-        echo "GTC_OUTPUT_TOKENS:  ${GTC_OUTPUT_TOKENS:-512}"
-    elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-        echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
-        echo "SGTC_NUM_SEGMENTS:  8 (fixed)"
-    elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
-        echo "NUM_HISTORY:        ${NUM_HISTORY:-8}"
-        echo "LOG_BASE:           ${LOG_BASE:-1.0}"
-        echo "USE_RANDOM:         ${USE_RANDOM:-false}"
-        if [ "${USE_RANDOM:-false}" = "true" ]; then
-            echo "SAMPLING_MODE:      random (LOG_BASE metadata only)"
-        fi
-        echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"
-        echo "USE_TOME:           ${USE_TOME:-false}"
-    fi
-    echo "SYSTEM_PROMPT:      ${SYSTEM_PROMPT_SETTING:-vanilla}"
-    echo "USE_PIXEL_EMBED:    ${USE_PIXEL_EMBED:-false}"
-    echo "USE_POSE_EMBED:     ${USE_POSE_EMBED:-false}"
-    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
-    fi
+    print_swiftvln_params
 fi
 echo "=============================================="
 echo ""

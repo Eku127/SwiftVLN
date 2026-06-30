@@ -4,6 +4,13 @@
 #   1. EVA-CLIP (eva_vit_g.pth)      -- Google Storage direct download
 #   2. Vicuna-7B (lmsys/vicuna-7b-v1.5) -- HuggingFace via hf-mirror.com  [optional]
 #   3. Uni-NaVid weights (Jzzhang/Uni-NaVid) -- HuggingFace via hf-mirror.com
+#
+# ModelScope availability checked via ModelScope API (2026-06-30):
+#   - Available: lmsys/vicuna-7b-v1.5
+#   - Also available Vicuna mirror: AI-ModelScope/vicuna-7b-v1.5
+#   - Not found: Jzzhang/Uni-NaVid
+#   - EVA-CLIP is not an HF/ModelScope repo in this script; it uses the direct
+#     Google Storage URL below.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

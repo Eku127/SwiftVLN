@@ -35,9 +35,12 @@ src/swiftvln/tools/feature_test/tome/*comparison.png
 models/
 
 # Ignore baseline checkpoint/model weights
-baseline/streamvln/model/
-baseline/uninavid/model/
-baseline/navila/model/
+baseline/streamvln/model/*
+!baseline/streamvln/model/.gitkeep
+baseline/uninavid/model/*
+!baseline/uninavid/model/.gitkeep
+baseline/navila/model/*
+!baseline/navila/model/.gitkeep
 baseline/openfly/model/*
 !baseline/openfly/model/.gitkeep
 
@@ -50,6 +53,7 @@ baseline/navila/doc/setup_env_log.txt
 
 # Baseline eval generated temp configs
 baseline/*/configs/.satnav_task_eval_*.yaml
+baseline/streamvln/configs/.streamvln_model_eval_*/
 baseline/*/configs/.debug_eval*.yaml
 
 # Ignore pycache under baseline

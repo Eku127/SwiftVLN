@@ -36,8 +36,10 @@ bash baseline/uninavid/scripts/train_satnav.sh continue my_exp_name
 
 | 变量 | 说明 |
 |---|---|
-| `DATA_PATH` | SatNav `annotations.json` 路径 |
-| `VIDEO_FOLDER` | SatNav `trajectory_data` 根目录 |
+| `SATNAV_DATASET` | SatNav 数据集目录名，默认 `SatNav-v0.1` |
+| `SATNAV_TRAIN_DATA_DIR` | SatNav `trajectory_data` 根目录，默认 `$SATNAV_DATA_ROOT/$SATNAV_DATASET/trajectory_data` |
+| `DATA_PATH` | SatNav `annotations.json` 路径，默认 `$SATNAV_TRAIN_DATA_DIR/annotations.json` |
+| `VIDEO_FOLDER` | SatNav `trajectory_data` 根目录，默认 `$SATNAV_TRAIN_DATA_DIR` |
 | `NUM_GPUS` | 训练 GPU 数 |
 | `TRAIN_BSZ` | 单卡 batch size |
 | `GRAD_ACCUM` | 梯度累积步数 |
@@ -57,7 +59,7 @@ output/uninavid-baseline/<EXP_NAME>/
 默认实验名格式：
 
 ```text
-uninavid-baseline-{mode}-{epochs}ep-data{version}-bs{effective_bs}-lr{lr}-{timestamp}
+uninavid-baseline-{mode}-{epochs}ep-data{dataset}-bs{effective_bs}-lr{lr}-{timestamp}
 ```
 
 ## 训练数据约定
@@ -79,34 +81,35 @@ uninavid-baseline-{mode}-{epochs}ep-data{version}-bs{effective_bs}-lr{lr}-{times
 
 ## 评测
 
-评测脚本支持两种输入：
+评测脚本只使用命名参数主路径：
 
 ```bash
-# 按实验名评测，自动查找 output/uninavid-baseline/<EXP_NAME>/checkpoint-*
-bash baseline/uninavid/scripts/eval_satnav.sh <exp_name> [split] [gpus] [max_episodes]
-
-# 按 checkpoint 路径评测
-bash baseline/uninavid/scripts/eval_satnav.sh /path/to/checkpoint [split] [gpus] [max_episodes]
+bash baseline/uninavid/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_name uninavid-satnav-continue-1ep-lr1e-5 \
+  --gpus 8 \
+  --max_episodes 10
 ```
 
 split 约定：
 
-- 不传 `split`：顺序运行 `val_seen` 和 `val_unseen`
-- 传 `val_seen` / `val_unseen` / `test`：只运行指定 split
+- split 和 eval 数据只由 `baseline/uninavid/configs/satnav_task.yaml` 控制
+- `SPLIT: all` 会顺序运行 `val_seen` 和 `val_unseen`
+- `DATA_PATH` 必须是 eval split 父目录，例如
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
+- 旧位置参数、`--checkpoint_path`、`--split`、`--satnav_version` 均不再作为公开入口
 
 常用环境变量：
 
 | 变量 | 说明 |
 |---|---|
-| `SATNAV_VERSION` | 指定 SatNav 数据版本；不设置时会尝试从实验名解析 |
 | `MODEL_BASE` | adapter-only checkpoint 的底座模型路径，可选 |
 | `LOCAL_CACHE_DIR` | 本地 checkpoint cache 目录，可选 |
 
 输出目录：
 
 ```text
-results/uninavid-baseline/<EXP_NAME>/<split>/
-results/uninavid-baseline/by-path/<checkpoint_name>/<split>/
+results/uninavid-baseline/<model_name>/<split>/
 ```
 
 评测结果包含：

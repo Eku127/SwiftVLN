@@ -24,7 +24,6 @@ from torch.utils.data import Dataset
 from swiftvln.common.constants import (
     DEFAULT_ACTION_MAP,
     DEFAULT_CONJUNCTIONS,
-    DEFAULT_IMAGE_TOKEN,
     HISTORY_MEMORY_TOKEN,
 )
 from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
@@ -35,23 +34,17 @@ from swiftvln.model.map_memory import (
 )
 
 
-def _debug_enabled() -> bool:
-    return os.environ.get('SWIFTVLN_DEBUG', '') != ''
-
-
-def _debug_rank() -> int:
+def _is_rank0() -> bool:
     raw = os.environ.get('RANK', os.environ.get('LOCAL_RANK', '0'))
     try:
-        return int(raw)
+        return int(raw) == 0
     except ValueError:
-        return 0
+        return True
 
 
-def _preview_text(text: str, limit: int = 220) -> str:
-    text = str(text).replace('\n', '\\n')
-    if len(text) <= limit:
-        return text
-    return text[:limit] + '...'
+def _print_rank0(message: str) -> None:
+    if _is_rank0():
+        print(message)
 
 
 class SwiftVLNDataset(Dataset):
@@ -78,11 +71,12 @@ class SwiftVLNDataset(Dataset):
         num_future_steps: int = 4,
         use_random: bool = False,
         max_samples: Optional[int] = None,
-        num_overlap: int = 16,  # New parameter for overlap
-        env_type: str = "habitat",  # New parameter for environment type
+        num_overlap: int = 0,
+        env_type: str = "satnav",
         history_processor_type: str = "per_frame",  # History sampling strategy
         log_base: float = 1.0,  # Sampling distribution (1.0=uniform, >1.0=logarithmic)
         system_prompt_setting: str = "vanilla",  # System prompt strategy: "vanilla" or "initial"
+        need_frame_poses: bool = False,
         memory_method: str = "history",
         map_global_side_m: float = 1000.0,
         map_local_side_m: float = 400.0,
@@ -107,6 +101,7 @@ class SwiftVLNDataset(Dataset):
         self.history_processor_type = history_processor_type.lower()
         self.log_base = log_base  # Sampling distribution
         self.system_prompt_setting = system_prompt_setting.lower()  # "vanilla" or "initial"
+        self.need_frame_poses = bool(need_frame_poses)
         self.memory_method = memory_method.lower()
         self.map_global_side_m = float(map_global_side_m)
         self.map_local_side_m = float(map_local_side_m)
@@ -114,8 +109,7 @@ class SwiftVLNDataset(Dataset):
         self.map_mask_method = str(map_mask_method).lower()
         self.map_builder: Optional[SatNavMapMemoryBuilder] = None
         self._map_scenes_dir: Optional[str] = None
-        self._debug_map_sample_count = 0
-        self._debug_prompt_count = 0
+        self._frame_list_cache: Dict[str, List[str]] = {}
         
         # Set forward distance based on environment type
         if self.env_type == "satnav":
@@ -153,8 +147,8 @@ class SwiftVLNDataset(Dataset):
                 map_resolver = SatNavTrajectoryMetadataResolver(vf)
                 scenes_dir = os.path.abspath(map_resolver.scenes_dir)
                 if self.map_builder is None:
-                    # Default cache next to the dataset version (e.g.
-                    # ver_260404/map_cache). Env var SWIFTVLN_MAP_CACHE_DIR
+                    # Default cache next to the dataset root. Env var
+                    # SWIFTVLN_MAP_CACHE_DIR
                     # overrides this, and the sentinel value "off" disables
                     # caching entirely. See map_memory._resolve_cache_dir.
                     default_cache_dir = os.path.join(
@@ -187,7 +181,7 @@ class SwiftVLNDataset(Dataset):
                     tdata['_map_start_position'] = map_meta.start_position
                     tdata['_map_start_rotation'] = map_meta.start_rotation
             self.nav_data += anno_json
-            print(f"Loaded {len(anno_json)} episodes from {vf}")
+            _print_rank0(f"Loaded {len(anno_json)} episodes from {vf}")
         
         # Build data index with sliding window overlap
         # Format: (episode_id, instruction_id, start_frame)
@@ -249,21 +243,21 @@ class SwiftVLNDataset(Dataset):
         
         # Log overlap configuration
         if self.num_overlap > 0:
-            print(f"[SwiftVLN] Sliding window: num_frames={num_frames}, "
-                  f"num_overlap={num_overlap}, stride={self.stride}")
-            print(f"[SwiftVLN] Loss masking: first {num_overlap // num_future_steps} turns "
-                  f"will have loss=0.0 for samples with start_idx > 0")
+            _print_rank0(f"[SwiftVLN] Sliding window: num_frames={num_frames}, "
+                         f"num_overlap={num_overlap}, stride={self.stride}")
+            _print_rank0(f"[SwiftVLN] Loss masking: first {num_overlap // num_future_steps} turns "
+                         f"will have loss=0.0 for samples with start_idx > 0")
             if adjusted_samples > 0:
-                print(f"[SwiftVLN] Adjusted {adjusted_samples} end-of-episode samples "
-                      f"to ensure STOP data is trained")
+                _print_rank0(f"[SwiftVLN] Adjusted {adjusted_samples} end-of-episode samples "
+                             f"to ensure STOP data is trained")
             if skipped_redundant_samples > 0:
-                print(f"[SwiftVLN] Skipped {skipped_redundant_samples} redundant samples "
-                      f"(already covered by previous sample)")
+                _print_rank0(f"[SwiftVLN] Skipped {skipped_redundant_samples} redundant samples "
+                             f"(already covered by previous sample)")
             if skipped_no_new_samples > 0:
-                print(f"[SwiftVLN] Skipped {skipped_no_new_samples} samples "
-                      f"with no new trainable actions after overlap")
+                _print_rank0(f"[SwiftVLN] Skipped {skipped_no_new_samples} samples "
+                             f"with no new trainable actions after overlap")
         else:
-            print(f"[SwiftVLN] No overlap (stride={self.stride})")
+            _print_rank0(f"[SwiftVLN] No overlap (stride={self.stride})")
         
         # Limit samples if max_samples is specified
         if self.max_samples is None:
@@ -284,9 +278,11 @@ class SwiftVLNDataset(Dataset):
                 self.data_list = _rng.sample(self.data_list, self.max_samples)
                 # Sort by (ep_id, ins_id, start_idx) to maintain temporal order within episodes
                 self.data_list.sort()
-                print(f"[SwiftVLN] Random sampled {self.max_samples} from {original_len} samples (seed=42)")
+                _print_rank0(f"[SwiftVLN] Random sampled {self.max_samples} from {original_len} samples (seed=42)")
             else:
-                print(f"[SwiftVLN] Requested max_samples={self.max_samples} >= available {original_len}, using all samples")
+                _print_rank0(
+                    f"[SwiftVLN] Requested max_samples={self.max_samples} >= available {original_len}, using all samples"
+                )
         
         # Action vocabulary / prompt conjunctions
         self.idx2actions = DEFAULT_ACTION_MAP.copy()
@@ -296,17 +292,21 @@ class SwiftVLNDataset(Dataset):
         if self.num_overlap > 0:
             first_samples = sum(1 for _, _, start_idx in self.data_list if start_idx == 0)
             overlap_samples = len(self.data_list) - first_samples
-            print(f"[SwiftVLN] Sample breakdown: {first_samples} first (full loss), "
-                  f"{overlap_samples} overlap (partial loss)")
-        
-        # Debug counter for initial strategy verification
-        self._debug_initial_count = 0
-        
-        print(f"SwiftVLNDataset initialized: {len(self.data_list)} samples from {len(self.nav_data)} episodes")
-        print(f"  env_type={self.env_type}, forward_distance={self.forward_distance}")
+            _print_rank0(f"[SwiftVLN] Sample breakdown: {first_samples} first (full loss), "
+                         f"{overlap_samples} overlap (partial loss)")
+
+        _print_rank0(f"SwiftVLNDataset initialized: {len(self.data_list)} samples from {len(self.nav_data)} episodes")
+        _print_rank0(f"  env_type={self.env_type}, forward_distance={self.forward_distance}")
 
     def __len__(self) -> int:
         return len(self.data_list)
+
+    def _get_video_frames(self, rgb_path: str) -> List[str]:
+        frames = self._frame_list_cache.get(rgb_path)
+        if frames is None:
+            frames = sorted(os.listdir(rgb_path))
+            self._frame_list_cache[rgb_path] = frames
+        return frames
 
     def actions2text(self, actions: List[int]) -> str:
         """Convert action indices to compact action symbols."""
@@ -317,38 +317,6 @@ class SwiftVLNDataset(Dataset):
             act_text = self.idx2actions.get(int(action), "STOP")
             converted_sequence.append(act_text)
         return "".join(converted_sequence)
-        print(f"  system_prompt_setting={self.system_prompt_setting}")
-        print(f"  memory_method={self.memory_method}")
-        if self.system_prompt_setting == "initial":
-            print(f"  [INITIAL] Initial view ENABLED: first frame (uncompressed) will be added to system prompt")
-        if self.memory_method == "map":
-            print(
-                f"  map: global={self.map_global_side_m:.0f}m, local={self.map_local_side_m:.0f}m, "
-                f"render={self.map_render_px}px, mask={self.map_mask_method}"
-            )
-            if os.environ.get('SWIFTVLN_DEBUG'):
-                print(f"  [MAP DEBUG] scenes_dir={self._map_scenes_dir}")
-        if self.history_processor_type == 'per_frame':
-            print(f"  history: per_frame (h={self.num_history}, log_base={self.log_base})")
-            # Debug: show sampling distribution
-            if os.environ.get('SWIFTVLN_DEBUG'):
-                import math
-                print(f"  [DEBUG] Sampling distribution preview (for 32 history frames -> {self.num_history} samples):")
-                num_frames = 32
-                num_samples = min(self.num_history, num_frames)
-                indices = []
-                for i in range(num_samples):
-                    t_sample = i / (num_samples - 1) if num_samples > 1 else 1.0
-                    t_frame = 1.0 - math.pow(1.0 - t_sample, self.log_base)
-                    frame_idx = int(round(t_frame * (num_frames - 1)))
-                    indices.append(frame_idx)
-                print(f"  [DEBUG] Sampled indices: {indices}")
-                if self.log_base == 1.0:
-                    print(f"  [DEBUG] -> Uniform distribution (linear)")
-                else:
-                    print(f"  [DEBUG] -> Logarithmic distribution (more recent frames)")
-        else:
-            print(f"  history: {self.history_processor_type}")
 
     def _sample_history_frames(
         self,
@@ -403,17 +371,6 @@ class SwiftVLNDataset(Dataset):
                 dtype=np.int32,
             )
 
-            # Debug output (only for first few samples)
-            if os.environ.get('SWIFTVLN_DEBUG') and not hasattr(self, '_debug_sample_count'):
-                self._debug_sample_count = 0
-            if os.environ.get('SWIFTVLN_DEBUG') and self._debug_sample_count < 3:
-                sampling_mode = "random" if self.use_random else f"log_base={self.log_base}"
-                print(f"  [DEBUG SAMPLE {self._debug_sample_count}] History sampling:")
-                print(f"    -> Available frames: 0-{num_frames-1} ({num_frames} total)")
-                print(f"    -> Sampling {num_samples} frames with {sampling_mode}")
-                print(f"    -> Sampled indices: {list(history_step_ids)}")
-                self._debug_sample_count += 1
-
             history_step_ids = np.clip(history_step_ids, 0, num_video_frames - 1)
 
         return history_step_ids
@@ -444,17 +401,6 @@ class SwiftVLNDataset(Dataset):
             step_size=step_size,
             turn_angle=turn_angle,
         )
-        if _debug_enabled() and self._debug_map_sample_count < 6:
-            image_sizes = [img.size for img in map_images]
-            print(
-                f"[MAP DEBUG][dataset] sample[{self._debug_map_sample_count}] "
-                f"rank={_debug_rank()} "
-                f"scene={scene_id} episode={data.get('_map_episode_id', 'unknown')} "
-                f"window_start={window_start} actions={len(raw_actions)} "
-                f"history_images={len(map_images)} sizes={image_sizes} "
-                f"global_center_mode={getattr(self.map_builder, 'global_center_mode', 'unknown')}"
-            )
-            self._debug_map_sample_count += 1
         return map_images
 
     def __getitem__(self, i) -> Dict[str, Any]:
@@ -481,7 +427,7 @@ class SwiftVLNDataset(Dataset):
         rgb_path = os.path.join(video_path, 'rgb')
         if not os.path.exists(rgb_path):
             raise FileNotFoundError(f"RGB frames not found: {rgb_path}")
-        video_frames = sorted(os.listdir(rgb_path))
+        video_frames = self._get_video_frames(rgb_path)
         num_video_frames = len(video_frames)
         
         if num_video_frames == 0:
@@ -505,26 +451,28 @@ class SwiftVLNDataset(Dataset):
         actions = raw_actions[1:] + [0]
         actions_len = len(actions)
 
-        # Reconstruct per-frame pose from raw actions (aligned with frame indices).
-        # Pose format: [delta_forward, delta_right, sin(delta_heading), cos(delta_heading)].
-        # SatNav defaults: step=10m, turn=15deg. Habitat defaults: step=0.25m, turn=30deg.
-        step_size = 10.0 if self.env_type == 'satnav' else 0.25
-        turn_angle = 15.0 if self.env_type == 'satnav' else 30.0
-        frame_poses_all = reconstruct_pose_from_actions(
-            raw_actions,
-            step_size=step_size,
-            turn_angle=turn_angle,
-        )
-        if frame_poses_all.shape[0] < num_video_frames:
-            if frame_poses_all.shape[0] == 0:
-                padding = np.zeros((num_video_frames, 4), dtype=np.float32)
-            else:
-                last_pose = frame_poses_all[-1:]
-                repeat = num_video_frames - frame_poses_all.shape[0]
-                padding = np.repeat(last_pose, repeat, axis=0)
-            frame_poses_all = np.concatenate([frame_poses_all, padding], axis=0)
-        elif frame_poses_all.shape[0] > num_video_frames:
-            frame_poses_all = frame_poses_all[:num_video_frames]
+        frame_poses_all = None
+        if self.need_frame_poses:
+            # Reconstruct per-frame pose from raw actions (aligned with frame indices).
+            # Pose format: [delta_forward, delta_right, sin(delta_heading), cos(delta_heading)].
+            # SatNav defaults: step=10m, turn=15deg. Habitat defaults: step=0.25m, turn=30deg.
+            step_size = 10.0 if self.env_type == 'satnav' else 0.25
+            turn_angle = 15.0 if self.env_type == 'satnav' else 30.0
+            frame_poses_all = reconstruct_pose_from_actions(
+                raw_actions,
+                step_size=step_size,
+                turn_angle=turn_angle,
+            )
+            if frame_poses_all.shape[0] < num_video_frames:
+                if frame_poses_all.shape[0] == 0:
+                    padding = np.zeros((num_video_frames, 4), dtype=np.float32)
+                else:
+                    last_pose = frame_poses_all[-1:]
+                    repeat = num_video_frames - frame_poses_all.shape[0]
+                    padding = np.repeat(last_pose, repeat, axis=0)
+                frame_poses_all = np.concatenate([frame_poses_all, padding], axis=0)
+            elif frame_poses_all.shape[0] > num_video_frames:
+                frame_poses_all = frame_poses_all[:num_video_frames]
         
         # Get time slice
         time_ids = np.arange(start_idx, min(start_idx + self.num_frames, actions_len))
@@ -576,12 +524,15 @@ class SwiftVLNDataset(Dataset):
         # Order: history frames, initial frame, current frames
         from PIL import Image
         images = list(history_images)
-        frame_poses: List[Optional[List[float]]] = [None] * len(history_images)
+        frame_poses: Optional[List[Optional[List[float]]]] = (
+            [None] * len(history_images) if self.need_frame_poses else None
+        )
 
         history_files_to_load: List[str] = []
         if self.memory_method != "map":
             all_history_indices = list(history_step_ids.tolist())
-            frame_poses.extend(frame_poses_all[idx].tolist() for idx in all_history_indices)
+            if frame_poses is not None and frame_poses_all is not None:
+                frame_poses.extend(frame_poses_all[idx].tolist() for idx in all_history_indices)
             history_files_to_load = history_frame_paths
 
         image_files_to_load = history_files_to_load + initial_frame_paths + sample_frame_paths
@@ -589,7 +540,8 @@ class SwiftVLNDataset(Dataset):
         if num_initial_images > 0:
             non_history_indices.append(0)
         non_history_indices.extend(sample_step_ids.tolist())
-        frame_poses.extend(frame_poses_all[idx].tolist() for idx in non_history_indices)
+        if frame_poses is not None and frame_poses_all is not None:
+            frame_poses.extend(frame_poses_all[idx].tolist() for idx in non_history_indices)
 
         for image_file in image_files_to_load:
             try:
@@ -677,65 +629,9 @@ class SwiftVLNDataset(Dataset):
             'images': images,
             'num_history_images': num_history_images,  # Metadata for template
             'num_initial_images': num_initial_images,  # Metadata for initial prompt
-            'frame_poses': frame_poses,  # Per-image metadata, aligned with image order
             'memory_method': self.memory_method,
         }
-        
-        # Debug: log initial strategy details for first few samples
-        if _debug_enabled() and self._debug_initial_count < 3:
-            rank = _debug_rank()
-            print(f"\n[INITIAL DEBUG] Rank={rank} Sample[{i}] (ep={ep_id}, ins={ins_id}, start={start_idx}):")
-            print(f"  system_prompt_setting={self.system_prompt_setting}")
-            print(f"  memory_method={self.memory_method}")
-            print(f"  num_history_images={num_history_images}, num_initial_images={num_initial_images}, "
-                  f"num_current_images={num_current_images}")
-            if self.memory_method == "map":
-                print(f"  [MAP] history image sizes: {[img.size for img in history_images]}")
-            print(f"  total_images={len(images)} "
-                  f"(expected: {num_history_images} + {num_initial_images} + {num_current_images} = "
-                  f"{num_history_images + num_initial_images + num_current_images})")
-            if self.system_prompt_setting == "initial":
-                print(f"  [INITIAL] Initial frame path: {initial_frame_paths[0] if initial_frame_paths else 'NONE'}")
-                print(f"  [INITIAL] Image order: [{num_history_images} history] + [1 initial] + [{num_current_images} current]")
-                # Check system prompt contains initial observation text
-                sys_content = messages[0].get('content', '')
-                has_initial_tag = 'initial observation' in sys_content and '<image>' in sys_content
-                print(f"  [INITIAL] System prompt has initial <image>: {has_initial_tag}")
-            else:
-                print(f"  [VANILLA] No initial frame (vanilla mode)")
-            # Show system prompt (truncated)
-            sys_content = messages[0].get('content', '')
-            print(f"  system_prompt: {_preview_text(sys_content, limit=240)}")
-            self._debug_initial_count += 1
-
-        if _debug_enabled() and self._debug_prompt_count < 4:
-            rank = _debug_rank()
-            sys_content = messages[0].get('content', '')
-            user_turns = [m for m in messages if m.get('role') == 'user']
-            assistant_turns = [m for m in messages if m.get('role') == 'assistant']
-            none_pose_count = sum(1 for pose in frame_poses if pose is None)
-            print(
-                f"[MAP DEBUG][dataset.prompt] sample[{self._debug_prompt_count}] "
-                f"rank={rank} ep={ep_id} ins={ins_id} start={start_idx} "
-                f"memory_method={self.memory_method} images={len(images)} "
-                f"history={num_history_images} initial={num_initial_images} current={num_current_images} "
-                f"frame_poses={len(frame_poses)} none_poses={none_pose_count}"
-            )
-            print(
-                f"[MAP DEBUG][dataset.prompt] system tags: "
-                f"<history_memory>={sys_content.count(HISTORY_MEMORY_TOKEN)} "
-                f"<image>={sys_content.count(DEFAULT_IMAGE_TOKEN)} "
-                f"map_phrase={'explored map memories' in sys_content}"
-            )
-            print(f"[MAP DEBUG][dataset.prompt] system_prompt={_preview_text(sys_content, limit=320)}")
-            if user_turns:
-                print(
-                    f"[MAP DEBUG][dataset.prompt] first_user={_preview_text(user_turns[0].get('content', ''), limit=160)}"
-                )
-            if assistant_turns:
-                print(
-                    f"[MAP DEBUG][dataset.prompt] first_assistant={_preview_text(assistant_turns[0].get('content', ''), limit=160)}"
-                )
-            self._debug_prompt_count += 1
+        if frame_poses is not None:
+            result['frame_poses'] = frame_poses  # Per-image metadata, aligned with image order
 
         return result

@@ -33,5 +33,5 @@ TASK:
 DATASET:
   TYPE: SatNav
   SPLIT: train
-  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/train/all_episodes.json
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/train/all_episodes.json
   SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes

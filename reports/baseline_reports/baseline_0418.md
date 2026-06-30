@@ -2,14 +2,14 @@
 
 本文档用于整理当前使用 `0418` 数据训练的 baseline 模型及其训练与评测情况。下面先给出状态矩阵（基于当前文档回填情况）：
 
-`说明`：本页 `StreamVLN` 最终结果使用 `0418` 数据的 `80%` 训练版本（`ver_260418p80`）作为收口结果；评测仍按默认 SatNav `val_seen + val_unseen` 口径。`OverlapVLN` 当前先回填纯 baseline setting（`overlap0 / pf-h8 / b1.0 / pool-s2 / noembed`）的 `20260421-125912` 结果。`Seq2Seq` 当前仅先回填 `0404` 训练 checkpoint 在 `0418` 数据上的 cross-eval，用于看跨版本泛化；`0418` 原生训练产物仍待补充。`NaVILA` 当前先回填 `0404` scratch / continue checkpoint 在 `0418` 数据上的 cross-eval；`0418` 原生 scratch/continue 训练产物仍待补充。
+`说明`：本页 `StreamVLN` 最终结果使用 `0418` 数据的 `80%` 训练版本（`ver_260418p80`）作为收口结果；评测仍按默认 SatNav `val_seen + val_unseen` 口径。`OverlapVLN` 当前先回填纯 baseline setting（`overlap0 / pf-h8 / b1.0 / pool-s2 / noembed`）的 `20260421-125912` 结果。`Seq2Seq` 当前仅先回填 `0404` 训练 checkpoint 在 `0418` 数据上的 cross-eval，用于看跨版本泛化；`0418` 原生训练产物仍待补充。`CMA` 当前先按 raw data 回填 `0404` checkpoint 记录，具体是否为 `0418` cross-eval 仍待确认。`NaVILA` 当前先回填 `0404` scratch / continue checkpoint 在 `0418` 数据上的 cross-eval；`0418` 原生 scratch/continue 训练产物仍待补充。
 
 `✅` 已完成，`⏳` 进行中 / 待补充，`➖` 暂无记录 / 不适用
 
 | Baseline | Scratch 训练 | Continue 训练 | Scratch 评测 | Continue 评测 |
 | --- | --- | --- | --- | --- |
 | Seq2Seq | ⏳ | ➖ | ✅ | ➖ |
-| CMA | ⏳ | ➖ | ⏳ | ➖ |
+| CMA | ⏳ | ➖ | ✅ | ➖ |
 | OverlapVLN | ✅ | ➖ | ✅ | ➖ |
 | StreamVLN | ✅ | ✅ | ✅ | ✅ |
 | OpenFly | ✅ | ✅ | ✅ | ✅ |
@@ -60,33 +60,35 @@
 
 当前 `0418` 的 CMA baseline 训练产物如下：
 
-1. `a. scratch train`
-   `输出目录`：`待补充`
-   `训练日志`：`待补充`
-   `训练数据`：`0418`
-   `词表 / embedding`：`待补充`
-   `执行信息`：`待补充`
-   `状态`：`待补充`
-   `训练结果`：`待补充`
-   `best_loss`：`待补充`
+1. `a. scratch train (0404 source checkpoint)`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/cma/checkpoints/cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab`
+   `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/cma/logs/cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab.log`
+   `训练数据`：`0404`
+   `词表 / embedding`：`0404 vocab + 0404 GloVe embedding`
+   `执行信息`：`0404` scratch checkpoint，当前在本页 raw data 中作为 CMA source model；`0418` 原生 scratch 训练尚未回填
+   `状态`：source checkpoint 已完成，`0418` 原生训练未回填
+   `训练结果`：`best.pth` 已生成
+   `best_loss`：`0.3799`
 
-`备注`：当前 CMA `0418` 默认仅记录 scratch 训练；如存在 continue 链路，可按需补充。
+`备注`：当前 CMA `0418` 原生训练尚未补齐；本页先回填 raw data 中的 `0404` checkpoint 记录。该记录的 `keep_list_preset` 为 `data260404_road345`，是否应作为 `0418` cross-eval 口径仍需确认。
 
 ### Eval
 
-当前 `0418` 的 CMA baseline 评测产物如下：
+当前 `0418` 的 CMA baseline 评测产物先按 raw data 回填如下：
 
-1. `a. scratch eval`
-   `模型目录`：`待补充`
-   `结果目录`：`待补充`
-   `数据版本`：`0418`
-   `执行信息`：`待补充`
-   `状态`：`待补充`
-   `val_seen`：`待补充`
-   `val_unseen`：`待补充`
-   `overall`：`待补充`
+1. `a. scratch eval (0404 source checkpoint, raw-data record)`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SatNav/output/cma/checkpoints/cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab`
+   `结果目录`：`待确认`
+   `raw data`：`reports/baseline_reports/baseline_0418_raw_data/cma_scratch_seen.json`，`reports/baseline_reports/baseline_0418_raw_data/cma_scratch_unseen.json`
+   `数据版本`：`0418`（raw data 文件归档于 `baseline_0418_raw_data`；但 `keep_list_preset=data260404_road345`，需确认）
+   `词表 / embedding`：`0404 vocab + 0404 GloVe embedding`
+   `执行信息`：复用 `0404` scratch checkpoint 的 CMA 记录，按 keep list 汇总 `val_seen + val_unseen`
+   `状态`：raw data 已回填，口径待确认
+   `val_seen`：`SR 9.46% | SPL 0.0934 | OS 44.88% | NE 323.25m | Avg Steps 94.85 | Total 4430 / 4844 keep`
+   `val_unseen`：`SR 7.35% | SPL 0.0716 | OS 43.85% | NE 363.59m | Avg Steps 99.31 | Total 7934 / 8756 keep`
+   `overall`：`SR 8.10% | SPL 0.0794 | NE 349.14m | Avg Steps 97.71 | Total 12364`
 
-`备注`：`待补充`
+`备注`：这条 CMA raw data 的模型名、keep list 与数值均和 `baseline_0404.md` 中的 `cma-ddp-g8-bs32-lr1e-4-20260413-125610-260404vocab` 记录一致；因此它目前更像是 `0404` checkpoint / `0404` keep-list 口径在 `0418` 报告目录中的占位回填，而不是已确认的 `0418` 原生 CMA 评测。
 
 # 端到端模型
 
@@ -131,7 +133,7 @@
 当前主线 StreamVLN `0418` 最终记录采用 `0418 80%` 训练结果，产物如下：
 
 1. `a. scratch train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
    `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/train_streamvln_scratch80_051524.log`
    `训练数据`：`0418 80%`（`ver_260418p80`）
    `执行信息`：`98` 服务器，`8` 卡全量训练（scratch）
@@ -140,7 +142,7 @@
    `train_loss`：`0.0657`
 
 2. `b. continue train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/streamvln-baseline/streamvln-baseline-continue-1ep-f32h8s4-data260418\n80-bs64-lr2e-5-20260420-153328`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-continue-1ep-f32h8s4-lr2e-5`
    `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/train_streamvln_continue80_153328.log`
    `训练数据`：`0418 80%`（`ver_260418p80`）
    `执行信息`：`98` 服务器，`8` 卡全量训练（continue）
@@ -148,15 +150,15 @@
    `训练结果`：`2769 / 2769`（`100%`），`epoch 1.0`
    `train_loss`：`0.0529`
 
-`备注`：当前 `baseline_0418` 文档中的 StreamVLN 最终记录已切换为 `80%` 数据结果。`continue80` 的实际输出目录名中混入了一个换行，文中用 `\n` 转义显示；checkpoint 保存成功，但后续评测结果按路径落在 `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/by-path/checkpoint-2769`。
+`备注`：当前 `baseline_0418` 文档中的 StreamVLN 最终记录已切换为 `80%` 数据结果。`continue80` 原始训练目录名中曾混入换行，当前 model zoo 中已精简为 `streamvln-baseline-continue-1ep-f32h8s4-lr2e-5`；checkpoint 保存成功，但历史评测结果按路径落在 `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/by-path/checkpoint-2769`。
 
 ### Eval
 
 当前主线 StreamVLN `0418` 最终评测情况如下（基于 `0418 80%` 训练产物）：
 
 1. `a. scratch eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524`
-   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-data260418p80-bs64-lr2e-5-20260421-051524`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
+   `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/eval_streamvln_scratch80_0418_g7.log`
    `数据版本`：`0418`
    `执行信息`：`98` 服务器，`8` 卡 eval，默认 SatNav `val_seen + val_unseen`
@@ -166,7 +168,7 @@
    `overall`：`scratch80` 结果已完整回填，可作为 `continue80` 对照组
 
 2. `b. continue eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/streamvln-baseline/streamvln-baseline-continue-1ep-f32h8s4-data260418\n80-bs64-lr2e-5-20260420-153328/checkpoint-2769`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/streamvln-baseline-continue-1ep-f32h8s4-lr2e-5/checkpoint-2769`
    `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/streamvln-baseline/by-path/checkpoint-2769`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/streamvln_train_eval_train_chain_153328.log`
    `数据版本`：`0418`
@@ -185,7 +187,7 @@
 当前主线 OpenFly `0418` 先回填上一轮（`20260420`）成功收口结果，产物如下：
 
 1. `a. scratch train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/openfly-baseline/openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110`
    `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/openfly_continue_73_233110.log`
    `恢复训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/openfly_continue_resume73_090438.log`
    `训练数据`：`0418`
@@ -195,7 +197,7 @@
    `train_loss`：`0.0167`
 
 2. `b. continue train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/openfly-baseline/openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357`
    `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/openfly_scratch_73_cachefix2_095357.log`
    `训练数据`：`0418`
    `执行信息`：`73` 服务器，`8` 卡全量训练（continue，`compact` action，`hist16`）
@@ -210,7 +212,7 @@
 当前主线 OpenFly `0418` 上一轮评测产物如下：
 
 1. `a. scratch eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/openfly-baseline/openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110/checkpoint-40055`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110/checkpoint-40055`
    `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/openfly-baseline/openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/openfly_eval_chain_73_202521.log`
    `数据版本`：`0418`
@@ -221,7 +223,7 @@
    `overall`：同轮对比下，`scratch` 明显落后于 `continue`
 
 2. `b. continue eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/openfly-baseline/openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357/checkpoint-40055`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357/checkpoint-40055`
    `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/openfly-baseline/openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/openfly_eval_chain_73_202521.log`
    `数据版本`：`0418`
@@ -240,7 +242,7 @@
 当前主线 NaVILA `0418` 训练产物如下：
 
 1. `a. scratch train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
    `训练日志`：`待补充`
    `训练数据`：`0404`
    `执行信息`：`0404` scratch checkpoint，当前在本页作为 `0418` cross-eval 的 source model；`0418` 原生 scratch 训练尚未回填
@@ -251,7 +253,7 @@
    `产出`：`checkpoint-60000`
 
 2. `b. continue train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4`
    `训练日志`：`待补充`
    `训练数据`：`0404`
    `执行信息`：`0404` continue checkpoint，当前在本页作为 `0418` cross-eval 的 source model；`0418` 原生 continue 训练尚未回填
@@ -268,7 +270,7 @@
 当前主线 NaVILA `0418` 评测产物如下：
 
 1. `a. scratch eval`
-   `模型目录`：`/mnt/data4/jiangjiajun/archive/data0404/baseline/model/navila-baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4/checkpoint-60000`
    `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/by-path/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/by-path/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4/val_seen/eval.log`，`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/by-path/navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4/val_unseen/eval.log`
    `数据版本`：`0418`
@@ -279,7 +281,7 @@
    `overall`：`0404 -> 0418` scratch cross-eval 已完整回填，可作为 NaVILA continue / `0418` 原生训练的对照组
 
 2. `b. continue eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline/navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4/checkpoint-60000`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4/checkpoint-60000`
    `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/navila-baseline/navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/eval_navila0418_continue_r2_98_090216.log`
    `数据版本`：`0418`
@@ -298,7 +300,7 @@
 当前主线 UniNaVid `0418` 训练产物如下：
 
 1. `a. scratch train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/uninavid-baseline-scratch-1ep-data260418-bs192-lr1e-5-20260418-203618`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/uninavid-baseline-scratch-1ep-data260418-bs192-lr1e-5-20260418-203618`
    `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/uninavid_sc_ct_73_203618.log`
    `训练数据`：`0418`
    `执行信息`：`73` 服务器，`8` 卡串行训练链的第一段（scratch）
@@ -307,7 +309,7 @@
    `train_loss`：`0.0869`
 
 2. `b. continue train`
-   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618`
+   `输出目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618`
    `训练日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/uninavid_sc_ct_73_203618.log`
    `训练数据`：`0418`
    `执行信息`：`73` 服务器，`8` 卡串行训练链的第二段（continue）
@@ -322,7 +324,7 @@
 当前主线 UniNaVid `0418` 评测产物如下：
 
 1. `a. scratch eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/uninavid-baseline-scratch-1ep-data260418-bs192-lr1e-5-20260418-203618`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/uninavid-baseline-scratch-1ep-data260418-bs192-lr1e-5-20260418-203618`
    `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/uninavid-baseline/uninavid-baseline-scratch-1ep-data260418-bs192-lr1e-5-20260418-203618`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/eval_uninavid0418_chain_192509.log`
    `评测数据`：`0418`
@@ -333,7 +335,7 @@
    `overall`：`scratch` 结果已完整回填，可作为 `continue` 对照组
 
 2. `b. continue eval`
-   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618`
+   `模型目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618`
    `结果目录`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/uninavid-baseline/uninavid-baseline-continue-1ep-data260418-bs192-lr1e-5-20260418-203618`
    `评测日志`：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/logs/train_launch/eval_uninavid0418_chain_192509.log`
    `评测数据`：`0418`

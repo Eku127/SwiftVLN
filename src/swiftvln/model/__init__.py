@@ -8,7 +8,7 @@ history frame compression using Qwen2.5-VL as the base model.
 Components:
     1. Model Registration - Registers SwiftVLN model types with ms-swift
     2. Template - Custom template with differentiated compression for history/current images
-    3. Dataset - Extended VLN dataset using <history_image>/<current_image> tokens
+    3. Dataset - Extended VLN dataset using <history_memory>/<current_image> tokens
     4. Training Arguments - SwiftVLN-specific parameters (compress_stride, etc.)
     5. Compressor - 2D Average Pooling compression logic
 
@@ -16,7 +16,7 @@ Key features:
     - History frames compressed via configurable 2D average pooling
     - Current frames keep standard resolution
     - Compression applies in BOTH training and inference
-    - Special tokens: <history_image>, <current_image>
+    - Special tokens: <history_memory>, <current_image>
 
 Usage:
     python src/swiftvln/model/trainer.py \\
@@ -45,11 +45,8 @@ Architecture:
 from .template import (
     SwiftVLNQwen25VLTemplate,
     SwiftVLNQwen3VLTemplate,
-    HISTORY_IMAGE_TOKEN,
     CURRENT_IMAGE_TOKEN,
 )
-
-print("[SwiftVLN] Templates registered successfully!")
 
 
 # =============================================================================
@@ -86,7 +83,6 @@ if 'swiftvln_qwen2_5_vl' not in MODEL_MAPPING:
     )
     model_meta_kwargs['loader'] = SwiftVLNQwen25VLLoader
     register_model(ModelMeta(**model_meta_kwargs))
-    print("[SwiftVLN] Model 'swiftvln_qwen2_5_vl' registered successfully!")
 
 if 'swiftvln_qwen3_vl' not in MODEL_MAPPING:
     model_meta_kwargs = dict(
@@ -107,7 +103,6 @@ if 'swiftvln_qwen3_vl' not in MODEL_MAPPING:
     )
     model_meta_kwargs['loader'] = SwiftVLNQwen3VLLoader
     register_model(ModelMeta(**model_meta_kwargs))
-    print("[SwiftVLN] Model 'swiftvln_qwen3_vl' registered successfully!")
 
 
 # =============================================================================
@@ -129,7 +124,6 @@ __all__ = [
     # Template
     'SwiftVLNQwen25VLTemplate',
     'SwiftVLNQwen3VLTemplate',
-    'HISTORY_IMAGE_TOKEN',
     'CURRENT_IMAGE_TOKEN',
     # Dataset
     'SwiftVLNDataset',

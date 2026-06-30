@@ -14,7 +14,7 @@ This skill coordinates the existing `swiftvln-train` and `swiftvln-eval` skills 
 ## Related Skills & Scripts
 
 - **Training**: `swiftvln-train` skill (Step 2/3/4/5 conventions reused here)
-- **Evaluation**: `swiftvln-eval` skill (eval launch, watchdog, results collection)
+- **Evaluation**: `swiftvln-eval` skill (eval launch and results collection)
 - **Train queue**: `src/swiftvln/scripts/train/train_queue.sh` (non-interactive mode via `TRAIN_EXPERIMENTS_FILE`)
 - **Eval queue**: `runtime/eval_queue/eval_todo.txt` (auto-populated by train_queue after each training)
 - **Results**: `src/swiftvln/scripts/eval/collect_eval_results.py`
@@ -26,7 +26,7 @@ This skill coordinates the existing `swiftvln-train` and `swiftvln-eval` skills 
 When Codex generates the EXPERIMENTS bash file, each array entry must follow this exact pipe-separated format:
 
 ```
-model|config|changes|ds_names|ds_paths|reserved|qa_ratio
+model|config|changes|ds_names|ds_paths
 ```
 
 | Field | Description | Example |
@@ -36,12 +36,9 @@ model|config|changes|ds_names|ds_paths|reserved|qa_ratio
 | `changes` | Human-readable description of non-default params | `defaults` or `NUM_OVERLAP=32 BATCH_SIZE=8` |
 | `ds_names` | Dataset name(s), comma-separated | `SatNav` |
 | `ds_paths` | Trajectory data path(s), comma-separated | `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data` |
-| `reserved` | Reserved, leave empty | `` |
-| `qa_ratio` | QA mixing ratio: `0` = no QA, `0.15` = 15% | `0` or `0.15` |
 
 **Default SatNav paths (ver_260317):**
 - Trajectory data: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data`
-- QA JSONL: `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl`
 
 ---
 
@@ -52,11 +49,10 @@ model|config|changes|ds_names|ds_paths|reserved|qa_ratio
    - **Model**: `swiftvln` (default: `swiftvln`)
    - **Env**: `satnav` or `habitat` (default: `satnav`)
    - **Data version**: e.g. `ver_260317` (default: latest in `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_*`)
-   - **Experiment list**: each experiment's name/id, `qa_ratio`, and any non-default hyperparameter overrides
+   - **Experiment list**: each experiment's name/id and any non-default hyperparameter overrides
 3. Build a structured experiment list. For each experiment, assign:
    - A short `exp_id` (will appear in the model name for traceability)
    - The `config` string (or `default` if no overrides)
-   - The `qa_ratio`
 
 ### Critical interpretation rules
 
@@ -68,20 +64,20 @@ model|config|changes|ds_names|ds_paths|reserved|qa_ratio
 **当实验描述有歧义时，必须在 Step 2 确认阶段列出你的理解并向用户确认，不要自行假设。**
 
 常见歧义情况：
-- "baseline 跑两组" → 两组具体是什么？需要问：是 2 组不同 qa_ratio？还是 2 组不同超参？
+- "baseline 跑两组" → 两组具体是什么？需要问：是 2 组相同重复实验？还是 2 组不同超参？
 - "改一个参数跑两组" → 两组是 [改了的] 和 [没改的]？还是 2 种不同的改法？
 - "和上次一样再跑两组" → 需要确认"上次"具体是哪个配置
 
 **Example interpretation:**
 
-> "跑 swiftvln satnav 四组实验：纯 baseline，15% QA，30% QA，以及 15% QA + overlap=32"
+> "跑 swiftvln satnav 四组实验：纯 baseline，overlap=16，log_base=2.0，以及 overlap=32"
 
 此例描述完整，直接解析为：
 ```
-Experiment 1: exp_id=baseline,       model=swiftvln, config=default,        qa_ratio=0
-Experiment 2: exp_id=baseline-qa15,  model=swiftvln, config=default,        qa_ratio=0.15
-Experiment 3: exp_id=baseline-qa30,  model=swiftvln, config=default,        qa_ratio=0.30
-Experiment 4: exp_id=qa15-ovlp32,    model=swiftvln, config=NUM_OVERLAP=32, qa_ratio=0.15
+Experiment 1: exp_id=baseline,   model=swiftvln, config=default
+Experiment 2: exp_id=ovlp16,     model=swiftvln, config=NUM_OVERLAP=16
+Experiment 3: exp_id=log2,       model=swiftvln, config=LOG_BASE=2.0
+Experiment 4: exp_id=ovlp32,     model=swiftvln, config=NUM_OVERLAP=32
 ```
 
 > "baseline 基础上 log base 改成 2.0 跑两组"
@@ -90,7 +86,7 @@ Experiment 4: exp_id=qa15-ovlp32,    model=swiftvln, config=NUM_OVERLAP=32, qa_r
 ```
 我理解你要在 baseline 基础上把 LOG_BASE 改成 2.0，但"两组"具体是指：
 
-  A) 两组不同的 QA 比例？例如：LOG_BASE=2.0 无QA  +  LOG_BASE=2.0 加15%QA
+  A) 两组重复实验？例如：LOG_BASE=2.0 重复跑两次
   B) LOG_BASE=2.0 和 LOG_BASE=1.0（默认）各跑一次做对比？
   C) 其他？
 
@@ -109,12 +105,12 @@ Example output after clarification:
 ```
 我理解你要跑以下 4 个实验（swiftvln, satnav, ver_260317）：
 
- #  | exp_id          | qa_ratio | 超参覆盖
-----|-----------------|----------|----------
- 1  | baseline        | 0        | (defaults)
- 2  | baseline-qa15   | 0.15     | (defaults)
- 3  | baseline-qa30   | 0.30     | (defaults)
- 4  | qa15-ovlp32     | 0.15     | NUM_OVERLAP=32
+ #  | exp_id        | 超参覆盖
+----|---------------|----------
+ 1  | baseline      | (defaults)
+ 2  | ovlp16        | NUM_OVERLAP=16
+ 3  | log2          | LOG_BASE=2.0
+ 4  | ovlp32        | NUM_OVERLAP=32
 
 共 4 个实验，将分配到可用服务器（服务器分配在下一步）。是否继续？
 ```
@@ -174,13 +170,10 @@ SWANLAB_PROJECT=""
 _SATNAV_TRAJ="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data"
 DATASET_CONFIGS=("SatNav|${_SATNAV_TRAJ}")
 
-# QA dataset path (used when qa_ratio > 0)
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl"
-
-# EXPERIMENTS array: model|config|changes|ds_names|ds_paths|reserved|qa_ratio
+# EXPERIMENTS array: model|config|changes|ds_names|ds_paths
 EXPERIMENTS=(
-  "swiftvln|default|defaults|SatNav|${_SATNAV_TRAJ}||0"
-  "swiftvln|default|defaults|SatNav|${_SATNAV_TRAJ}||0.15"
+  "swiftvln|default|defaults|SatNav|${_SATNAV_TRAJ}"
+  "swiftvln|NUM_OVERLAP=16|NUM_OVERLAP=16|SatNav|${_SATNAV_TRAJ}"
 )
 ```
 
@@ -188,9 +181,6 @@ Rules:
 - One file per server, placed in `/tmp/` (or `runtime/plans/generated/` for persistence).
 - `config` field: `default` for all-default, or comma-separated overrides like `NUM_OVERLAP=32,BATCH_SIZE=8`.
 - `changes` field: human-readable, e.g. `NUM_OVERLAP=32` or `defaults`.
-- `reserved` field: keep it empty.
-- `qa_ratio`: `0` means no QA mixing; `0.15` means 15% QA.
-- `USE_QA_MIXED_TRAINING` is NOT set in the file — `train_queue.sh` infers it from `qa_ratio > 0` per-experiment automatically.
 
 ### 4.2 — Verify offline base model exists
 
@@ -266,17 +256,15 @@ After all servers are launched:
    - Training running on server(s) `<hosts>` in tmux session(s) `<names>`
    - Watchdog PID(s): `<pids>`
    - Progress: `tmux attach -t <name>`
-   - What happens next: "训练完成后 watchdog 自动触发评测，评测完成后 Codex 将自动回调并返回结果"
+   - What happens next: "训练完成后 watchdog 自动触发评测启动；评测在 tmux 中运行，完成后查看队列状态与结果文件"
 
 **The Codex session can safely end here.** Everything from this point is handled automatically.
 
 ---
 
-## Step 7 → Eval Completion Callback (Codex Resume)
+## Step 7 → Eval Completion Check
 
-When all evals finish, `eval_watchdog` resumes this Codex session. The injected prompt will say evaluation is done.
-
-Upon resume:
+To report final results, manually inspect queue state and result files after the eval tmux session exits.
 
 1. Read `runtime/eval_queue/eval_done.txt` to confirm which models finished.
 2. Check `runtime/eval_queue/eval_failed_todo.txt` for any failures.
@@ -287,7 +275,7 @@ Upon resume:
    conda activate swift-vln-eval
    python src/swiftvln/scripts/eval/collect_eval_results.py
    ```
-4. Read the output CSV at `results/eval_collected/eval_results_data<version>.csv`.
+4. Read the output CSV at `results/eval_collected/<split>/eval_results.csv`.
 5. Present results to the user as a formatted table showing SR / SPL / NE for each experiment.
 6. If there are failures, diagnose and offer to requeue.
 
@@ -310,24 +298,17 @@ Upon resume:
 
 ## Quick Reference: EXPERIMENTS Array Examples
 
-### Baseline only (no QA)
+### Baseline
 ```bash
 EXPERIMENTS=(
-  "swiftvln|default|defaults|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0"
-)
-```
-
-### Baseline + 15% QA
-```bash
-EXPERIMENTS=(
-  "swiftvln|default|defaults|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0.15"
+  "swiftvln|default|defaults|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data"
 )
 ```
 
 ### Baseline + custom override (e.g. NUM_OVERLAP=32)
 ```bash
 EXPERIMENTS=(
-  "swiftvln|NUM_OVERLAP=32|NUM_OVERLAP=32|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data||0"
+  "swiftvln|NUM_OVERLAP=32|NUM_OVERLAP=32|SatNav|/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data"
 )
 ```
 
@@ -336,13 +317,12 @@ EXPERIMENTS=(
 ENV_TYPE="satnav"
 USE_SWANLAB="false"
 SWANLAB_PROJECT=""
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/data/qa_swift.jsonl"
 
 _T="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260317/trajectory_data"
 EXPERIMENTS=(
-  "swiftvln|default|defaults|SatNav|${_T}||0"
-  "swiftvln|default|defaults|SatNav|${_T}||0.15"
-  "swiftvln|default|defaults|SatNav|${_T}||0.30"
-  "swiftvln|NUM_OVERLAP=32|NUM_OVERLAP=32|SatNav|${_T}||0.15"
+  "swiftvln|default|defaults|SatNav|${_T}"
+  "swiftvln|NUM_OVERLAP=16|NUM_OVERLAP=16|SatNav|${_T}"
+  "swiftvln|LOG_BASE=2.0|LOG_BASE=2.0|SatNav|${_T}"
+  "swiftvln|NUM_OVERLAP=32|NUM_OVERLAP=32|SatNav|${_T}"
 )
 ```

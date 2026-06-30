@@ -1,6 +1,6 @@
 ---
 name: satnav-data
-description: "Process SatNav dataset versions end to end, including unzip data.zip, inspect and classify city/type changes, generate episodes and QA outputs, run trajectory generation, and sync/verify across servers. Use when the user asks to process SatNav data, process data, 处理数据, 处理 SatNav 数据, or mentions SatNav dataset preparation."
+description: "Process SatNav dataset versions end to end, including unzip data.zip, inspect and classify city/type changes, generate episodes, run trajectory generation, and sync/verify across servers. Use when the user asks to process SatNav data, process data, 处理数据, 处理 SatNav 数据, or mentions SatNav dataset preparation."
 ---
 
 # Process SatNav Data
@@ -35,8 +35,7 @@ Execute a 4-step pipeline **continuously without pausing between steps**. Only s
    - `episodes/eval/val_unseen/` — unseen eval 城市（基础城市名完全不在 train 中）
    - **注意**：`episodes/eval/` 下没有顶层扁平文件，只有 `val_seen/` 和 `val_unseen/` 子目录
    - 分类逻辑由 `config.py` 中 `classify_eval_cities()` 自动判断，无需手动维护
-6. Convert `qa.json` to Swift-compatible JSONL (`qa_swift.jsonl`).
-7. Report summary and **proceed to Step 2 automatically** unless the user explicitly asks to stop after Step 1.
+6. Report summary and **proceed to Step 2 automatically** unless the user explicitly asks to stop after Step 1.
 
 ## Step 2: Trajectory Generation
 
@@ -110,7 +109,6 @@ After Step 3 is successful, synchronize latest SatNav dataset paths in project c
 1. Update `src/swiftvln/configs/satnav_task.yaml`:
 - `DATASET.DATA_PATH` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/episodes/eval/{split}/all_episodes.json`
 2. Update `src/swiftvln/scripts/train/train_queue.sh`:
-- `QA_DATASET` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/data/qa_swift.jsonl`
 - `default_satnav_path` -> `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<version>/trajectory_data`
 3. Print changed lines and **proceed automatically** (no confirmation needed).
 
@@ -119,7 +117,6 @@ After Step 3 is successful, synchronize latest SatNav dataset paths in project c
 - `src/swiftvln/scripts/data_process/inspect_data.py`
 - `src/swiftvln/scripts/data_process/run_all.py`
 - `src/swiftvln/scripts/data_process/process_episodes.py`
-- `src/swiftvln/scripts/data_process/convert_qa_to_swift.py`
 - `src/swiftvln/scripts/data_process/config.py`
 - `/mnt/data1/home/jiangjiajun/workspace/SatNav/applications/trajectory_generation/generate_parallel.py`
 - `src/swiftvln/configs/satnav_trajectory_generation.yaml`

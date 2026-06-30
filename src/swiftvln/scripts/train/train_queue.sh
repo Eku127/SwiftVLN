@@ -52,15 +52,12 @@ declare -a EXP_ERRORS=()       # 错误记录
 SLEEP_BETWEEN_EXPERIMENTS=30   # 实验间隔（秒）
 MAX_AUTO_FIX_RETRIES="${MAX_AUTO_FIX_RETRIES:-2}"
 
-# Webhook 通知配置
-USE_WEBHOOK_NOTIFICATION="${USE_WEBHOOK_NOTIFICATION:-true}"
-WEBHOOK_URL="${WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=503b5488-4d70-455d-a5b9-29fc8d7fb797}"
 LAST_AUTO_FIX_ACTIONS=""
 AUTO_ENQUEUE_EVAL="${AUTO_ENQUEUE_EVAL:-true}"
 EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL="${EVAL_ENQUEUE_SKIP_CHECKPOINT_LOCAL:-false}"
 EVAL_ENQUEUE_RETRIES="${EVAL_ENQUEUE_RETRIES:-3}"
 EVAL_ENQUEUE_RETRY_SLEEP="${EVAL_ENQUEUE_RETRY_SLEEP:-3}"
-USE_SWANLAB=true
+USE_SWANLAB="${USE_SWANLAB:-false}"
 SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
 SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
 TRAIN_CUDA_DEVICES="${TRAIN_CUDA_DEVICES:-}"
@@ -74,23 +71,6 @@ MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
 MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
 MAP_RENDER_PX="${MAP_RENDER_PX:-448}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
-
-# QA 混合训练配置
-USE_QA_MIXED_TRAINING=false
-QA_RATIO=0.15
-QA_DATASET="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl"
-
-send_webhook() {
-    local title="$1"
-    local body="$2"
-    if [[ "$USE_WEBHOOK_NOTIFICATION" != "true" ]]; then
-        return 0
-    fi
-    local content="## ${title}\n${body}\ntime: $(date '+%Y-%m-%d %H:%M:%S')"
-    curl -sS -m 8 -X POST "$WEBHOOK_URL" \
-      -H "Content-Type: application/json" \
-      -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}" >/dev/null 2>&1 || true
-}
 
 # ── 事件日志（供 train_watchdog 消费）──────────────────────────────────────
 # 写入 TRAIN_EVENTS_FILE（由 watchdog export），回退到 TRAIN_RUN_DIR 下的文件
@@ -136,21 +116,37 @@ enqueue_model_for_eval() {
     return 1
 }
 
-resolve_master_port_from_script() {
-    local temp_script="$1"
-    local port=""
+set_train_env() {
+    local env_name="$1"
+    local key="$2"
+    local value="$3"
+    local -n env_ref="$env_name"
+    env_ref["$key"]="$value"
+}
 
-    port="$(sed -n 's/^MASTER_PORT="\${MASTER_PORT:-\([0-9]\+\)}".*/\1/p' "$temp_script" | head -n 1)"
-    if [[ -z "$port" ]]; then
-        port="$(sed -n 's/^MASTER_PORT=\([0-9]\+\).*/\1/p' "$temp_script" | head -n 1)"
-    fi
+resolve_master_port_from_env() {
+    local env_name="$1"
+    local -n env_ref="$env_name"
+    echo "${env_ref[MASTER_PORT]:-${MASTER_PORT:-29500}}"
+}
 
-    echo "$port"
+train_env_to_args() {
+    local env_name="$1"
+    local out_name="$2"
+    local -n env_ref="$env_name"
+    local -n out_ref="$out_name"
+    local key=""
+
+    out_ref=()
+    while IFS= read -r key; do
+        [[ -z "$key" ]] && continue
+        out_ref+=("${key}=${env_ref[$key]}")
+    done < <(printf '%s\n' "${!env_ref[@]}" | sort)
 }
 
 is_local_tcp_port_free() {
     local port="$1"
-    python - "$port" <<'PY'
+    python3 - "$port" <<'PY'
 import socket
 import sys
 
@@ -168,7 +164,7 @@ PY
 
 find_available_master_port() {
     local preferred_port="${1:-29500}"
-    python - "$preferred_port" <<'PY'
+    python3 - "$preferred_port" <<'PY'
 import socket
 import sys
 
@@ -200,11 +196,12 @@ PY
 }
 
 ensure_available_master_port() {
-    local temp_script="$1"
+    local env_name="$1"
+    local -n env_ref="$env_name"
     local current_port=""
     local new_port=""
 
-    current_port="$(resolve_master_port_from_script "$temp_script")"
+    current_port="$(resolve_master_port_from_env "$env_name")"
     [[ -z "$current_port" ]] && return 0
 
     if is_local_tcp_port_free "$current_port"; then
@@ -217,7 +214,7 @@ ensure_available_master_port() {
     }
 
     if [[ "$new_port" != "$current_port" ]]; then
-        sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
+        env_ref[MASTER_PORT]="$new_port"
         print_warning "启动前检测到 MASTER_PORT=${current_port} 已占用，切换为 MASTER_PORT=${new_port}"
     fi
 
@@ -226,32 +223,33 @@ ensure_available_master_port() {
 
 apply_auto_fix_for_train_failure() {
     local log_file="$1"
-    local temp_script="$2"
+    local env_name="$2"
+    local -n env_ref="$env_name"
     local fixed=false
     local actions=()
 
     if grep -qi "dataloader_prefetch_factor can only be set.*dataloader_num_workers > 1" "$log_file"; then
-        sed -i "s/^DATALOADER_NUM_WORKERS=.*/DATALOADER_NUM_WORKERS=2/" "$temp_script" || true
-        sed -i "s/^DATALOADER_PREFETCH_FACTOR=.*/DATALOADER_PREFETCH_FACTOR=2/" "$temp_script" || true
+        env_ref[DATALOADER_NUM_WORKERS]="2"
+        env_ref[DATALOADER_PREFETCH_FACTOR]="2"
         fixed=true
         actions+=("set DATALOADER_NUM_WORKERS=2, DATALOADER_PREFETCH_FACTOR=2")
         print_warning "自动修复: 调整 dataloader workers/prefetch"
     fi
 
     if grep -qi "Your setup doesn't support bf16/gpu" "$log_file"; then
-        sed -i "s/--torch_dtype bfloat16/--torch_dtype float16/g" "$temp_script" || true
+        env_ref[TORCH_DTYPE]="float16"
         fixed=true
-        actions+=("replace --torch_dtype bfloat16 -> float16")
+        actions+=("set TORCH_DTYPE=float16")
         print_warning "自动修复: bf16 -> float16"
     fi
 
     if grep -qiE "address already in use|Address already in use" "$log_file"; then
         local current_port=""
         local new_port=""
-        current_port="$(resolve_master_port_from_script "$temp_script")"
+        current_port="$(resolve_master_port_from_env "$env_name")"
         new_port="$(find_available_master_port "${current_port:-29500}")" || new_port=""
         if [[ -n "$new_port" ]]; then
-            sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
+            env_ref[MASTER_PORT]="$new_port"
             fixed=true
             actions+=("set MASTER_PORT=${new_port}")
             print_warning "自动修复: 更换 MASTER_PORT=${new_port}"
@@ -261,19 +259,17 @@ apply_auto_fix_for_train_failure() {
     fi
 
     if grep -qiE "out of memory|CUDA out of memory" "$log_file"; then
-        sed -i "s/^BATCH_SIZE=.*/BATCH_SIZE=1/" "$temp_script" || true
-        sed -i "s/^GRAD_ACCUM_STEPS=.*/GRAD_ACCUM_STEPS=1/" "$temp_script" || true
+        env_ref[BATCH_SIZE]="1"
+        env_ref[GRAD_ACCUM_STEPS]="1"
         fixed=true
         actions+=("set BATCH_SIZE=1, GRAD_ACCUM_STEPS=1")
         print_warning "自动修复: 降低 batch 配置"
     fi
 
     if grep -qi "weights trying to be saved contained shared tensors" "$log_file"; then
-        if ! grep -q -- "--save_safetensors false" "$temp_script"; then
-            sed -i "/\\\$MAX_STEPS_ARG/i\\    --save_safetensors false \\\\" "$temp_script" || true
-        fi
+        env_ref[SAVE_SAFETENSORS]="false"
         fixed=true
-        actions+=("append --save_safetensors false")
+        actions+=("set SAVE_SAFETENSORS=false")
         print_warning "自动修复: 设置 --save_safetensors false"
     fi
 
@@ -314,26 +310,6 @@ find_latest_checkpoint() {
 }
 
 # ============================================================================
-# 数据集名称映射
-# ============================================================================
-get_dataset_short_name() {
-    local path="$1"
-    if [[ "$path" == *"R2R"* ]]; then
-        echo "R2R"
-    elif [[ "$path" == *"RxR"* ]]; then
-        echo "RxR"
-    elif [[ "$path" == *"EnvDrop"* ]]; then
-        echo "EnvDrop"
-    elif [[ "$path" == *"ScaleVLN"* ]]; then
-        echo "ScaleVLN"
-    elif [[ "$path" == *"satnav"* ]]; then
-        echo "SatNav"
-    else
-        echo "Custom"
-    fi
-}
-
-# ============================================================================
 # 模型默认配置
 # ============================================================================
 get_default_config() {
@@ -347,7 +323,7 @@ a) NUM_FRAMES=32           # 视频帧数
 b) NUM_HISTORY=8           # 历史帧数 (per_frame模式有效)
 c) NUM_FUTURE_STEPS=4      # 预测动作步数
 d) COMPRESS_STRIDE=2       # 压缩步长 (per_frame: 2=4x, 3=9x, 4=16x)
-e) NUM_OVERLAP=16          # 滑动窗口重叠帧数 (stride = num_frames - num_overlap)
+e) NUM_OVERLAP=0           # 滑动窗口重叠帧数 (0=禁用; stride = num_frames - num_overlap)
 f) NUM_EPOCHS=1            # 训练轮数
 g) LEARNING_RATE=2e-5      # 学习率
 h) BATCH_SIZE=8            # 批量大小
@@ -359,9 +335,8 @@ m) HISTORY_PROCESSOR_TYPE=per_frame  # 历史处理方式: per_frame(默认), gt
 n) GTC_OUTPUT_TOKENS=512   # GTC/SegmentGTC输出tokens数 (gtc/segment_gtc模式有效)
 o) LOG_BASE=1.0            # 历史采样分布 (per_frame: 1.0=均匀, >1.0=对数/更多近帧; NUM_HISTORY=0时忽略)
 p) SYSTEM_PROMPT_SETTING=vanilla  # System prompt策略: vanilla(默认) 或 initial
-q) USE_PIXEL_EMBED=false      # 像素坐标增强: true(开启) 或 false(关闭)
-r) USE_POSE_EMBED=false       # Pose增强: true(开启) 或 false(关闭)
-s) POSE_FUSION_METHOD=additive  # Pose融合方式: additive(默认) 或 film
+q) USE_POSE_EMBED=false       # Pose增强: true(开启) 或 false(关闭)
+r) POSE_FUSION_METHOD=additive  # Pose融合方式: additive(默认) 或 film
 # 说明: SwiftVLN 没有单独的 USE_MEMORY 开关；如需 no-memory，请用
 #       HISTORY_PROCESSOR_TYPE=per_frame + NUM_HISTORY=0
 EOF
@@ -386,7 +361,7 @@ expand_shortcodes() {
     declare -A mapping
     case "$model" in
         swiftvln)
-            mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="COMPRESS_STRIDE" [e]="NUM_OVERLAP" [f]="NUM_EPOCHS" [g]="LEARNING_RATE" [h]="BATCH_SIZE" [i]="FREEZE_VIT" [j]="FREEZE_LLM" [k]="FREEZE_ALIGNER" [l]="USE_TOME" [m]="HISTORY_PROCESSOR_TYPE" [n]="GTC_OUTPUT_TOKENS" [o]="LOG_BASE" [p]="SYSTEM_PROMPT_SETTING" [q]="USE_PIXEL_EMBED" [r]="USE_POSE_EMBED" [s]="POSE_FUSION_METHOD")
+            mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="COMPRESS_STRIDE" [e]="NUM_OVERLAP" [f]="NUM_EPOCHS" [g]="LEARNING_RATE" [h]="BATCH_SIZE" [i]="FREEZE_VIT" [j]="FREEZE_LLM" [k]="FREEZE_ALIGNER" [l]="USE_TOME" [m]="HISTORY_PROCESSOR_TYPE" [n]="GTC_OUTPUT_TOKENS" [o]="LOG_BASE" [p]="SYSTEM_PROMPT_SETTING" [q]="USE_POSE_EMBED" [r]="POSE_FUSION_METHOD")
             ;;
     esac
 
@@ -439,13 +414,12 @@ interactive_setup() {
     # and skip the interactive wizard entirely.
     #
     # The file must define (at minimum):
-    #   EXPERIMENTS=("model|config|changes|ds_names|ds_paths||qa_ratio" ...)
+    #   EXPERIMENTS=("model|config|changes|ds_names|ds_paths" ...)
     #   ENV_TYPE="satnav"      (or "habitat")
     #
     # Optional:
-    #   SWANLAB_PROJECT="YourProject"   # train_queue 默认强制启用 SwanLab
-    #   USE_QA_MIXED_TRAINING="false"
-    #   QA_DATASET="..."
+    #   USE_SWANLAB="true"
+    #   SWANLAB_PROJECT="YourProject"
     if [[ -n "${TRAIN_EXPERIMENTS_FILE:-}" ]]; then
         if [[ ! -f "$TRAIN_EXPERIMENTS_FILE" ]]; then
             print_error "TRAIN_EXPERIMENTS_FILE 指定的文件不存在: $TRAIN_EXPERIMENTS_FILE"
@@ -454,7 +428,7 @@ interactive_setup() {
         print_info "非交互模式：从文件加载实验配置 → $TRAIN_EXPERIMENTS_FILE"
         # shellcheck source=/dev/null
         source "$TRAIN_EXPERIMENTS_FILE"
-        USE_SWANLAB="${USE_SWANLAB:-true}"
+        USE_SWANLAB="${USE_SWANLAB:-false}"
         SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
         if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
             print_error "TRAIN_EXPERIMENTS_FILE 加载后 EXPERIMENTS 数组为空，请检查文件内容"
@@ -471,10 +445,20 @@ interactive_setup() {
 
     # 1. SwanLab 配置
     print_header "📊 Step 1: SwanLab 配置"
-    print_info "train_queue 现统一启用 SwanLab 记录实验"
-    read -p "SwanLab Project 名称 [${SWANLAB_PROJECT}]: " swanlab_project
-    SWANLAB_PROJECT=${swanlab_project:-$SWANLAB_PROJECT}
-    print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
+    print_info "SwanLab 默认状态: $([ "$USE_SWANLAB" = true ] && echo "启用" || echo "禁用")"
+    local swanlab_default="n"
+    [[ "$USE_SWANLAB" == true ]] && swanlab_default="Y"
+    read -p "启用 SwanLab 记录实验? [${swanlab_default}]: " swanlab_enable_input
+    swanlab_enable_input=${swanlab_enable_input:-$swanlab_default}
+    if [[ "$swanlab_enable_input" =~ ^[Yy]$ ]]; then
+        USE_SWANLAB=true
+        read -p "SwanLab Project 名称 [${SWANLAB_PROJECT}]: " swanlab_project
+        SWANLAB_PROJECT=${swanlab_project:-$SWANLAB_PROJECT}
+        print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
+    else
+        USE_SWANLAB=false
+        print_success "SwanLab: 禁用"
+    fi
 
     # 2. 选择模型
     print_header "🤖 Step 2: 选择训练模型"
@@ -627,7 +611,7 @@ interactive_setup() {
         fi
     else
         # SatNav 环境
-        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data"
+        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data"
         echo "默认 SatNav 数据路径:"
         echo "  $default_satnav_path"
         echo ""
@@ -647,77 +631,6 @@ interactive_setup() {
         fi
         IFS='|' read -r _ satnav_path <<< "${DATASET_CONFIGS[0]}"
         print_success "数据集: SatNav ($satnav_path)"
-    fi
-
-    # 4.5. QA 混合训练配置 (仅 SatNav 环境)
-    # QA_RATIOS 数组存储所有要测试的比例，0 表示不使用 QA
-    QA_RATIOS=()
-
-    if [[ "$ENV_TYPE" == "satnav" ]]; then
-        print_header "🔀 Step 4.5: QA 混合训练配置"
-        echo "QA 数据可以帮助模型更好地理解地标和位置"
-        echo "QA 数据路径: $QA_DATASET"
-        echo ""
-        echo "QA_RATIO 说明: 控制 QA 数据在训练集中的比例"
-        echo "  0    = 不使用 QA (仅 VLN)"
-        echo "  0.15 = 15% QA + 85% VLN (推荐)"
-        echo "  0.20 = 20% QA + 80% VLN"
-        echo ""
-        echo -e "${YELLOW}提示: 可输入多个比例用分号分隔，将分别训练${NC}"
-        echo "  示例: 0;0.15 = 分别训练 [无QA] 和 [15% QA] 两个版本"
-        echo ""
-        read -p "输入 QA 比例 [0.15]: " qa_ratio_input
-        qa_ratio_input=${qa_ratio_input:-0.15}
-
-        # 解析多个比例（分号分隔）
-        IFS=';' read -ra ratio_inputs <<< "$qa_ratio_input"
-        for ratio in "${ratio_inputs[@]}"; do
-            # trim 空白字符
-            ratio=$(echo "$ratio" | tr -d '[:space:]')
-            # 跳过空字符串
-            [[ -z "$ratio" ]] && continue
-            # 验证输入是有效数字（0, 1, 0.xx, .xx 格式）
-            if [[ "$ratio" =~ ^[0-9]*\.?[0-9]+$ ]]; then
-                # 检查范围 0-1 (使用 awk 替代 bc)
-                if awk "BEGIN {exit !($ratio >= 0 && $ratio <= 1)}"; then
-                    QA_RATIOS+=("$ratio")
-                else
-                    print_warning "无效的比例值: $ratio (应在 0-1 范围内)"
-                fi
-            else
-                print_warning "无效的比例值: $ratio (已跳过)"
-            fi
-        done
-
-        # 如果没有有效的比例，使用默认值
-        if [[ ${#QA_RATIOS[@]} -eq 0 ]]; then
-            QA_RATIOS=("0.15")
-            print_warning "未输入有效比例，使用默认 0.15"
-        fi
-
-        # 显示配置
-        if [[ ${#QA_RATIOS[@]} -eq 1 ]]; then
-            local ratio="${QA_RATIOS[0]}"
-            if [[ "$ratio" == "0" ]]; then
-                print_success "QA 混合训练: 禁用 (仅 VLN)"
-            else
-                local qa_pct=$(awk "BEGIN {printf \"%.0f\", $ratio * 100}")
-                print_success "QA 混合训练: 启用 (${qa_pct}% QA)"
-            fi
-        else
-            print_success "QA 混合训练: ${#QA_RATIOS[@]} 组配置"
-            for ratio in "${QA_RATIOS[@]}"; do
-                if [[ "$ratio" == "0" ]]; then
-                    echo "  - 无 QA (仅 VLN)"
-                else
-                    local qa_pct=$(awk "BEGIN {printf \"%.0f\", $ratio * 100}")
-                    echo "  - ${qa_pct}% QA + $((100 - qa_pct))% VLN"
-                fi
-            done
-        fi
-    else
-        # 非 satnav 环境不使用 QA
-        QA_RATIOS=("0")
     fi
 
     # 配置实验参数
@@ -752,14 +665,12 @@ interactive_setup() {
                 done
             fi
 
-            # 组合模型配置、数据集配置与 QA 比例
+            # 组合模型配置与数据集配置
             for model_cfg in "${model_configs[@]}"; do
                 changes=$(get_experiment_changes "$model_cfg")
                 for ds_config in "${DATASET_CONFIGS[@]}"; do
                     IFS='|' read -r ds_names ds_paths <<< "$ds_config"
-                    for qa_ratio in "${QA_RATIOS[@]}"; do
-                        EXPERIMENTS+=("${model}|${model_cfg}|${changes}|${ds_names}|${ds_paths}||${qa_ratio}")
-                    done
+                    EXPERIMENTS+=("${model}|${model_cfg}|${changes}|${ds_names}|${ds_paths}")
                 done
             done
         done
@@ -776,19 +687,6 @@ interactive_setup() {
 }
 
 # ============================================================================
-# 格式化 QA 比例显示
-# ============================================================================
-format_qa_ratio() {
-    local ratio="$1"
-    if [[ "$ratio" == "0" ]]; then
-        echo "无QA"
-    else
-        local pct=$(awk "BEGIN {printf \"%.0f\", $ratio * 100}")
-        echo "QA${pct}%"
-    fi
-}
-
-# ============================================================================
 # 显示实验汇总
 # ============================================================================
 show_summary() {
@@ -799,31 +697,22 @@ show_summary() {
     echo -e "${BOLD}基础配置:${NC}"
     echo "  SwanLab:    $([ "$USE_SWANLAB" = true ] && echo "启用 ($SWANLAB_PROJECT)" || echo "禁用")"
     echo "  环境类型:   $ENV_TYPE"
-    if [[ "$ENV_TYPE" == "satnav" && ${#QA_RATIOS[@]} -gt 0 ]]; then
-        echo -n "  QA配置:     "
-        local qa_display=""
-        for r in "${QA_RATIOS[@]}"; do
-            qa_display+="$(format_qa_ratio "$r"), "
-        done
-        echo "${qa_display%, }"
-    fi
     echo ""
 
     echo -e "${BOLD}实验列表 (共 ${#EXPERIMENTS[@]} 个实验):${NC}"
 
-    echo "┌────┬──────────────┬──────────────────────────────────────┬──────────────────────┬────────┐"
-    echo "│ #  │ 模型         │ 配置改动                             │ 数据集               │ QA     │"
-    echo "├────┼──────────────┼──────────────────────────────────────┼──────────────────────┼────────┤"
+    echo "┌────┬──────────────┬──────────────────────────────────────┬──────────────────────┐"
+    echo "│ #  │ 模型         │ 配置改动                             │ 数据集               │"
+    echo "├────┼──────────────┼──────────────────────────────────────┼──────────────────────┤"
 
     local idx=1
     for exp in "${EXPERIMENTS[@]}"; do
-        IFS='|' read -r model config changes ds_names ds_paths _unused_path qa_ratio <<< "$exp"
-        local qa_display=$(format_qa_ratio "$qa_ratio")
-        printf "│ %-2d │ %-12s │ %-36s │ %-20s │ %-6s │\n" "$idx" "$model" "${changes:0:36}" "${ds_names:0:20}" "$qa_display"
+        IFS='|' read -r model config changes ds_names ds_paths <<< "$exp"
+        printf "│ %-2d │ %-12s │ %-36s │ %-20s │\n" "$idx" "$model" "${changes:0:36}" "${ds_names:0:20}"
         ((idx++))
     done
 
-    echo "└────┴──────────────┴──────────────────────────────────────┴──────────────────────┴────────┘"
+    echo "└────┴──────────────┴──────────────────────────────────────┴──────────────────────┘"
 }
 
 # ============================================================================
@@ -836,7 +725,6 @@ run_experiment() {
     local changes=$4
     local ds_names=$5
     local ds_paths=$6
-    local qa_ratio=$8
 
     if [[ "$model" != "swiftvln" ]]; then
         print_error "当前主线 train_queue 仅支持 swiftvln，收到不受支持的模型: $model"
@@ -847,7 +735,6 @@ run_experiment() {
     echo "配置: $changes"
     echo "数据集: $ds_names"
     echo "环境: $ENV_TYPE"
-    echo "QA 配置: $(format_qa_ratio "$qa_ratio")"
     if [[ -n "$TRAIN_CUDA_DEVICES" ]]; then
         echo "GPU 配置: TRAIN_CUDA_DEVICES=$TRAIN_CUDA_DEVICES"
     elif [[ -n "$TRAIN_NUM_GPUS" ]]; then
@@ -861,113 +748,64 @@ run_experiment() {
     echo ""
 
     # 获取训练脚本路径
-    local train_script="${VLN_ROOT}/model/script/train/train_swiftvln_qwen2_5_vl.sh"
+    local train_script="${VLN_ROOT}/model/script/train/train_swiftvln_qwen_vl.sh"
 
     if [[ ! -f "$train_script" ]]; then
         print_error "找不到训练脚本: $train_script"
         return 1
     fi
 
-    # 创建临时脚本（注入配置）
-    local temp_script=$(mktemp --suffix=.sh)
+    # Build per-run environment overrides and call the original train script.
+    # Keep this data-driven instead of rewriting a temporary shell script.
+    declare -A train_env=()
+    set_train_env train_env "VLN_ENV_TYPE" "$ENV_TYPE"
+    set_train_env train_env "VLN_DATA_PATH" "$ds_paths"
+    set_train_env train_env "USE_SWANLAB" "$USE_SWANLAB"
+    set_train_env train_env "SWANLAB_PROJECT" "$SWANLAB_PROJECT"
+    set_train_env train_env "SWANLAB_DIRECT_NETWORK" "$SWANLAB_DIRECT_NETWORK"
+    set_train_env train_env "MEMORY_METHOD" "$MEMORY_METHOD"
+    set_train_env train_env "MAP_GLOBAL_SIDE_M" "$MAP_GLOBAL_SIDE_M"
+    set_train_env train_env "MAP_LOCAL_SIDE_M" "$MAP_LOCAL_SIDE_M"
+    set_train_env train_env "MAP_RENDER_PX" "$MAP_RENDER_PX"
+    set_train_env train_env "MAP_MASK_METHOD" "$MAP_MASK_METHOD"
+    set_train_env train_env "TRAIN_CUDA_DEVICES" "$TRAIN_CUDA_DEVICES"
+    set_train_env train_env "TRAIN_NUM_GPUS" "$TRAIN_NUM_GPUS"
+    set_train_env train_env "TRAIN_DRY_RUN" "$TRAIN_DRY_RUN"
 
-    # 读取原始脚本并修改
-    cat "$train_script" > "$temp_script"
+    if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
+        set_train_env train_env "RESUME_FROM_CHECKPOINT" "$RESUME_FROM_CHECKPOINT"
+        set_train_env train_env "RESUME_ONLY_MODEL" "$RESUME_ONLY_MODEL"
+        print_info "恢复训练: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
+    fi
 
-    # 注入自定义配置 - 直接替换变量值
+    if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
+        set_train_env train_env "OUTPUT_DIR_OVERRIDE" "$OUTPUT_DIR_OVERRIDE"
+        print_info "输出目录覆盖: $OUTPUT_DIR_OVERRIDE"
+    fi
+
+    # 注入自定义配置
     if [[ "$config" != "default" ]]; then
         IFS=',' read -ra config_items <<< "$config"
         for item in "${config_items[@]}"; do
             if [[ -n "$item" && "$item" == *"="* ]]; then
                 local var_name="${item%%=*}"
                 local var_value="${item#*=}"
-                # 转义 sed 特殊字符 (/, &, \) 避免替换失败
-                local var_value_escaped=$(printf '%s\n' "$var_value" | sed 's/[&/\]/\\&/g')
-                # 替换脚本中的变量赋值
-                # 匹配: VAR_NAME=value 或 VAR_NAME="value" 或 VAR_NAME='value'
-                sed -i "s/^${var_name}=.*/${var_name}=${var_value_escaped}/" "$temp_script"
+                set_train_env train_env "$var_name" "$var_value"
                 case "$var_name" in
-                    MEMORY_METHOD) MEMORY_METHOD="$var_value" ;;
-                    MAP_GLOBAL_SIDE_M) MAP_GLOBAL_SIDE_M="$var_value" ;;
-                    MAP_LOCAL_SIDE_M) MAP_LOCAL_SIDE_M="$var_value" ;;
-                    MAP_RENDER_PX) MAP_RENDER_PX="$var_value" ;;
-                    MAP_MASK_METHOD) MAP_MASK_METHOD="$var_value" ;;
+                    MEMORY_METHOD) set_train_env train_env "MEMORY_METHOD" "$var_value" ;;
+                    MAP_GLOBAL_SIDE_M) set_train_env train_env "MAP_GLOBAL_SIDE_M" "$var_value" ;;
+                    MAP_LOCAL_SIDE_M) set_train_env train_env "MAP_LOCAL_SIDE_M" "$var_value" ;;
+                    MAP_RENDER_PX) set_train_env train_env "MAP_RENDER_PX" "$var_value" ;;
+                    MAP_MASK_METHOD) set_train_env train_env "MAP_MASK_METHOD" "$var_value" ;;
                 esac
                 print_info "配置覆盖: ${var_name}=${var_value}"
             fi
         done
     fi
 
-    # 修改环境类型
-    sed -i "s/^VLN_ENV_TYPE=.*/VLN_ENV_TYPE=\"$ENV_TYPE\"/" "$temp_script"
     print_info "环境类型: $ENV_TYPE"
-
-    # 修改 SwanLab 配置
-    if [[ "$USE_SWANLAB" == true ]]; then
-        sed -i "s/^SWANLAB_PROJECT=.*/SWANLAB_PROJECT=\"$SWANLAB_PROJECT\"/" "$temp_script"
-        sed -i "s/^SWANLAB_DIRECT_NETWORK=.*/SWANLAB_DIRECT_NETWORK=\"$SWANLAB_DIRECT_NETWORK\"/" "$temp_script"
-        sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=true/" "$temp_script"
-    else
-        sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=false/" "$temp_script"
-    fi
-
-    # 修改 QA 混合训练配置 (根据实验的 qa_ratio)
-    if [[ -n "$qa_ratio" && "$qa_ratio" != "0" ]]; then
-        sed -i "s/^USE_QA_MIXED_TRAINING=.*/USE_QA_MIXED_TRAINING=true/" "$temp_script"
-        sed -i "s/^QA_RATIO=.*/QA_RATIO=$qa_ratio/" "$temp_script"
-        print_info "QA 混合训练: 启用 (比例: $(format_qa_ratio "$qa_ratio"))"
-    else
-        sed -i "s/^USE_QA_MIXED_TRAINING=.*/USE_QA_MIXED_TRAINING=false/" "$temp_script"
-        print_info "QA 混合训练: 禁用"
-    fi
-
-    if [[ -n "$QA_DATASET" ]]; then
-        sed -i "s|^QA_DATASET=.*|QA_DATASET=\"$QA_DATASET\"|" "$temp_script"
-        print_info "QA 数据集: $QA_DATASET"
-    fi
-
-    if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
-        sed -i "s|^RESUME_FROM_CHECKPOINT=.*|RESUME_FROM_CHECKPOINT=\"$RESUME_FROM_CHECKPOINT\"|" "$temp_script"
-        sed -i "s|^RESUME_ONLY_MODEL=.*|RESUME_ONLY_MODEL=\"$RESUME_ONLY_MODEL\"|" "$temp_script"
-        print_info "恢复训练: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
-    fi
-
-    if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
-        sed -i "s|^OUTPUT_DIR_OVERRIDE=.*|OUTPUT_DIR_OVERRIDE=\"$OUTPUT_DIR_OVERRIDE\"|" "$temp_script"
-        print_info "输出目录覆盖: $OUTPUT_DIR_OVERRIDE"
-    fi
-
-    sed -i "s|^MEMORY_METHOD=.*|MEMORY_METHOD=\"$MEMORY_METHOD\"|" "$temp_script"
-    sed -i "s|^MAP_GLOBAL_SIDE_M=.*|MAP_GLOBAL_SIDE_M=\"$MAP_GLOBAL_SIDE_M\"|" "$temp_script"
-    sed -i "s|^MAP_LOCAL_SIDE_M=.*|MAP_LOCAL_SIDE_M=\"$MAP_LOCAL_SIDE_M\"|" "$temp_script"
-    sed -i "s|^MAP_RENDER_PX=.*|MAP_RENDER_PX=\"$MAP_RENDER_PX\"|" "$temp_script"
-    sed -i "s|^MAP_MASK_METHOD=.*|MAP_MASK_METHOD=\"$MAP_MASK_METHOD\"|" "$temp_script"
-    print_info "Memory 配置: method=$MEMORY_METHOD, global=$MAP_GLOBAL_SIDE_M, local=$MAP_LOCAL_SIDE_M, render=$MAP_RENDER_PX, mask=$MAP_MASK_METHOD"
-
-    # 修改数据路径 - 根据环境类型替换对应的数组
-    local data_array_name="HABITAT_DATA_PATHS"
-    [[ "$ENV_TYPE" == "satnav" ]] && data_array_name="SATNAV_DATA_PATHS"
-
-    local data_paths_content="${data_array_name}=(\n"
-    IFS=',' read -ra path_arr <<< "$ds_paths"
-    for path in "${path_arr[@]}"; do
-        data_paths_content+="    \"$path\"\n"
-    done
-    data_paths_content+=")"
-
-    # 使用 awk 替换对应的数据路径数组
-    awk -v new_content="$data_paths_content" -v array_name="$data_array_name" '
-        $0 ~ "^"array_name"=\\(" {
-            print new_content
-            in_array=1
-            next
-        }
-        in_array && /^\)/ {
-            in_array=0
-            next
-        }
-        !in_array { print }
-    ' "$temp_script" > "${temp_script}.tmp" && mv "${temp_script}.tmp" "$temp_script"
+    print_info "Memory 配置: method=${train_env[MEMORY_METHOD]}, global=${train_env[MAP_GLOBAL_SIDE_M]}, local=${train_env[MAP_LOCAL_SIDE_M]}, render=${train_env[MAP_RENDER_PX]}, mask=${train_env[MAP_MASK_METHOD]}"
+    print_info "数据路径: $ds_paths"
 
     # 运行训练
     local start_time=$(date +%s)
@@ -976,21 +814,12 @@ run_experiment() {
 
     print_info "日志文件: $log_file"
     print_info "开始训练..."
-    export TRAIN_CUDA_DEVICES TRAIN_NUM_GPUS TRAIN_DRY_RUN
-
-    # 修复 SWIFTVLN_ROOT 路径问题
-    # 原始脚本使用 BASH_SOURCE 计算 SWIFTVLN_ROOT，但复制到临时文件后路径会错误
-    # 直接硬编码 SWIFTVLN_ROOT 为正确的绝对路径
-    sed -i "s|^SWIFTVLN_ROOT=.*|SWIFTVLN_ROOT=\"${SWIFTVLN_ROOT}\"|g" "$temp_script"
-
-    # 将相对路径改为绝对路径
-    sed -i "s|src/swiftvln/model/trainer.py|${SWIFTVLN_ROOT}/src/swiftvln/model/trainer.py|g" "$temp_script"
-    sed -i "s|--custom_register_path src/swiftvln/model|--custom_register_path ${SWIFTVLN_ROOT}/src/swiftvln/model|g" "$temp_script"
 
     local attempt=1
     local max_attempts=$((MAX_AUTO_FIX_RETRIES + 1))
     local run_log_file="$log_file"
     local attempted_fixes=""
+    local -a train_env_args=()
 
     # 执行训练脚本（带自动修复重试）
     while true; do
@@ -1001,9 +830,11 @@ run_experiment() {
             print_warning "开始第 ${attempt} 次尝试..."
         fi
 
-        ensure_available_master_port "$temp_script" || true
+        ensure_available_master_port train_env || true
+        set_train_env train_env "TRAIN_LOG_FILE" "$run_log_file"
+        train_env_to_args train_env train_env_args
 
-        bash "$temp_script" 2>&1 | tee "$run_log_file"
+        env "${train_env_args[@]}" bash "$train_script" 2>&1 | tee "$run_log_file"
         local train_exit_code=${PIPESTATUS[0]}
 
         if [[ $train_exit_code -eq 0 ]]; then
@@ -1012,9 +843,8 @@ run_experiment() {
 
         print_warning "训练脚本退出码: ${train_exit_code}"
 
-        if [[ $attempt -lt $max_attempts ]] && apply_auto_fix_for_train_failure "$run_log_file" "$temp_script"; then
+        if [[ $attempt -lt $max_attempts ]] && apply_auto_fix_for_train_failure "$run_log_file" train_env; then
             attempted_fixes="${attempted_fixes}\n- attempt ${attempt}: ${LAST_AUTO_FIX_ACTIONS}"
-            send_webhook "Train Auto-Fix Retry" "experiment=${exp_idx}\nmodel=${model}\nattempt=${attempt}\nissue_log=${run_log_file}\nsolution=${LAST_AUTO_FIX_ACTIONS}\nresult=retrying next attempt"
             ((attempt++))
             continue
         fi
@@ -1050,50 +880,30 @@ run_experiment() {
             _SWANLAB_PROJECT="${SWANLAB_PROJECT:-}" \
             _SWANLAB_EXP="$exp_name" \
             _OUTPUT_DIR="$output_path" \
-            python3 -c "
-import json, pathlib, os
-meta = {}
-url = os.environ.get('_SWANLAB_URL', '')
-if url:
-    meta['swanlab_url'] = url
-proj = os.environ.get('_SWANLAB_PROJECT', '')
-if proj:
-    meta['swanlab_project'] = proj
-exp = os.environ.get('_SWANLAB_EXP', '')
-if exp:
-    meta['swanlab_exp_name'] = exp
-if meta:
-    out = pathlib.Path(os.environ['_OUTPUT_DIR']) / 'train_metadata.json'
-    out.write_text(json.dumps(meta, indent=2))
-    print(f'Saved train metadata: {out}')
-" 2>/dev/null || true
+            python3 "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/_write_train_metadata.py" 2>/dev/null || true
         fi
 
-        # 格式: idx|model|changes|ds_names|status|duration|exp_name|reserved|qa_ratio
-        EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|SUCCESS|$duration_str|$exp_name||$qa_ratio")
+        # 格式: idx|model|changes|ds_names|status|duration|exp_name
+        EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|SUCCESS|$duration_str|$exp_name")
         if [[ "$dry_run_completed" == "true" ]]; then
             print_success "实验 $exp_idx Dry Run 完成! 耗时: $duration_str"
             _emit_train_event "EXPERIMENT_DRY_RUN_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${run_log_file}|$(date -Iseconds)"
         else
             print_success "实验 $exp_idx 完成! 耗时: $duration_str"
             enqueue_model_for_eval "$exp_name" || true
-            send_webhook "Train Success" "experiment=${exp_idx}\nmodel=${model}\nduration=${duration_str}\noutput=${output_path:-N/A}\nlog=${run_log_file}"
             _emit_train_event "EXPERIMENT_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${output_path:-N/A}|$(date -Iseconds)"
         fi
 
-        rm -f "$temp_script"
         return 0
     else
         local error_msg=$(tail -50 "$run_log_file" | grep -iE "(error|oom|cuda|exception)" | head -5)
         error_msg=${error_msg:-"未知错误"}
 
-        EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|FAILED|--|--||$qa_ratio")
+        EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|FAILED|--|--")
         EXP_ERRORS+=("实验 $exp_idx ($model): $error_msg")
         print_error "实验 $exp_idx 失败!"
-        send_webhook "Train Failed" "experiment=${exp_idx}\nmodel=${model}\nerror=${error_msg}\nlog=${run_log_file}\nattempted_fixes=${attempted_fixes:-none}\nresult=marked FAILED and continue queue"
         _emit_train_event "EXPERIMENT_FAILED|${exp_idx}|${total:-0}|${model}|unknown|${error_msg:0:200}|${run_log_file}|$(date -Iseconds)"
 
-        rm -f "$temp_script"
         return 1
     fi
 }
@@ -1125,27 +935,17 @@ show_final_results() {
         echo "基础配置:"
         echo "  SwanLab:    $([ "$USE_SWANLAB" = true ] && echo "启用 ($SWANLAB_PROJECT)" || echo "禁用")"
         echo "  环境类型:   $ENV_TYPE"
-        if [[ "$ENV_TYPE" == "satnav" && ${#QA_RATIOS[@]} -gt 0 ]]; then
-            echo -n "  QA配置:     "
-            local qa_display=""
-            for r in "${QA_RATIOS[@]}"; do
-                qa_display+="$(format_qa_ratio "$r"), "
-            done
-            echo "${qa_display%, }"
-        fi
         echo ""
-        echo "┌────┬──────────────┬──────────────────────────────────────┬──────────────────────┬────────┬─────────┬──────────┐"
-        echo "│ #  │ 模型         │ 配置改动                             │ 数据集               │ QA     │ 状态    │ 耗时     │"
-        echo "├────┼──────────────┼──────────────────────────────────────┼──────────────────────┼────────┼─────────┼──────────┤"
+        echo "┌────┬──────────────┬──────────────────────────────────────┬──────────────────────┬─────────┬──────────┐"
+        echo "│ #  │ 模型         │ 配置改动                             │ 数据集               │ 状态    │ 耗时     │"
+        echo "├────┼──────────────┼──────────────────────────────────────┼──────────────────────┼─────────┼──────────┤"
 
         for result in "${EXP_RESULTS[@]}"; do
-            IFS="|" read -r idx model changes ds_names status duration exp_name _reserved qa_ratio <<< "$result"
-            local qa_display
-            qa_display=$(format_qa_ratio "$qa_ratio")
-            printf "│ %-2s │ %-12s │ %-36s │ %-20s │ %-6s │ %-7s │ %-8s │\n" "$idx" "$model" "${changes:0:36}" "${ds_names:0:20}" "$qa_display" "$status" "$duration"
+            IFS="|" read -r idx model changes ds_names status duration exp_name <<< "$result"
+            printf "│ %-2s │ %-12s │ %-36s │ %-20s │ %-7s │ %-8s │\n" "$idx" "$model" "${changes:0:36}" "${ds_names:0:20}" "$status" "$duration"
         done
 
-        echo "└────┴──────────────┴──────────────────────────────────────┴──────────────────────┴────────┴─────────┴──────────┘"
+        echo "└────┴──────────────┴──────────────────────────────────────┴──────────────────────┴─────────┴──────────┘"
         echo ""
         echo "统计: 成功 $success_count / 失败 $fail_count / 总计 ${#EXP_RESULTS[@]}"
 
@@ -1164,7 +964,7 @@ show_final_results() {
         echo "成功实验输出目录"
         echo "════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
         for result in "${EXP_RESULTS[@]}"; do
-            IFS="|" read -r idx model changes ds_names status duration exp_name _reserved _qa <<< "$result"
+            IFS="|" read -r idx model changes ds_names status duration exp_name <<< "$result"
             if [[ "$status" == "SUCCESS" ]]; then
                 echo "  • 实验 $idx ($model, $ds_names): output/${model}/${exp_name}"
             fi
@@ -1173,8 +973,6 @@ show_final_results() {
         echo ""
         echo "════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
     } | tee "$RESULT_FILE"
-
-    send_webhook "Train Queue Finished" "env=${ENV_TYPE}\nsuccess=${success_count}\nfailed=${fail_count}\ntotal=${#EXP_RESULTS[@]}\nreport=${RESULT_FILE}"
 
     _emit_train_event "QUEUE_DONE|${success_count}|${fail_count}|${#EXP_RESULTS[@]}|$(date -Iseconds)"
     _write_train_completion_status "$RESULT_FILE" "$success_count" "$fail_count"
@@ -1190,7 +988,7 @@ _write_train_completion_status() {
 
     local success_list="" failed_list=""
     for result in "${EXP_RESULTS[@]}"; do
-        IFS='|' read -r _idx _model _changes _ds _status _dur exp_name _base _qa <<< "$result"
+        IFS='|' read -r _idx _model _changes _ds _status _dur exp_name <<< "$result"
         if [[ "$_status" == "SUCCESS" ]]; then
             [[ -n "$success_list" ]] && success_list="${success_list},"
             success_list="${success_list}\"${exp_name}\""
@@ -1254,7 +1052,7 @@ main() {
     local total=${#EXPERIMENTS[@]}
 
     for exp in "${EXPERIMENTS[@]}"; do
-        IFS='|' read -r model config changes ds_names ds_paths _unused_path qa_ratio <<< "$exp"
+        IFS='|' read -r model config changes ds_names ds_paths <<< "$exp"
 
         echo ""
         echo -e "${BOLD}════════════════════════════════════════════════════════════════${NC}"
@@ -1262,7 +1060,7 @@ main() {
         echo -e "${BOLD}════════════════════════════════════════════════════════════════${NC}"
 
         # 运行实验
-        run_experiment "$exp_idx" "$model" "$config" "$changes" "$ds_names" "$ds_paths" "" "$qa_ratio" || true
+        run_experiment "$exp_idx" "$model" "$config" "$changes" "$ds_names" "$ds_paths" || true
 
         # 如果不是最后一个实验，等待GPU清空
         if [[ $exp_idx -lt $total ]]; then

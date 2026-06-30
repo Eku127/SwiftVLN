@@ -11,6 +11,15 @@ SOURCE="hf"   # hf | modelscope
 
 # Default: official StreamVLN benchmark checkpoint (non-realworld)
 DEFAULT_MODEL_REPO="mengwei0427/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln_v1_3"
+# ModelScope availability checked via ModelScope API (2026-06-30):
+#   - Available: lmms-lab/LLaVA-Video-7B-Qwen2
+#   - Available: google/siglip-so400m-patch14-384
+#   - Also available SigLIP mirrors:
+#       thomas/siglip-so400m-patch14-384
+#       AI-ModelScope/ViT-SO400M-14-SigLIP-384
+#   - Not found on ModelScope:
+#       mengwei0427/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln_v1_3
+#     so the official continue checkpoint should be downloaded from HF/hf-mirror.
 MODEL_REPO=""
 MODEL_DIR_NAME=""
 

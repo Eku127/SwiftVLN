@@ -5,6 +5,8 @@
 #   bash baseline/navila/scripts/train_satnav.sh [EXP_NAME]   # backward-compatible, defaults to scratch
 #
 # Optional env overrides:
+#   SATNAV_DATASET=SatNav-v0.1
+#   SATNAV_TRAIN_DATA_DIR=...
 #   DATA_PATH=...
 #   IMAGE_FOLDER=...
 #   MODEL_PATH=...
@@ -44,8 +46,11 @@ SCRATCH_MODEL="${SCRATCH_MODEL:-${BASELINE_DIR}/model/navila-siglip-llama3-8b-v1
 CONTINUE_MODEL="${CONTINUE_MODEL:-${BASELINE_DIR}/model/navila-llama3-8b-8f}"
 DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero2.json}"
 
-DATA_PATH="${DATA_PATH:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data/annotations.json}"
-IMAGE_FOLDER="${IMAGE_FOLDER:-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data}"
+SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
+SATNAV_TRAIN_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}"
+DATA_PATH="${DATA_PATH:-${SATNAV_TRAIN_DATA_DIR}/annotations.json}"
+IMAGE_FOLDER="${IMAGE_FOLDER:-${SATNAV_TRAIN_DATA_DIR}}"
 
 # Sample reduction strategy: head + stop + turn-protected forward stride.
 #   - Head  steps 1..HEAD_KEEP : always kept (unique <8-frame input distribution)
@@ -118,9 +123,9 @@ esac
 MODEL_PATH="${MODEL_PATH:-${DEFAULT_MODEL_PATH}}"
 VISION_TOWER="${VISION_TOWER:-${MODEL_PATH}/vision_tower}"
 
-VERSION_NUM="$(echo "${DATA_PATH}" | grep -oP 'ver_\K\d+' | head -1 || true)"
-if [[ -z "${VERSION_NUM}" ]]; then
-    VERSION_NUM="unknown"
+VERSION_TAG="$(echo "${SATNAV_DATASET}" | sed -E 's/^ver_//; s/[^A-Za-z0-9._-]+/-/g')"
+if [[ -z "${VERSION_TAG}" ]]; then
+    VERSION_TAG="unknown"
 fi
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
@@ -170,7 +175,7 @@ append_action_tag() {
 if [[ -n "${CUSTOM_EXP_NAME}" ]]; then
     EXP_NAME="$(append_action_tag "$(append_sample_tag "${CUSTOM_EXP_NAME}")")"
 else
-    EXP_NAME="navila-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-8f-data${VERSION_NUM}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${SAMPLE_TAG}${ACTION_TAG}-${TIMESTAMP}"
+    EXP_NAME="navila-baseline-${TRAIN_MODE}-${NUM_EPOCHS}ep-8f-data${VERSION_TAG}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${SAMPLE_TAG}${ACTION_TAG}-${TIMESTAMP}"
 fi
 
 OUTPUT_DIR="${SWIFTVLN_ROOT}/output/navila-baseline/${EXP_NAME}"
@@ -397,6 +402,7 @@ echo "NaVILA Baseline Training"
 echo "=========================================="
 echo "  Init mode  : ${TRAIN_MODE}"
 echo "  Model      : ${MODEL_PATH}"
+echo "  Dataset    : ${SATNAV_DATASET}"
 echo "  Data path  : ${DATA_PATH}"
 echo "  Image root : ${IMAGE_FOLDER}"
 echo "  Output     : ${OUTPUT_DIR}"

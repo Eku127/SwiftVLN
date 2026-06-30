@@ -2,7 +2,7 @@
 """
 Base class for Embedding Enhancement modules.
 
-All embedding enhancements (pixel, pose, temporal, etc.) should inherit
+All embedding enhancements (pose, UAV adapter, temporal, etc.) should inherit
 from BaseEmbeddingEnhancement and implement the forward() method.
 """
 

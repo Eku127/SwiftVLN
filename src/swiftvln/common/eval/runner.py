@@ -28,6 +28,7 @@ import sys
 import json
 import argparse
 import random
+import time
 import numpy as np
 import torch
 import tqdm
@@ -104,6 +105,103 @@ class BaseVLNEval(ABC):
         self._package_root = os.path.dirname(self._common_root)
         # package_root: <repo>/src/swiftvln -> repo_root: <repo>
         self._repo_root = os.path.dirname(os.path.dirname(self._package_root))
+
+    @staticmethod
+    def build_episode_key(episode_id, scene_id) -> str:
+        """Build the stable resume/dedup key for evaluation results."""
+        ep_id = str(episode_id) if episode_id is not None else ""
+        scene = str(scene_id) if scene_id is not None else ""
+        if not ep_id:
+            return ""
+        return f"{scene}::{ep_id}" if scene else ep_id
+
+    @classmethod
+    def load_dedup_results(cls, result_file: str) -> List[Dict[str, Any]]:
+        """Load JSONL results and keep the latest row per scene_id + episode_id."""
+        if not os.path.exists(result_file):
+            return []
+
+        results_by_episode: Dict[str, Dict[str, Any]] = {}
+        with open(result_file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    result = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ep_key = cls.build_episode_key(
+                    result.get("episode_id", ""),
+                    result.get("scene_id", ""),
+                )
+                if ep_key:
+                    results_by_episode[ep_key] = result
+        return list(results_by_episode.values())
+
+    @staticmethod
+    def append_result_jsonl(result_file: str, result: Dict[str, Any]):
+        """Append one evaluation result as a durable JSONL row."""
+        os.makedirs(os.path.dirname(result_file), exist_ok=True)
+        with open(result_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(result, ensure_ascii=False) + "\n")
+            f.flush()
+
+    @staticmethod
+    def rank_sync_dir(output_dir: str) -> str:
+        return os.path.join(output_dir, ".dist_sync")
+
+    def clear_rank_markers(self):
+        sync_dir = self.rank_sync_dir(self.args.output_dir)
+        os.makedirs(sync_dir, exist_ok=True)
+        for name in os.listdir(sync_dir):
+            if name.startswith("rank_") and name.endswith(".done.json"):
+                try:
+                    os.remove(os.path.join(sync_dir, name))
+                except FileNotFoundError:
+                    pass
+
+    def write_rank_marker(self, processed_count: int, resumed_count: int, local_total: int):
+        sync_dir = self.rank_sync_dir(self.args.output_dir)
+        os.makedirs(sync_dir, exist_ok=True)
+        final_path = os.path.join(sync_dir, f"rank_{self.rank}.done.json")
+        tmp_path = f"{final_path}.tmp"
+        payload = {
+            "rank": self.rank,
+            "processed_count": processed_count,
+            "resumed_count": resumed_count,
+            "local_total": local_total,
+            "completed_at": time.time(),
+        }
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, final_path)
+
+    def wait_for_rank_markers(self, expected_ranks: List[int], timeout_seconds: int = 1800):
+        sync_dir = self.rank_sync_dir(self.args.output_dir)
+        os.makedirs(sync_dir, exist_ok=True)
+        deadline = time.time() + timeout_seconds
+        last_missing = None
+        expected_ranks = sorted(set(int(rank) for rank in expected_ranks))
+
+        while True:
+            missing = [
+                rank for rank in expected_ranks
+                if not os.path.exists(os.path.join(sync_dir, f"rank_{rank}.done.json"))
+            ]
+            if not missing:
+                return
+
+            if time.time() >= deadline:
+                raise RuntimeError(
+                    f"Timed out waiting for rank completion markers. "
+                    f"Missing ranks: {missing}, dir={sync_dir}"
+                )
+
+            if missing != last_missing:
+                print(
+                    f"[Sync] rank markers: {len(expected_ranks) - len(missing)}/"
+                    f"{len(expected_ranks)} ready, missing={missing}"
+                )
+                last_missing = missing
+            time.sleep(5)
     
     @staticmethod
     def set_seed(seed: int = DEFAULT_EVAL_SEED):
@@ -180,15 +278,9 @@ class BaseVLNEval(ABC):
     
     def init_distributed(self):
         """Initialize distributed training."""
-        try:
-            from swiftvln.common import init_distributed as _init_distributed
-            return _init_distributed()
-        except ImportError:
-            try:
-                from ..utils import init_distributed as _init_distributed
-                return _init_distributed()
-            except ImportError:
-                return 0, 1, 0
+        from swiftvln.common import init_distributed as _init_distributed
+
+        return _init_distributed()
     
     def register_module(self):
         """Override to import/register model module."""
@@ -397,34 +489,6 @@ class BaseVLNEval(ABC):
         _debug_log(self.rank, f"evaluate_episode() finished for episode {episode.episode_id}")
         return result
     
-    def gather_results(self, results: List[Dict]):
-        """Gather results from all processes."""
-        try:
-            from swiftvln.common import gather_metrics
-        except ImportError:
-            try:
-                from ..utils import gather_metrics
-            except ImportError:
-                gather_metrics = None
-        
-        if gather_metrics is not None:
-            sucs_all, spls_all, oss_all, nes_all, all_results_merged = gather_metrics(
-                results=results,
-                rank=self.rank,
-                world_size=self.world_size,
-                local_rank=self.local_rank,
-                is_main=self.is_main
-            )
-        else:
-            # Fallback for single process
-            sucs_all = torch.tensor([r["success"] for r in results])
-            spls_all = torch.tensor([r["spl"] for r in results])
-            oss_all = torch.tensor([r["oracle_success"] for r in results])
-            nes_all = torch.tensor([r["distance_to_goal"] for r in results])
-            all_results_merged = results
-        
-        return sucs_all, spls_all, oss_all, nes_all, all_results_merged
-    
     def get_summary_extras(self) -> Dict[str, Any]:
         """Override to add model-specific summary fields."""
         extras = {}
@@ -434,14 +498,19 @@ class BaseVLNEval(ABC):
             extras['compress_stride'] = self.args.compress_stride
         return extras
     
-    def save_results(self, sucs_all, spls_all, oss_all, nes_all, all_results_merged, timing_stats_list):
-        """Save evaluation results."""
-        total_episodes = len(sucs_all)
-        success_rate = (sucs_all.sum() / total_episodes).item() if total_episodes > 0 else 0
-        mean_spl = (spls_all.sum() / total_episodes).item() if total_episodes > 0 else 0
-        mean_os = (oss_all.sum() / total_episodes).item() if total_episodes > 0 else 0
-        valid_nes = nes_all[nes_all < 1000]
-        mean_ne = valid_nes.mean().item() if len(valid_nes) > 0 else 0
+    def save_results(self, all_results_merged: List[Dict], timing_stats_list: List[Dict]):
+        """Save deduplicated evaluation summary and compatibility result files."""
+        total_episodes = len(all_results_merged)
+        sucs_all = [float(r.get("success", 0.0)) for r in all_results_merged]
+        spls_all = [float(r.get("spl", 0.0)) for r in all_results_merged]
+        oss_all = [float(r.get("oracle_success", 0.0)) for r in all_results_merged]
+        nes_all = [float(r.get("distance_to_goal", 0.0)) for r in all_results_merged]
+        valid_nes = [ne for ne in nes_all if ne < 1000]
+
+        success_rate = sum(sucs_all) / total_episodes if total_episodes > 0 else 0
+        mean_spl = sum(spls_all) / total_episodes if total_episodes > 0 else 0
+        mean_os = sum(oss_all) / total_episodes if total_episodes > 0 else 0
+        mean_ne = sum(valid_nes) / len(valid_nes) if valid_nes else 0
         
         # Compute average steps
         all_steps = [r.get("steps", 0) for r in all_results_merged]
@@ -508,8 +577,15 @@ class BaseVLNEval(ABC):
         
         # Clean all_results: remove timing data, save one result per line (JSONL format)
         cleaned_results = clean_results_for_output(all_results_merged)
-        # Sort by episode_id descending before saving
-        cleaned_results = sorted(cleaned_results, key=lambda x: int(x.get('episode_id', 0)), reverse=True)
+        def _result_sort_key(result: Dict[str, Any]):
+            episode_id = result.get('episode_id', 0)
+            try:
+                episode_sort_id = (0, int(episode_id))
+            except (TypeError, ValueError):
+                episode_sort_id = (1, str(episode_id))
+            return str(result.get('scene_id', '')), episode_sort_id
+
+        cleaned_results = sorted(cleaned_results, key=_result_sort_key, reverse=True)
         with open(os.path.join(self.args.output_dir, "all_results.jsonl"), "w") as f:
             for result in cleaned_results:
                 f.write(json.dumps(result, ensure_ascii=False) + "\n")
@@ -554,6 +630,8 @@ class BaseVLNEval(ABC):
                 print("[Single Process Mode]")
             if self.uses_compression and hasattr(self.args, 'compress_stride'):
                 print(f"[{self.model_description}] compress_stride={self.args.compress_stride}")
+            if self.world_size > 1:
+                self.clear_rank_markers()
         
         if self.world_size > 1:
             torch.distributed.barrier()
@@ -582,6 +660,24 @@ class BaseVLNEval(ABC):
         if self.is_main:
             print(f"Environment: {self.args.eval_split}, Total: {len(all_episodes)}, "
                   f"This process: {len(my_episodes)}, Scenes: {len(scene_episode_dict)}")
+
+        result_file = os.path.join(self.args.output_dir, "result.jsonl")
+        existing_results = self.load_dedup_results(result_file)
+        done_ids = {
+            self.build_episode_key(result.get("episode_id", ""), result.get("scene_id", ""))
+            for result in existing_results
+        }
+        done_ids.discard("")
+        if existing_results and self.is_main:
+            print(f"[Resume] Loaded {len(done_ids)} completed episodes from {result_file}")
+
+        local_done_before_resume = sum(
+            1 for episode in my_episodes
+            if self.build_episode_key(
+                getattr(episode, "episode_id", ""),
+                os.path.basename(getattr(episode, "scene_id", "unknown")).replace('.glb', '').replace('.tif', ''),
+            ) in done_ids
+        )
         
         # Evaluation loop
         results = []
@@ -593,26 +689,56 @@ class BaseVLNEval(ABC):
             desc = f"Evaluating ({self.model_description})"
         pbar = tqdm.tqdm(my_episodes, desc=desc, disable=not self.is_main)
         
-        for i, episode in enumerate(pbar):
+        for episode in pbar:
+            episode_scene = os.path.basename(
+                getattr(episode, "scene_id", "unknown")
+            ).replace('.glb', '').replace('.tif', '')
+            episode_key = self.build_episode_key(
+                getattr(episode, "episode_id", ""),
+                episode_scene,
+            )
+            if episode_key in done_ids:
+                continue
+
             result = self.evaluate_episode(evaluator, env_wrapper, episode)
             results.append(result)
+            done_ids.add(episode_key)
+            self.append_result_jsonl(result_file, result)
             
             # Collect timing stats
             if self.rank == 0 and '_timing_stats' in result:
                 timing_stats_list.append(result)
-            
-            # Save partial results
-            if self.is_main and (i + 1) % 10 == 0:
-                with open(os.path.join(self.args.output_dir, "results_partial.json"), "w") as f:
-                    json.dump(results, f, indent=2)
+
+            if self.is_main:
+                recent = results[-min(20, len(results)):]
+                if recent:
+                    avg_sr = sum(float(r.get("success", 0.0)) for r in recent) / len(recent)
+                    valid_ne = [
+                        float(r.get("distance_to_goal", 0.0))
+                        for r in recent
+                        if float(r.get("distance_to_goal", 0.0)) < 1000
+                    ]
+                    avg_ne = sum(valid_ne) / len(valid_ne) if valid_ne else 0.0
+                    pbar.set_postfix(
+                        SR=f"{avg_sr:.2%}",
+                        NE=f"{avg_ne:.1f}m",
+                        done=local_done_before_resume + len(results),
+                    )
         
         env_wrapper.close()
-        
-        # Gather and save results
-        sucs_all, spls_all, oss_all, nes_all, all_results_merged = self.gather_results(results)
-        
+
+        self.write_rank_marker(
+            processed_count=len(results),
+            resumed_count=local_done_before_resume,
+            local_total=len(my_episodes),
+        )
+
         if self.is_main:
-            self.save_results(sucs_all, spls_all, oss_all, nes_all, all_results_merged, timing_stats_list)
+            if self.world_size > 1:
+                self.wait_for_rank_markers(list(range(self.world_size)))
+            all_results_merged = self.load_dedup_results(result_file)
+            print(f"[Summary] Loaded {len(all_results_merged)} deduplicated episodes from {result_file}")
+            self.save_results(all_results_merged, timing_stats_list)
         
         # Cleanup
         if self.world_size > 1:

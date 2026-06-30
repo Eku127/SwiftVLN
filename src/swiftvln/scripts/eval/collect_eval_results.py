@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Collect eval summaries into versioned CSV files.
+"""Collect eval summaries into CSV files.
 
 Output CSV naming:
-  results/eval_collected/<split>/eval_results_data<version>.csv
+  results/eval_collected/<split>/eval_results.csv
 
 The split (val_seen / val_unseen / test) is taken from --eval-split.
 If --eval-split is not provided, it is inferred from the result_path directory
@@ -45,16 +45,6 @@ def parse_model_type(model_name: str) -> str:
     return "unknown"
 
 
-def parse_data_version(model_name: str, model_path: str) -> str:
-    m = re.search(r"data(\d{6})", model_name)
-    if m:
-        return m.group(1)
-    m = re.search(r"ver_(\d{6})", model_path or "")
-    if m:
-        return m.group(1)
-    return "unknown"
-
-
 def infer_plan(model_name: str, model_type: str) -> str:
     if model_type == "swiftvln":
         # History processor type determines the base method
@@ -86,9 +76,6 @@ def infer_plan(model_name: str, model_type: str) -> str:
         # Additive modifiers stacked on top of the base method
         if "-initial-" in model_name:
             base += " + initial"
-        m_qa = re.search(r"-qa(\d+)(?:-|$)", model_name)
-        if m_qa:
-            base += f" + qa{m_qa.group(1)}"
         return base
 
     if model_type in ("streamvln", "navila", "uninavid", "openfly"):
@@ -107,8 +94,6 @@ def plan_rank(plan: str) -> int:
         "baseline + log2.0": 30,
         "baseline + log3.0": 32,
         "baseline + initial": 35,
-        "baseline + qa15": 40,
-        "baseline + qa30": 50,
         "baseline + gtc-k256": 55,
         "baseline + gtc-k512": 60,
         "baseline + gtc": 62,
@@ -135,8 +120,6 @@ def overlap_variant_rank(model_name: str) -> int:
         return 70
     if "-gtc-k" in model_name:
         return 60
-    if re.search(r"-qa\d+", model_name):
-        return 50
     if "-initial-" in model_name:
         return 40
     if re.search(r"-tome-s\d+", model_name):
@@ -159,7 +142,6 @@ def normalize_overlap_setting_key(model_name: str) -> str:
     # Remove variant markers so experiments with the same base config are grouped.
     key = re.sub(r"-sgtc-k\d+", "", key)
     key = re.sub(r"-gtc-k\d+", "", key)
-    key = re.sub(r"-qa\d+", "", key)
     key = key.replace("-initial", "")
     # Normalize method slot: -tome-s{N} and -pool-s{N} both → -s{N}
     key = re.sub(r"-(tome|pool)-s(\d+)", r"-s\2", key)
@@ -170,15 +152,14 @@ def normalize_overlap_setting_key(model_name: str) -> str:
 def sort_key(row: Dict[str, str]) -> tuple:
     model_name = row.get("model_name", "")
     model_type = row.get("model_type") or parse_model_type(model_name)
-    data_version = parse_data_version(model_name, "")
 
     if model_type == "swiftvln":
         setting_key = normalize_overlap_setting_key(model_name)
         variant_rank = overlap_variant_rank(model_name)
-        return (data_version, model_type, setting_key, variant_rank, model_name)
+        return (model_type, setting_key, variant_rank, model_name)
 
     plan = row.get("plan", infer_plan(model_name, model_type))
-    return (data_version, model_type, int(plan_rank(plan)), plan, strip_run_timestamp(model_name), model_name)
+    return (model_type, int(plan_rank(plan)), plan, strip_run_timestamp(model_name), model_name)
 
 
 def dedupe_rows_by_model_name(rows: List[Dict[str, str]]) -> List[Dict[str, str]]:
@@ -358,10 +339,9 @@ def main() -> int:
         print(f"[WARN] could not determine eval_split from path: {result_path}; writing to root output dir")
 
     row = build_row(args.model_name, result_path, summary)
-    data_version = parse_data_version(args.model_name, str(summary.get("model_path", "")))
 
     split_dir = Path(args.output_dir) / eval_split if eval_split != "unknown" else Path(args.output_dir)
-    csv_path = split_dir / f"eval_results_data{data_version}.csv"
+    csv_path = split_dir / "eval_results.csv"
 
     rows = read_csv_rows(csv_path)
     rows = [r for r in rows if r.get("model_name") != args.model_name]

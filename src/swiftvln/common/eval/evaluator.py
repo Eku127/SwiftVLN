@@ -215,34 +215,6 @@ class BaseVLNEvaluator(ABC):
         actions = [self.actions2idx[match] for match in matches]
         return actions
 
-    def sample_history_indices(self, total_frames: int, num_to_sample: int) -> List[int]:
-        """
-        Uniformly sample indices from historical frames.
-        
-        Args:
-            total_frames: Total number of historical frames available
-            num_to_sample: Number of frames to sample
-            
-        Returns:
-            List of sampled frame indices
-        """
-        if total_frames <= 0:
-            return []
-        
-        if total_frames <= num_to_sample:
-            return list(range(total_frames))
-        
-        # Uniform sampling
-        step = max(total_frames // num_to_sample, 1)
-        indices = list(range(0, total_frames, step))
-        
-        # Ensure we don't exceed num_to_sample
-        if len(indices) > num_to_sample:
-            selected = np.linspace(0, len(indices) - 1, num_to_sample, dtype=int)
-            indices = [indices[i] for i in selected]
-        
-        return indices
-
     @abstractmethod
     def eval_episode(self, env_wrapper: EnvWrapper, episode: Any, env_idx: int = 0) -> Dict[str, Any]:
         """

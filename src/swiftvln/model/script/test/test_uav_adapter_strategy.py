@@ -53,7 +53,6 @@ class DummyModel:
     def __init__(self, hidden_size: int):
         self.config = SimpleNamespace(hidden_size=hidden_size, vocab_size=100)
         self.visual = SimpleNamespace(dtype=torch.float32)
-        self.pixel_embed = None
         self.pose_embed = None
         self.uav_adapter = None
 
@@ -67,7 +66,6 @@ def _run_case(module, checkpoint_path: str):
     module._attach_embedding_enhancement(
         model,
         model_dir='dummy',
-        use_pixel_embed=False,
         use_pose_embed=False,
         use_uav_adapter=True,
         uav_adapter_path=resolved_path,

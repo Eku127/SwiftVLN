@@ -34,53 +34,23 @@ from typing import Any, Dict, List, Tuple, Optional, Union
 from PIL import Image
 from dataclasses import dataclass, field
 import json as json_module
-import math as math_module
 
-# Import from common module
-try:
-    from swiftvln.common import (
-        BaseVLNEvaluator,
-        CURRENT_IMAGE_TOKEN,
-        DEFAULT_CONJUNCTIONS,
-        EnvWrapper,
-        DEFAULT_IMAGE_TOKEN,
-        HISTORY_MEMORY_TOKEN,
-        PROMPT_TEMPLATE_HABITAT,
-        PROMPT_TEMPLATE_SATNAV,
-        TrajectoryRecorder,
-        HistoryTokenCompressor,
-    )
-    from swiftvln.common.history_processors import (
-        create_history_processor,
-        HistoryProcessor,
-        GlobalTokenClustering,
-        PerFrameCompressor,
-    )
-    from swiftvln.common.history_processors.per_frame import sample_per_frame_history_indices
-    from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
-    from swiftvln.model.map_memory import SatNavMapMemoryBuilder
-except ImportError:
-    from ..common import (
-        BaseVLNEvaluator,
-        CURRENT_IMAGE_TOKEN,
-        DEFAULT_CONJUNCTIONS,
-        EnvWrapper,
-        DEFAULT_IMAGE_TOKEN,
-        HISTORY_MEMORY_TOKEN,
-        PROMPT_TEMPLATE_HABITAT,
-        PROMPT_TEMPLATE_SATNAV,
-        TrajectoryRecorder,
-        HistoryTokenCompressor,
-    )
-    from ..common.history_processors import (
-        create_history_processor,
-        HistoryProcessor,
-        GlobalTokenClustering,
-        PerFrameCompressor,
-    )
-    from ..common.history_processors.per_frame import sample_per_frame_history_indices
-    from ..common.embedding_enhancement import reconstruct_pose_from_actions
-    from .map_memory import SatNavMapMemoryBuilder
+from swiftvln.common import (
+    BaseVLNEvaluator,
+    CURRENT_IMAGE_TOKEN,
+    DEFAULT_CONJUNCTIONS,
+    EnvWrapper,
+    DEFAULT_IMAGE_TOKEN,
+    HISTORY_MEMORY_TOKEN,
+    PROMPT_TEMPLATE_HABITAT,
+    PROMPT_TEMPLATE_SATNAV,
+    TrajectoryRecorder,
+    HistoryTokenCompressor,
+)
+from swiftvln.common.history_processors import create_history_processor
+from swiftvln.common.history_processors.per_frame import sample_per_frame_history_indices
+from swiftvln.common.embedding_enhancement import reconstruct_pose_from_actions
+from swiftvln.model.map_memory import SatNavMapMemoryBuilder
 
 
 def _debug_enabled() -> bool:
@@ -122,6 +92,23 @@ def _tensor_debug_stats(tensor: Optional[torch.Tensor], sample_limit: int = 4) -
         f"sum={checksum:.6f} abs_sum={abs_checksum:.6f} l2={l2:.6f} "
         f"sample=[{sample}]"
     )
+
+
+def _derive_dataset_cache_dir(data_path_tmpl: str) -> Optional[str]:
+    """Infer {dataset_root}/map_cache from a SatNav DATA_PATH template."""
+    if not data_path_tmpl:
+        return None
+
+    parts = str(data_path_tmpl).split(os.sep)
+    if 'episodes' in parts:
+        idx = parts.index('episodes')
+        if idx > 0:
+            dataset_root = os.sep.join(parts[:idx])
+            if os.path.isabs(str(data_path_tmpl)) and not dataset_root.startswith(os.sep):
+                dataset_root = os.sep + dataset_root
+            return os.path.join(os.path.abspath(dataset_root), 'map_cache')
+
+    return None
 
 
 @dataclass
@@ -240,31 +227,17 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
             if self.use_tome:
                 raise ValueError("SwiftVLN memory_method=map currently requires use_tome=false.")
             # Map images are synthesized top-down views, not real camera frames,
-            # so pixel / pose / uav_adapter embed enhancements are not meaningful
+            # so pose / uav_adapter embed enhancements are not meaningful
             # and must stay disabled to match the training-time constraint.
-            if getattr(self.args, 'use_pixel_embed', False):
-                raise ValueError("SwiftVLN memory_method=map requires use_pixel_embed=false.")
             if getattr(self.args, 'use_pose_embed', False):
                 raise ValueError("SwiftVLN memory_method=map requires use_pose_embed=false.")
             if getattr(self.args, 'use_uav_adapter', False):
                 raise ValueError("SwiftVLN memory_method=map requires use_uav_adapter=false.")
-            # Derive cache dir from DATA_PATH so eval warms the same on-disk
-            # cache as training (e.g. ver_260404/map_cache). Env var
+            # Derive cache dir from DATA_PATH so any dataset root name, such as
+            # SatNav-v0.1 or a custom abcd directory, maps to {root}/map_cache.
             # SWIFTVLN_MAP_CACHE_DIR overrides this; "off" disables it.
-            default_map_cache_dir: Optional[str] = None
             data_path_tmpl = getattr(self.config.DATASET, 'DATA_PATH', '') or ''
-            probe_dir = os.path.dirname(str(data_path_tmpl))
-            for _ in range(8):
-                base = os.path.basename(probe_dir.rstrip('/'))
-                if base.startswith('ver_'):
-                    default_map_cache_dir = os.path.join(
-                        os.path.abspath(probe_dir), 'map_cache'
-                    )
-                    break
-                parent = os.path.dirname(probe_dir)
-                if not parent or parent == probe_dir:
-                    break
-                probe_dir = parent
+            default_map_cache_dir = _derive_dataset_cache_dir(str(data_path_tmpl))
             self.map_builder = SatNavMapMemoryBuilder(
                 scenes_dir=self.config.DATASET.SCENES_DIR,
                 global_side_m=self.map_global_side_m,
@@ -299,9 +272,6 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
             hasattr(self.model, 'embed_enhance') and 
             not self.model.embed_enhance.is_empty
         )
-        # Backward compatibility alias
-        self.use_pixel_embed = self.has_embed_enhance
-        
         # ==========================================================================
         # Print configuration
         # ==========================================================================
@@ -364,70 +334,6 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
         # Pose tracking
         self.pose_history: List[List[float]] = []
         self.executed_actions: List[int] = [-1]  # Start with INITIAL action marker
-        self._start_state_pos: Optional[List[float]] = None
-        self._start_state_heading: Optional[float] = None
-
-    def _wrap_heading_deg(self, angle: float) -> float:
-        """Wrap heading angle to [-180, 180)."""
-        return (angle + 180.0) % 360.0 - 180.0
-
-    def _extract_numeric_heading(self, rotation: Any) -> Optional[float]:
-        """Extract numeric heading in degrees from simulator rotation object."""
-        if rotation is None:
-            return None
-        if isinstance(rotation, (int, float)):
-            return float(rotation)
-        if hasattr(rotation, 'item'):
-            try:
-                return float(rotation.item())
-            except Exception:
-                pass
-        return None
-
-    def _get_pose_from_simulator(self, env_wrapper: EnvWrapper, episode: Any) -> Optional[List[float]]:
-        """Compute current ego-frame pose from simulator state if available."""
-        if not hasattr(env_wrapper, 'get_agent_state'):
-            return None
-
-        try:
-            state = env_wrapper.get_agent_state()
-            pos = getattr(state, 'position', None)
-            if pos is None:
-                return None
-            pos = [float(pos[0]), float(pos[1])]
-
-            heading = self._extract_numeric_heading(getattr(state, 'rotation', None))
-            if heading is None:
-                return None
-
-            if self._start_state_pos is None:
-                if hasattr(episode, 'start_position') and episode.start_position is not None:
-                    self._start_state_pos = [float(episode.start_position[0]), float(episode.start_position[1])]
-                else:
-                    self._start_state_pos = [pos[0], pos[1]]
-            if self._start_state_heading is None:
-                start_rot = getattr(episode, 'start_rotation', None)
-                start_heading = self._extract_numeric_heading(start_rot)
-                if start_heading is None:
-                    start_heading = heading
-                self._start_state_heading = float(start_heading)
-
-            dx = pos[0] - self._start_state_pos[0]
-            dy = pos[1] - self._start_state_pos[1]
-            h0_rad = math_module.radians(self._start_state_heading)
-            delta_forward = dx * math_module.cos(h0_rad) + dy * math_module.sin(h0_rad)
-            delta_right = -dx * math_module.sin(h0_rad) + dy * math_module.cos(h0_rad)
-
-            delta_heading = self._wrap_heading_deg(float(heading) - self._start_state_heading)
-            heading_rad = math_module.radians(delta_heading)
-            return [
-                float(delta_forward),
-                float(delta_right),
-                float(math_module.sin(heading_rad)),
-                float(math_module.cos(heading_rad)),
-            ]
-        except Exception:
-            return None
 
     def _get_pose_from_actions(self) -> List[float]:
         """Fallback pose from executed actions (action integral)."""
@@ -447,8 +353,7 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
 
         We always use action integration here so that the pose representation
         matches exactly what ``reconstruct_pose_from_actions`` produces during
-        training.  ``_get_pose_from_simulator`` is kept for future use once
-        proper coordinate conversion (lonlat_to_ego_displacement) is integrated.
+        training.
         """
         return self._get_pose_from_actions()
     
@@ -624,6 +529,155 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
         else:
             self._compute_history_cache_per_frame(rgb_list, pose_list, window_start)
 
+    def _debug_dump_map_cache(
+        self,
+        episode: Any,
+        window_start: int,
+        features_list: List[torch.Tensor],
+    ):
+        if not (_debug_enabled() and self._debug_map_eval_count < 6):
+            return
+
+        raw_token_counts = [int(features.shape[0]) for features in features_list]
+        token_counts = [int(item[0].shape[0]) for item in self.history_cache]
+        map_labels = ['global', 'local']
+        print(
+            f"[MAP DEBUG][eval] cache[{self._debug_map_eval_count}] "
+            f"rank={_debug_rank()} "
+            f"episode={getattr(episode, 'episode_id', 'unknown')} "
+            f"window_start={window_start} executed_actions={len(self.executed_actions)} "
+            f"map_images={len(features_list)} raw_tokens={raw_token_counts} "
+            f"compressed_tokens={token_counts}"
+        )
+        for idx, (features, cache_item) in enumerate(zip(features_list, self.history_cache)):
+            label = map_labels[idx] if idx < len(map_labels) else f"map{idx}"
+            print(
+                f"[MAP DEBUG][eval] cache[{self._debug_map_eval_count}].{label} "
+                f"raw={_tensor_debug_stats(features)} "
+                f"compressed={_tensor_debug_stats(cache_item[0])}"
+            )
+        self._debug_map_eval_count += 1
+
+    def _debug_dump_map_system_prompt(
+        self,
+        inputs: Dict[str, torch.Tensor],
+        history_token_counts: List[int],
+        initial_token_count: int,
+        instruction: str,
+        system_prompt: str,
+    ):
+        if not (
+            _debug_enabled()
+            and self.memory_method == 'map'
+            and self._debug_map_prompt_count < 6
+        ):
+            return
+
+        token_ids = inputs['input_ids']
+        history_positions = (token_ids[0] == self.history_memory_token_id).nonzero(as_tuple=True)[0]
+        current_positions = (token_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
+        print(
+            f"[MAP DEBUG][eval.prompt.system] rank={_debug_rank()} "
+            f"history_token_counts={history_token_counts} initial_token_count={initial_token_count} "
+            f"tokenized_len={token_ids.shape[1]} "
+            f"history_positions={len(history_positions)} current_positions={len(current_positions)}"
+        )
+        print(
+            f"[MAP DEBUG][eval.prompt.system] instruction={_preview_text(instruction, limit=180)}"
+        )
+        print(
+            f"[MAP DEBUG][eval.prompt.system] prompt={_preview_text(system_prompt, limit=340)}"
+        )
+        self._debug_map_prompt_count += 1
+
+    def _debug_dump_map_user_prompt(
+        self,
+        inputs: Dict[str, torch.Tensor],
+        current_token_count: int,
+        add_generation_prompt: bool,
+        content: str,
+    ):
+        if not (
+            _debug_enabled()
+            and self.memory_method == 'map'
+            and self._debug_map_user_prompt_count < 6
+        ):
+            return
+
+        token_ids = inputs['input_ids']
+        current_positions = (token_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
+        print(
+            f"[MAP DEBUG][eval.prompt.user] rank={_debug_rank()} "
+            f"generation_prompt={add_generation_prompt} "
+            f"current_token_count={current_token_count} tokenized_len={token_ids.shape[1]} "
+            f"current_positions={len(current_positions)}"
+        )
+        print(
+            f"[MAP DEBUG][eval.prompt.user] content={_preview_text(content, limit=240)}"
+        )
+        self._debug_map_user_prompt_count += 1
+
+    def _debug_dump_map_complete_embeds(
+        self,
+        system_ids: torch.Tensor,
+        new_user_ids: torch.Tensor,
+        current_vit_features: torch.Tensor,
+        current_token_count: int,
+        history_token_counts: List[int],
+        initial_token_count: int,
+        history_injection_msg: str,
+        history_embeds: Optional[torch.Tensor],
+        history_injection_ok: bool,
+        seq_len: int,
+    ):
+        if not (
+            _debug_enabled()
+            and self.memory_method == 'map'
+            and self._debug_map_embed_count < 6
+        ):
+            return
+
+        overlap_len = (
+            int(self.overlap_context.input_ids.shape[1])
+            if self.overlap_context is not None and self.overlap_context.input_ids is not None
+            else 0
+        )
+        completed_turn_count = len(self.window_turns)
+        completed_turn_token_count = int(sum(turn.user_input_ids.shape[1] for turn in self.window_turns))
+        history_positions = (system_ids[0] == self.history_memory_token_id).nonzero(as_tuple=True)[0]
+        current_positions_system = (system_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
+        current_positions_new = (new_user_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
+        print(
+            f"[MAP DEBUG][eval.embed] rank={_debug_rank()} "
+            f"history_cache_tokens={history_token_counts} initial_tokens={initial_token_count} "
+            f"system_len={system_ids.shape[1]} overlap_len={overlap_len} "
+            f"completed_turns={completed_turn_count} completed_user_tokens={completed_turn_token_count} "
+            f"new_user_len={new_user_ids.shape[1]} seq_len={seq_len} "
+            f"history_injection={history_injection_msg}"
+        )
+        print(
+            f"[MAP DEBUG][eval.embed] system_history_positions={len(history_positions)} "
+            f"system_current_positions={len(current_positions_system)} "
+            f"new_user_current_positions={len(current_positions_new)} "
+            f"current_vit_tokens={current_token_count}"
+        )
+        if history_embeds is not None:
+            print(
+                f"[MAP DEBUG][eval.embed] history_embed_stats={_tensor_debug_stats(history_embeds)} "
+                f"injection_ok={history_injection_ok}"
+            )
+        print(
+            f"[MAP DEBUG][eval.embed] current_vit_stats={_tensor_debug_stats(current_vit_features)}"
+        )
+        self._debug_map_embed_count += 1
+
+    def _debug_dump_map_slide_window(self, new_window_start: int):
+        if os.environ.get('SWIFTVLN_DEBUG') and self.memory_method == 'map':
+            print(
+                f"[MAP DEBUG][eval] slide_window -> new_window_start={new_window_start}, "
+                f"history_cache={len(self.history_cache)}, overlap_turns={self.overlap_turns}"
+            )
+
     def _compute_history_cache_map(
         self,
         episode: Any,
@@ -657,26 +711,7 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
         for features, grid_thw in zip(features_list, grid_thw_list):
             compressed = self._compress_features(features, grid_thw)
             self.history_cache.append((compressed, None))
-        if _debug_enabled() and self._debug_map_eval_count < 6:
-            raw_token_counts = [int(features.shape[0]) for features in features_list]
-            token_counts = [int(item[0].shape[0]) for item in self.history_cache]
-            map_labels = ['global', 'local']
-            print(
-                f"[MAP DEBUG][eval] cache[{self._debug_map_eval_count}] "
-                f"rank={_debug_rank()} "
-                f"episode={getattr(episode, 'episode_id', 'unknown')} "
-                f"window_start={window_start} executed_actions={len(self.executed_actions)} "
-                f"map_images={len(map_images)} raw_tokens={raw_token_counts} "
-                f"compressed_tokens={token_counts}"
-            )
-            for idx, (features, cache_item) in enumerate(zip(features_list, self.history_cache)):
-                label = map_labels[idx] if idx < len(map_labels) else f"map{idx}"
-                print(
-                    f"[MAP DEBUG][eval] cache[{self._debug_map_eval_count}].{label} "
-                    f"raw={_tensor_debug_stats(features)} "
-                    f"compressed={_tensor_debug_stats(cache_item[0])}"
-                )
-            self._debug_map_eval_count += 1
+        self._debug_dump_map_cache(episode, window_start, features_list)
 
     def _compute_history_cache_per_frame(
         self,
@@ -833,23 +868,13 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
             return_dict=True
         )
 
-        if _debug_enabled() and self.memory_method == 'map' and self._debug_map_prompt_count < 6:
-            token_ids = inputs['input_ids']
-            history_positions = (token_ids[0] == self.history_memory_token_id).nonzero(as_tuple=True)[0]
-            current_positions = (token_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
-            print(
-                f"[MAP DEBUG][eval.prompt.system] rank={_debug_rank()} "
-                f"history_token_counts={history_token_counts} initial_token_count={initial_token_count} "
-                f"tokenized_len={token_ids.shape[1]} "
-                f"history_positions={len(history_positions)} current_positions={len(current_positions)}"
-            )
-            print(
-                f"[MAP DEBUG][eval.prompt.system] instruction={_preview_text(instruction, limit=180)}"
-            )
-            print(
-                f"[MAP DEBUG][eval.prompt.system] prompt={_preview_text(system_prompt, limit=340)}"
-            )
-            self._debug_map_prompt_count += 1
+        self._debug_dump_map_system_prompt(
+            inputs,
+            history_token_counts,
+            initial_token_count,
+            instruction,
+            system_prompt,
+        )
         
         return inputs['input_ids'].to(self.device)
     
@@ -893,19 +918,12 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
             return_dict=True
         )
 
-        if _debug_enabled() and self.memory_method == 'map' and self._debug_map_user_prompt_count < 6:
-            token_ids = inputs['input_ids']
-            current_positions = (token_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
-            print(
-                f"[MAP DEBUG][eval.prompt.user] rank={_debug_rank()} "
-                f"generation_prompt={add_generation_prompt} "
-                f"current_token_count={current_token_count} tokenized_len={token_ids.shape[1]} "
-                f"current_positions={len(current_positions)}"
-            )
-            print(
-                f"[MAP DEBUG][eval.prompt.user] content={_preview_text(content, limit=240)}"
-            )
-            self._debug_map_user_prompt_count += 1
+        self._debug_dump_map_user_prompt(
+            inputs,
+            current_token_count,
+            add_generation_prompt,
+            content,
+        )
         
         return inputs['input_ids'].to(self.device)
     
@@ -1073,40 +1091,18 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
         inputs_embeds = torch.cat(embeds_parts, dim=1)
         seq_len = inputs_embeds.shape[1]
 
-        if _debug_enabled() and self.memory_method == 'map' and self._debug_map_embed_count < 6:
-            overlap_len = (
-                int(self.overlap_context.input_ids.shape[1])
-                if self.overlap_context is not None and self.overlap_context.input_ids is not None
-                else 0
-            )
-            completed_turn_count = len(self.window_turns)
-            completed_turn_token_count = int(sum(turn.user_input_ids.shape[1] for turn in self.window_turns))
-            history_positions = (system_ids[0] == self.history_memory_token_id).nonzero(as_tuple=True)[0]
-            current_positions_system = (system_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
-            current_positions_new = (new_user_ids[0] == self.current_image_token_id).nonzero(as_tuple=True)[0]
-            print(
-                f"[MAP DEBUG][eval.embed] rank={_debug_rank()} "
-                f"history_cache_tokens={history_token_counts} initial_tokens={initial_token_count} "
-                f"system_len={system_ids.shape[1]} overlap_len={overlap_len} "
-                f"completed_turns={completed_turn_count} completed_user_tokens={completed_turn_token_count} "
-                f"new_user_len={new_user_ids.shape[1]} seq_len={seq_len} "
-                f"history_injection={history_injection_msg}"
-            )
-            print(
-                f"[MAP DEBUG][eval.embed] system_history_positions={len(history_positions)} "
-                f"system_current_positions={len(current_positions_system)} "
-                f"new_user_current_positions={len(current_positions_new)} "
-                f"current_vit_tokens={current_token_count}"
-            )
-            if history_embeds is not None:
-                print(
-                    f"[MAP DEBUG][eval.embed] history_embed_stats={_tensor_debug_stats(history_embeds)} "
-                    f"injection_ok={history_injection_ok}"
-                )
-            print(
-                f"[MAP DEBUG][eval.embed] current_vit_stats={_tensor_debug_stats(current_vit_features)}"
-            )
-            self._debug_map_embed_count += 1
+        self._debug_dump_map_complete_embeds(
+            system_ids,
+            new_user_ids,
+            current_vit_features,
+            current_token_count,
+            history_token_counts,
+            initial_token_count,
+            history_injection_msg,
+            history_embeds,
+            history_injection_ok,
+            seq_len,
+        )
         
         return inputs_embeds, seq_len, current_vit_features, current_grid_thw
     
@@ -1187,11 +1183,7 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
         
         # 2. Recompute history cache for new window
         self._compute_history_cache(rgb_list, pose_list, new_window_start, episode)
-        if os.environ.get('SWIFTVLN_DEBUG') and self.memory_method == 'map':
-            print(
-                f"[MAP DEBUG][eval] slide_window -> new_window_start={new_window_start}, "
-                f"history_cache={len(self.history_cache)}, overlap_turns={self.overlap_turns}"
-            )
+        self._debug_dump_map_slide_window(new_window_start)
 
         # 3. Reset window state
         self.window_turns = []

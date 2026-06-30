@@ -24,7 +24,6 @@ class EmbeddingEnhancementPipeline(nn.Module):
     
     Usage:
         pipeline = EmbeddingEnhancementPipeline()
-        pipeline.add('pixel', PixelFeatureAugment(embed_dim=1536))
         pipeline.add('pose', PoseEmbedding(embed_dim=1536))
         
         # Apply all enhancements
@@ -45,7 +44,7 @@ class EmbeddingEnhancementPipeline(nn.Module):
         Add an enhancement module to the pipeline.
         
         Args:
-            name: Unique name for this enhancement (e.g., 'pixel', 'pose')
+            name: Unique name for this enhancement (e.g., 'pose', 'uav')
             module: Enhancement module instance
         """
         self.enhancements[name] = module

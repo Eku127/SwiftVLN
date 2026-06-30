@@ -3,10 +3,10 @@
 # 
 # Usage:
 #   # Habitat evaluation (default)
-#   ENV_TYPE=habitat MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh
+#   ENV_TYPE=habitat MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh
 #
 #   # SatNav evaluation
-#   ENV_TYPE=satnav MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh
+#   ENV_TYPE=satnav MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh
 #
 # This script runs distributed SwiftVLN evaluation with history frame compression.
 
@@ -127,13 +127,12 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
 # Map-memory render cache.
 # "auto" (default): let the Python layer derive {dataset_root}/map_cache from
-# the habitat DATA_PATH (e.g. ver_260404/map_cache), so eval warms / reuses the
-# same cache as training. Any absolute path overrides; set to one of
+# DATA_PATH (e.g. SatNav-v0.1/map_cache or a custom abcd/map_cache), so eval
+# warms / reuses the same cache as training. Any absolute path overrides; set to one of
 # {off,false,none,0,disable,disabled,no} to disable caching.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
 # Embedding enhancement (must match training checkpoint setup)
-USE_PIXEL_EMBED="${USE_PIXEL_EMBED:-false}"
 USE_POSE_EMBED="${USE_POSE_EMBED:-false}"
 USE_UAV_ADAPTER="${USE_UAV_ADAPTER:-false}"
 UAV_ADAPTER_PATH="${UAV_ADAPTER_PATH:-}"
@@ -154,9 +153,66 @@ SATNAV_DEBUG_RANK="${SATNAV_DEBUG_RANK:--1}"
 # ============================================================================
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 # Extract model name from MODEL_PATH
-MODEL_NAME=$(echo "$MODEL_PATH" | sed -n 's|.*/output/swiftvln/\([^/]*\)/.*|\1|p')
+MODEL_NAME="${MODEL_NAME:-$(echo "$MODEL_PATH" | sed -n 's|.*/output/swiftvln/\([^/]*\)/.*|\1|p')}"
 MODEL_NAME="${MODEL_NAME:-unknown_model}"
-OUTPUT_DIR="${OUTPUT_DIR:-./results/eval/swiftvln/${MODEL_NAME}/${EVAL_SPLIT}/${TIMESTAMP}}"
+AUTO_RESUME_EVAL="${AUTO_RESUME_EVAL:-true}"
+OUTPUT_DIR_WAS_SET=false
+if [ -n "${OUTPUT_DIR:-}" ]; then
+    OUTPUT_DIR_WAS_SET=true
+fi
+DEFAULT_OUTPUT_PARENT="./results/eval/swiftvln/${MODEL_NAME}/${EVAL_SPLIT}"
+
+is_truthy() {
+    case "$1" in
+        1|true|TRUE|True|yes|YES|Yes|y|Y|on|ON|On)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+find_latest_incomplete_output_dir() {
+    local output_parent="$1"
+    local candidate
+
+    [ -d "$output_parent" ] || return 1
+
+    while IFS= read -r candidate; do
+        [ -d "$candidate" ] || continue
+
+        # evaluation_summary.json is written only after rank0 completes the
+        # offline merge, so treat such directories as completed runs.
+        [ -f "${candidate}/evaluation_summary.json" ] && continue
+
+        # Only reuse directories with resume evidence. Empty setup-only
+        # directories should not steal a fresh run.
+        if [ -s "${candidate}/result.jsonl" ] || [ -d "${candidate}/.dist_sync" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < <(
+        find "$output_parent" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | \
+            sort -rn | cut -d' ' -f2-
+    )
+
+    return 1
+}
+
+AUTO_RESUME_EVAL_USED=false
+if [ "$OUTPUT_DIR_WAS_SET" = false ] && is_truthy "$AUTO_RESUME_EVAL"; then
+    RESUME_OUTPUT_DIR="$(find_latest_incomplete_output_dir "$DEFAULT_OUTPUT_PARENT" || true)"
+    if [ -n "$RESUME_OUTPUT_DIR" ]; then
+        OUTPUT_DIR="$RESUME_OUTPUT_DIR"
+        AUTO_RESUME_EVAL_USED=true
+        echo "[INFO] AUTO_RESUME_EVAL=true: reusing incomplete output dir: ${OUTPUT_DIR}"
+    else
+        OUTPUT_DIR="${DEFAULT_OUTPUT_PARENT}/${TIMESTAMP}"
+    fi
+else
+    OUTPUT_DIR="${OUTPUT_DIR:-${DEFAULT_OUTPUT_PARENT}/${TIMESTAMP}}"
+fi
 
 # ============================================================================
 # Video Options
@@ -177,7 +233,7 @@ export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
 
 # Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
 # SWIFTVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (derive
-# {dataset_root}/map_cache from habitat DATA_PATH); explicit paths or "off"-
+# {dataset_root}/map_cache from DATA_PATH); explicit paths or "off"-
 # family sentinels are passed through verbatim.
 if [ "$MEMORY_METHOD" = "map" ]; then
     if [ -n "$MAP_CACHE_DIR" ] && [ "$MAP_CACHE_DIR" != "auto" ]; then
@@ -215,6 +271,7 @@ echo "Config Path:     ${CONFIG_PATH}"
 echo "Model Path:      ${MODEL_PATH}"
 echo "Eval Split:      ${EVAL_SPLIT}"
 echo "Output Dir:      ${OUTPUT_DIR}"
+echo "Auto Resume:     ${AUTO_RESUME_EVAL} (used=${AUTO_RESUME_EVAL_USED}, explicit_output_dir=${OUTPUT_DIR_WAS_SET})"
 echo "Num GPUs:        ${NUM_GPUS}"
 echo "CUDA Devices:    ${CUDA_DEVICES}"
 echo "Num Overlap:     ${NUM_OVERLAP}"
@@ -249,7 +306,6 @@ elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc
     echo "  Num Segments: 8 (fixed)"
 fi
 echo "System Prompt:   ${SYSTEM_PROMPT_SETTING}"
-echo "Pixel Embed:     ${USE_PIXEL_EMBED}"
 echo "Pose Embed:      ${USE_POSE_EMBED} (fusion=${POSE_FUSION_METHOD}, norm_scale=${POSE_NORM_SCALE})"
 echo "UAV Adapter:     ${USE_UAV_ADAPTER} (path=${UAV_ADAPTER_PATH:-<none>}, type=${UAV_ADAPTER_TYPE}, scope=${UAV_ADAPTER_APPLY_SCOPE})"
 echo "Save Video:      ${SAVE_VIDEO}"
@@ -283,12 +339,8 @@ if [ "$MEMORY_METHOD" = "map" ]; then
         exit 1
     fi
     # Map images are synthesized top-down views, so RGB-frame embed
-    # enhancements (pixel / pose / uav_adapter) are not meaningful and must
+    # enhancements (pose / uav_adapter) are not meaningful and must
     # match the training-time constraint of staying disabled.
-    if [ "$USE_PIXEL_EMBED" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_PIXEL_EMBED=false."
-        exit 1
-    fi
     if [ "$USE_POSE_EMBED" = "true" ]; then
         echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
         exit 1
@@ -369,9 +421,6 @@ EVAL_CMD=(
     --map_mask_method "${MAP_MASK_METHOD}"
 )
 
-if [ "$USE_PIXEL_EMBED" = "true" ]; then
-    EVAL_CMD+=(--use_pixel_embed)
-fi
 if [ "$USE_POSE_EMBED" = "true" ]; then
     EVAL_CMD+=(--use_pose_embed --pose_fusion_method "${POSE_FUSION_METHOD}" --pose_norm_scale "${POSE_NORM_SCALE}")
 fi

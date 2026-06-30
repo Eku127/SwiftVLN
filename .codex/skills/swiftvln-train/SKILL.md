@@ -1,11 +1,11 @@
 ---
 name: swiftvln-train
-description: "Launch VLN training with tmux-based async execution and webhook watchdog monitoring. Supports multi-server parallel launch and webhook notifications on completion/failure/stall."
+description: "Launch VLN training with tmux-based async execution and watchdog monitoring. Supports multi-server parallel launch and Codex callbacks on completion/failure/stall."
 ---
 
 # SwiftVLN Train Skill
 
-Launch VLN training on one or more servers. Codex acts as a **launch operator**: confirm plan, pick hosts, start training in tmux, register watchdog, do quick health check, then exit. The watchdog runs in background and sends webhook notifications on key events.
+Launch VLN training on one or more servers. Codex acts as a **launch operator**: confirm plan, pick hosts, start training in tmux, register watchdog, do quick health check, then exit. The watchdog runs in background and records key events for Codex callbacks and later inspection.
 
 Related skills:
 - **`swiftvln-eval`**: run eval after training completes (triggered manually or by user).
@@ -19,8 +19,7 @@ Related skills:
   - `NUM_OVERLAP>0` 时固定使用 stride-aligned tail window，不再提供 tail-adjust 控制参数
   - `SAVE_STEPS=1000`
   - `SAVE_TOTAL_LIMIT=1`
-  - SatNav 默认训练数据：`ver_260418`
-  - QA 默认路径：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/data/qa_swift.jsonl`
+  - SatNav 默认训练数据：`SatNav-v0.1`
   - 当前 0418 默认 eval split 口径：
     - `val_seen = 4574`
     - `val_unseen = 8756`
@@ -30,7 +29,8 @@ Related skills:
 - 主训练脚本默认 base model 仍是本地 `3B`：
   - `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct`
 - 如需训练 `7B`，现在可以直接通过环境变量覆盖，而不必改脚本默认值：
-  - `STAGE1_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct`
+  - `BASE_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct`
+  - 或 `MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct`
   - 关键训练超参也支持 env 覆盖，如：
     - `BATCH_SIZE`
     - `LEARNING_RATE`
@@ -102,7 +102,6 @@ Before starting, confirm with the user:
 | Model(s) | `swiftvln` | `baseline`/ambiguous → `swiftvln` |
 | Environment | — | `satnav` or `habitat` |
 | Server(s) | — | One or more of: `98`, `73`, `17` |
-| QA mixed training | — | Whether to mix QA data |
 | Base model path | `/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct` | Default script path; use this absolute local cache path to avoid ModelScope hub resolution |
 
 ---
@@ -111,7 +110,7 @@ Before starting, confirm with the user:
 
 1. Read current scripts:
    - `src/swiftvln/scripts/train/train_queue.sh`
-   - `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+   - `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
 2. Produce **run checklist**: model set, environment, offline model path, launch mode, expected output naming.
    Confirm the resolved base model path is the absolute local cache path above, not `Qwen/Qwen2.5-VL-3B-Instruct`.
    If `MEMORY_METHOD=map`, checklist 里必须额外确认：
@@ -137,7 +136,7 @@ Before starting, confirm with the user:
 ## Step 3 → Pin Dataset Version & Config
 
 1. Discover latest SatNav dataset under `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_*`.
-2. Resolve data paths (trajectory, QA).
+2. Resolve trajectory data paths.
 3. Verify offline base model: `test -d /mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct && echo OK`
    If missing, fail fast instead of falling back to a remote `model_id`.
 4. If user requests, sync `satnav_task.yaml` and `train_queue.sh`.
@@ -200,7 +199,7 @@ ssh 10.246.132.17 "docker exec -d streamvln-container bash -c \
 ## Step 5 → Register Watchdog & Quick Health Check (MANDATORY)
 
 > **🚨 此步骤为 MANDATORY（强制），不可跳过。**
-> Watchdog 负责：训练结束/崩溃/停滞时发 webhook 通知，训练结束后**自动退出**。
+> Watchdog 负责：训练结束/崩溃/停滞时写入状态并触发可选 Codex 回调，训练结束后**自动退出**。
 
 ### 5.1 — 注册 watchdog（每台服务器各一个）
 
@@ -260,7 +259,7 @@ Report to user:
 - **Watchdog PID**: `<pid>`（若为空则说明 Step 5 未执行）
 - 进度查看：`tmux attach -t <name>`
 - Watchdog 日志：`runtime/train_queue/runs/<hostname>_<session>/watchdog.log`
-- 训练完成/崩溃/停滞时：webhook 通知
+- 训练完成/崩溃/停滞时：查看 watchdog 状态与日志
 
 **The Codex session can safely end here.**
 
@@ -286,7 +285,7 @@ Auto-cleanup: watchdog cleans dirs older than 7 days at startup.
 |---|---|
 | Training queue | `src/swiftvln/scripts/train/train_queue.sh` |
 | **Train watchdog** | `src/swiftvln/scripts/train/train_watchdog.sh` |
-| SwiftVLN single run | `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh` |
+| SwiftVLN single run | `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh` |
 | Eval todo queue | `runtime/eval_queue/eval_todo.txt` |
 | Eval enqueue helper | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
 

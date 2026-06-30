@@ -8,12 +8,9 @@ HOST_LABEL="$(hostname)"
 CHECK_INTERVAL=30
 TEMP_THRESHOLD=85
 ALERT_COOLDOWN=600
-USE_WEBHOOK=true
-WEBHOOK_URL="${WEBHOOK_URL:-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=48e434da-fb2d-453c-a180-c4041b4c7f1e}"
 EXPECTED_GPU_COUNT=""
 STATE_ROOT="${SWIFTVLN_ROOT}/runtime/gpu_health_monitor"
 ONESHOT=false
-SEND_STARTUP_WEBHOOK=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -22,11 +19,8 @@ while [[ $# -gt 0 ]]; do
         --check-interval) CHECK_INTERVAL="$2"; shift 2 ;;
         --temp-threshold) TEMP_THRESHOLD="$2"; shift 2 ;;
         --alert-cooldown) ALERT_COOLDOWN="$2"; shift 2 ;;
-        --webhook) USE_WEBHOOK="$2"; shift 2 ;;
-        --webhook-url) WEBHOOK_URL="$2"; shift 2 ;;
         --state-root) STATE_ROOT="$2"; shift 2 ;;
         --oneshot) ONESHOT="$2"; shift 2 ;;
-        --startup-webhook) SEND_STARTUP_WEBHOOK="$2"; shift 2 ;;
         *)
             echo "[gpu-health] Unknown option: $1" >&2
             exit 1
@@ -42,17 +36,6 @@ UUIDS_FILE="${RUN_DIR}/expected_uuids.txt"
 
 log() {
     echo "[gpu-health] $(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"
-}
-
-send_webhook() {
-    local title="$1"
-    local body="$2"
-    [[ "$USE_WEBHOOK" != "true" ]] && return 0
-    local content="${title}\n${body}\ntime: $(date '+%Y-%m-%d %H:%M:%S')"
-    curl -sS -m 8 -X POST "$WEBHOOK_URL" \
-        -H "Content-Type: application/json" \
-        -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"${content//$'\n'/\\n}\"}}" \
-        >/dev/null 2>&1 || true
 }
 
 count_gpus() {
@@ -78,11 +61,6 @@ init_baseline() {
     query_gpu_rows | awk -F',' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' > "$UUIDS_FILE"
     log "Started host=${HOST_LABEL} expected_gpus=${EXPECTED_GPU_COUNT} temp_threshold=${TEMP_THRESHOLD}C cooldown=${ALERT_COOLDOWN}s"
     log "Expected UUIDs: $(paste -sd, "$UUIDS_FILE")"
-    if [[ "$SEND_STARTUP_WEBHOOK" == "true" ]]; then
-        send_webhook \
-            "[GPU Monitor Started] ${HOST_LABEL}" \
-            "host=${HOST_LABEL}\nexpected_gpus=${EXPECTED_GPU_COUNT}\ntemp_threshold=${TEMP_THRESHOLD}C\nlog=${LOG_FILE}"
-    fi
 }
 
 load_state() {
@@ -183,9 +161,7 @@ maybe_send_alert() {
 
     if [[ "$CURRENT_STATUS" == "healthy" ]]; then
         if [[ "$LAST_STATUS" != "healthy" ]]; then
-            send_webhook \
-                "[GPU Monitor Recovered] ${HOST_LABEL}" \
-                "host=${HOST_LABEL}\nstatus=healthy\ndetails=${CURRENT_DETAILS}"
+            log "Recovered: status=healthy details=${CURRENT_DETAILS}"
         fi
         LAST_STATUS="healthy"
         LAST_ALERT_KEY="healthy"
@@ -194,9 +170,7 @@ maybe_send_alert() {
     fi
 
     if [[ "$CURRENT_KEY" != "$LAST_ALERT_KEY" || $((now_ts - LAST_ALERT_TS)) -ge $ALERT_COOLDOWN ]]; then
-        send_webhook \
-            "[GPU Monitor Alert] ${HOST_LABEL}" \
-            "host=${HOST_LABEL}\nkey=${CURRENT_KEY}\ndetails=${CURRENT_DETAILS}"
+        log "Alert: key=${CURRENT_KEY} details=${CURRENT_DETAILS}"
         LAST_ALERT_TS="$now_ts"
         LAST_ALERT_KEY="$CURRENT_KEY"
     fi

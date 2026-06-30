@@ -1,6 +1,6 @@
 ---
 name: merge-satnav-data
-description: Merge two SatNav dataset versions into a new version with preflight overlap analysis, duplicate-safe episode remapping, trajectory_data rewrite, QA fallback handling, and strict post-merge validation. Use when asked to merge SatNav versions like 0403 plus 0327 into 0404, create a new merged SatNav dataset version, analyze complementarity between two SatNav datasets, or run merge_satnav_data.
+description: Merge two SatNav dataset versions into a new version with preflight overlap analysis, duplicate-safe episode remapping, trajectory_data rewrite, and strict post-merge validation. Use when asked to merge SatNav versions like 0403 plus 0327 into 0404, create a new merged SatNav dataset version, analyze complementarity between two SatNav datasets, or run merge_satnav_data.
 ---
 
 # Merge SatNav Data
@@ -54,8 +54,6 @@ Behavior:
 - Conflicting overlaps are remapped to fresh secondary `episode_id`.
 - Merged `episodes/` is regenerated through `process_episodes.py`.
 - Secondary `trajectory_data/summary.json`, `annotations.json`, and `images/<scene>_satnav_<id>` are rewritten to the remapped IDs.
-- If merged `data/` contains `qa.json`, regenerate `data/qa_swift.jsonl`.
-- If no `qa.json` exists, fall back to merging source `qa_swift.jsonl`.
 
 ### 3. Post-Merge Validation
 
@@ -93,7 +91,6 @@ The merge writes:
 ## Notes
 
 - `--copy-mode hardlink` is preferred for large dataset merges on the same filesystem.
-- If one source has no `qa.json`, episode / eval / trajectory counts may still grow while `qa_swift.jsonl` stays unchanged.
 - If the user wants this merged dataset to become the repo default, update:
   - `src/swiftvln/configs/satnav_task.yaml`
   - `src/swiftvln/scripts/train/train_queue.sh`

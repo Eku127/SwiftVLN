@@ -6,6 +6,43 @@
 - 运行范围：当前集成是 SatNav-only baseline，不依赖外部 `OpenFly-Platform` repo。
 - 配置历史：详见 `baseline/openfly/doc/config_history.md`
 
+## 0. 上游源码 clone 与路径
+
+当前 OpenFly baseline 的运行代码已经在本仓库 `baseline/openfly/src` 内做了
+SatNav-only 适配，训练/评测脚本不会从 `OpenFly-Platform` 动态 import 代码。
+但为了明确来源、对照上游实现或重建环境，建议仍按当前 workspace 使用的
+OpenFly-Platform 与 SatNav commit 固定版本。SatNav 评测环境需要本地 SatNav
+editable install。
+
+| 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
+|------|--------------|----------|-----------------|
+| OpenFly-Platform | `/mnt/data1/home/jiangjiajun/workspace/OpenFly-Platform` | `git@github.com:SHAILAB-IPEC/OpenFly-Platform.git` | `c075075497a7122bad82f5b76b9be926ad5a81b3` |
+| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+
+从空 workspace 准备源码：
+
+```bash
+WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+
+git clone git@github.com:SHAILAB-IPEC/OpenFly-Platform.git "$WORKSPACE/OpenFly-Platform"
+git -C "$WORKSPACE/OpenFly-Platform" checkout c075075497a7122bad82f5b76b9be926ad5a81b3
+
+git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
+```
+
+路径约定：
+
+```bash
+export OPENFLY_PLATFORM_REPO=/mnt/data1/home/jiangjiajun/workspace/OpenFly-Platform
+export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+```
+
+`OPENFLY_PLATFORM_REPO` 当前主要用于人工对照上游代码，不是训练/评测脚本的运行时
+必需变量。实际训练起点来自 `baseline/openfly/model/openfly-agent-7b` 或
+`baseline/openfly/model/openvlaopenvla-7b-prismatic`，模型下载见下一节。环境安装
+阶段仍需 `pip install -e "$SATNAV_REPO"`。
+
 ## 1. 模型
 
 OpenFly 当前支持两种起训后端：
@@ -27,13 +64,37 @@ baseline/openfly/model/openfly-agent-7b
 bash baseline/openfly/scripts/download_model.sh
 ```
 
+下载 scratch 后端需要的 OpenVLA/Prismatic native checkpoint：
+
+```bash
+bash baseline/openfly/scripts/download_model.sh --backend scratch
+```
+
+一次性下载 continue + scratch 两套起训资产：
+
+```bash
+bash baseline/openfly/scripts/download_model.sh --backend all
+```
+
 自定义模型来源或保存目录：
 
 ```bash
-MODEL_ID=IPEC-COMMUNITY/openfly-agent-7b \
-TARGET_DIR=baseline/openfly/model/openfly-agent-7b \
-bash baseline/openfly/scripts/download_model.sh
+MODEL_ID=openvla/openvla-7b-prismatic \
+TARGET_DIR=baseline/openfly/model/openvlaopenvla-7b-prismatic \
+bash baseline/openfly/scripts/download_model.sh --backend scratch
 ```
+
+scratch 目录必须是 native Prismatic run 结构，至少包含：
+
+```text
+baseline/openfly/model/openvlaopenvla-7b-prismatic/
+└── checkpoints/
+    └── *.pt
+```
+
+训练脚本会自动选择 `checkpoints/` 下 step 最大的 `.pt`，并在第一次运行时转换为本地
+HF safetensors cache；processor/tokenizer/image preprocessor 仍默认来自
+`baseline/openfly/model/openfly-agent-7b`。
 
 ## 2. 目录结构
 
@@ -75,7 +136,10 @@ conda activate openfly-baseline
 
 - 评测只依赖 SatNav，不需要 AirSim / UnrealCV / ROS2 / TFDS。
 - `continue` 后端需要 `baseline/openfly/model/openfly-agent-7b` 是正常 HF 模型目录。
-- `scratch` 后端还需要本地 Prismatic/OpenVLA checkpoint 目录；native `.pt` 到 HF safetensors 的转换会使用本地 cache，可通过 `OPENFLY_NATIVE_HF_CACHE_DIR` 覆盖 cache 根目录。
+- `scratch` 后端还需要
+  `baseline/openfly/model/openvlaopenvla-7b-prismatic/checkpoints/*.pt`；
+  native `.pt` 到 HF safetensors 的转换会使用本地 cache，可通过
+  `OPENFLY_NATIVE_HF_CACHE_DIR` 覆盖 cache 根目录。
 
 ## 4. 训练
 
@@ -109,8 +173,7 @@ bash baseline/openfly/scripts/train_satnav.sh
 常用覆盖项：
 
 ```bash
-DATA_PATH=$SATNAV_DATA_ROOT/ver_260418/trajectory_data/annotations.json \
-IMAGE_FOLDER=$SATNAV_DATA_ROOT/ver_260418/trajectory_data \
+SATNAV_DATASET=SatNav-v0.1 \
 NUM_GPUS=8 \
 TRAIN_BSZ=12 \
 GRAD_ACCUM=1 \
@@ -120,8 +183,11 @@ bash baseline/openfly/scripts/train_satnav.sh
 
 当前默认训练配置：
 
+- `SATNAV_DATASET=SatNav-v0.1`
+- `SATNAV_TRAIN_DATA_DIR=$SATNAV_DATA_ROOT/SatNav-v0.1/trajectory_data`
 - `OPENFLY_ACTION_FORMAT=compact`
 - `OPENFLY_ACTION_HISTORY_LIMIT=16`
+- `NUM_GPUS=8`
 - `TRAIN_BSZ=12`
 - `GRAD_ACCUM=1`
 - `TORCH_DTYPE=bfloat16`
@@ -160,27 +226,48 @@ bash baseline/openfly/scripts/train_satnav.sh
 SatNav 评测入口：
 
 ```bash
-bash baseline/openfly/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
+bash baseline/openfly/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357 \
+  --gpus 8
 ```
-
-支持两种模式：
-
-- 按实验名评测：从 `output/openfly-baseline/<EXP_NAME>/` 自动解析最新 checkpoint。
-- 按 checkpoint 路径评测：直接传入绝对路径。
 
 SatNav 评测 split 约定：
 
-- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
-- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
+- split 和 eval 数据只由 `baseline/openfly/configs/satnav_task.yaml` 控制。
+- `SPLIT: all` 会顺序运行 `val_seen` 和 `val_unseen`。
+- `DATA_PATH` 必须是 eval split 父目录，例如
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`。
 
 常用覆盖项：
 
 ```bash
-SATNAV_VERSION=ver_260418 \
-OPENFLY_ACTION_HISTORY_LIMIT=16 \
 bash baseline/openfly/scripts/eval_satnav.sh \
-  openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-<timestamp> \
-  val_seen 8
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_name openfly-satnav-continue-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5 \
+  --gpus 8 \
+  --max_episodes 10
+```
+
+当前 model zoo 中可直接评测的 OpenFly 模型名：
+
+```text
+openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357
+openfly-baseline-1ep-data260418-bkscratch-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-233110
+```
+
+当前 Hugging Face upload-ready 公开版目录名：
+
+```text
+openfly-satnav-continue-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5
+openfly-satnav-scratch-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5
+```
+
+```bash
+bash baseline/openfly/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_name openfly-satnav-scratch-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5 \
+  --gpus 8
 ```
 
 评测实现约定：
@@ -189,17 +276,7 @@ bash baseline/openfly/scripts/eval_satnav.sh \
 - `result.jsonl` 会记录 `action`、`parsed_action`、`generated_text` 和 `action_trace`。
 - eval 会捕获 simulator out-of-bounds 错误，并将对应 episode 记为失败，不中断整轮评测。
 - train 与 eval 使用同一个 `OPENFLY_ACTION_HISTORY_LIMIT`，默认是 `16`。
-
-当前已记录结果（`val_seen`, `ver_260404`）：
-
-| Config | Ckpt | Overall SR | Boundary SR | Road SR | LandmarkSet SR | OS |
-|---|---|---|---|---|---|---|
-| original format, stop_window=2, no hist | 33430 | 0.0% | 0.0% | - | - | 18.8% |
-| **compact + stop_window=0 + hist16** | **8000** | **12.3%** | **17.4%** | **18.1%** | **5.2%** | **23.3%** |
-| compact + stop_window=0 + hist16 | 6000 | 11.9% | 15.3% | 18.2% | 5.6% | 22.8% |
-
-关键有效改动：
-
-1. 将动作格式从 `original` 切到 `compact`，去掉 8D vector 噪声。
-2. 设置 `SATNAV_STOP_WINDOW=0`，只在真实轨迹终点监督 `stop`，降低 premature-stop bias。
-3. 在 prompt 中加入历史动作：`OPENFLY_ACTION_HISTORY_LIMIT=16`。
+- eval 不再从模型名中的 `data{ver}` 自动解析数据版本；数据选择只来自
+  `baseline/openfly/configs/satnav_task.yaml`。
+- eval 仍会从模型名中的 `actcompact` / `actoriginal` 解析动作格式，并从
+  `hist{N}` 解析 action history 长度；这两个字段影响模型行为，应保留在公开模型名中。

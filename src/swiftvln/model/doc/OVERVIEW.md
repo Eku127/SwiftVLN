@@ -607,20 +607,20 @@ evaluator.py  → 核心：VIT 缓存、overlap_context 管理、embedding 构�
 
 ```
 Per-Frame:
-  swiftvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-pf-h{history}[-nomem][-random]-b{log_base}-{method}-s{stride}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
+  swiftvln-{env}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-pf-h{history}[-nomem][-random]-b{log_base}-{method}-s{stride}-bs{bs}-lr{lr}-{timestamp}
   
   示例: swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-bs64-lr2e-5-123456
   随机采样示例: swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456
 
 GTC:
-  swiftvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-gtc-k{tokens}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
+  swiftvln-{env}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-gtc-k{tokens}-bs{bs}-lr{lr}-{timestamp}
   
   示例: swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-bs64-lr2e-5-123456
 
 Segment GTC:
-  swiftvln-{env}-{stage}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-sgtc-k{tokens}[-qa{ratio}]-bs{bs}-lr{lr}-{timestamp}
+  swiftvln-{env}-{size}-{ep}ep-f{frames}s{steps}-overlap{overlap}-sgtc-k{tokens}-bs{bs}-lr{lr}-{timestamp}
   
-  示例: swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-qa15-bs64-lr2e-5-123456
+  示例: swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-bs64-lr2e-5-123456
 ```
 
 ---
@@ -655,7 +655,7 @@ Segment GTC:
 - 训练：1 epoch, batch_size=64, lr=2e-5
 - 策略：Initial（添加第一帧到 system prompt）
 
-**SatNav Stage1 验证集结果（val_unseen）**：
+**SatNav SwiftVLN 验证集结果（val_unseen）**：
 
 运行两次实验，结果如下：
 

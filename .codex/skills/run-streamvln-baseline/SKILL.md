@@ -1,6 +1,6 @@
 ---
 name: run-streamvln-baseline
-description: "在 SatNav 数据上执行 StreamVLN baseline 的训练与评测（8卡全参数），包含服务器选择、数据版本选择、规范化实验命名、checkpoint 校验与按名称评测。适用于：run streamvln baseline / streamvln基线训练 / 用satnav数据训练streamvln / 启动streamvln基线 / 评测streamvln baseline。"
+description: "在 SatNav 数据上执行 StreamVLN baseline 的训练与评测（8卡全参数），包含服务器选择、数据集选择、规范化实验命名、checkpoint 校验与按名称评测。适用于：run streamvln baseline / streamvln基线训练 / 用satnav数据训练streamvln / 启动streamvln基线 / 评测streamvln baseline。"
 ---
 
 # StreamVLN Baseline 训练与评测
@@ -13,7 +13,7 @@ description: "在 SatNav 数据上执行 StreamVLN baseline 的训练与评测�
 
 - 8 卡全量训练 StreamVLN baseline on SatNav data
 - 两种训练模式：`continue`（从官方 checkpoint fine-tune）或 `scratch`（从 LLaVA-Video-7B-Qwen2 开始）
-- 支持选择 SatNav 数据版本（默认 `ver_260418`）
+- 支持选择 SatNav 数据集目录（默认 `SatNav-v0.1`）
 - 支持指定训练服务器（98 / 73 / 17）
 - 训练完成后 eval by name
 
@@ -30,29 +30,6 @@ description: "在 SatNav 数据上执行 StreamVLN baseline 的训练与评测�
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate streamvln-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
-```
-
-### Webhook（强制）
-
-本 skill 强制发送 4 个通知：`训练开始`、`训练结束`、`评测开始`、`评测结束`。
-
-Webhook URL（与现有 skill 保持一致）：
-
-- Train webhook  
-  `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e`
-- Eval webhook  
-  `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e`
-
-建议先定义一个通用发送函数（后续步骤直接复用）：
-
-```bash
-send_wecom_markdown() {
-  local webhook_url="$1"
-  local content="$2"
-  curl -sS -X POST "$webhook_url" \
-    -H "Content-Type: application/json" \
-    -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"${content//$'\n'/\\n}\"}}"
-}
 ```
 
 ### 固定路径（无需额外搜索）
@@ -88,12 +65,12 @@ send_wecom_markdown() {
 ### EXP_NAME 命名规范
 
 ```
-streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{ver_suffix}-bs{eff_bs}-lr{lr}-{timestamp}
+streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{dataset_suffix}-bs{eff_bs}-lr{lr}-{timestamp}
 ```
 
 说明：
-- `ver_suffix` 直接取 `SATNAV_VERSION` 去掉 `ver_` 后的完整后缀
-- 例如：`ver_260418 -> data260418`，`ver_260418p80 -> data260418p80`
+- `dataset_suffix` 来自 `SATNAV_DATASET`，仅去掉开头的 `ver_` 并清理非法路径字符
+- 例如：`SatNav-v0.1 -> dataSatNav-v0.1`
 
 示例：
 ```
@@ -113,9 +90,8 @@ streamvln-baseline-scratch-1ep-f32h8s4-data260306-bs32-lr2e-5-20260309-150000
 |---|---|---|
 | Training mode | `continue` | `continue` or `scratch` |
 | Target server | — | `98` / `73` / `17`，需用户明确指定 |
-| SatNav data version | `ver_260418` | 如不指定则默认用 `ver_260418` |
+| SatNav dataset | `SatNav-v0.1` | 如不指定则默认用 `SatNav-v0.1` |
 | SwanLab | `false` | 是否开启 SwanLab 上报 |
-| Webhook notification | `true` | 强制开启，发送 train/eval 开始和结束通知 |
 
 **继续前需等待用户确认。**
 
@@ -170,31 +146,34 @@ ssh 10.246.132.17 "docker exec <container_name> nvidia-smi --query-gpu=index,nam
 
 ---
 
-## 步骤 3 — 选择数据版本
+## 步骤 3 — 选择数据集
 
-SatNav 数据位于 `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_XXXXXX/`。
-
-### 自动检测（默认）
-
-训练脚本会自动选最新版本，也可手动确认当前最新：
+SatNav 数据位于 `/mnt/data3/jiangjiajun/dataset/satnav_datasets/<dataset>/`。
+StreamVLN baseline 默认使用：
 
 ```bash
-ls -d /mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_* | sort | tail -1
+export SATNAV_DATASET=SatNav-v0.1
 ```
 
-### 手动指定版本
+默认训练数据：
 
-```bash
-export SATNAV_VERSION=ver_260306
-```
+`/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
+
+默认评测数据：
+
+`/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
+
+`SATNAV_VERSION` 仍作为旧启动脚本兼容 alias，但新命令统一使用
+`SATNAV_DATASET`。不要再从模型名中的 `data...` 推断 eval 数据。
 
 ### 校验数据完整性
 
 ```bash
-VERSION_DIR="/mnt/data3/jiangjiajun/dataset/satnav_datasets/${SATNAV_VERSION}"
-ls "${VERSION_DIR}/trajectory_data/annotations.json"        # 训练数据
-ls "${VERSION_DIR}/trajectory_data/images/"
-ls "${VERSION_DIR}/episodes/eval/val_seen/all_episodes.json"   # eval episodes (val_seen)
+DATASET_DIR="/mnt/data3/jiangjiajun/dataset/satnav_datasets/${SATNAV_DATASET}"
+ls "${DATASET_DIR}/trajectory_data/annotations.json"             # 训练数据
+ls "${DATASET_DIR}/trajectory_data/images/"
+ls "${DATASET_DIR}/episodes/eval/val_seen/all_episodes.json"     # eval episodes
+ls "${DATASET_DIR}/episodes/eval/val_unseen/all_episodes.json"
 ```
 
 ---
@@ -207,7 +186,7 @@ ls "${VERSION_DIR}/episodes/eval/val_seen/all_episodes.json"   # eval episodes (
 
 **除非用户明确要求"只训练不评测"，否则默认使用 `train_eval_satnav.sh`。**
 
-该脚本自动完成全流程：训练 → 解析 EXP_NAME → 评测 → 4 条 webhook 全自动发送。训练失败时不进入 eval。
+该脚本自动完成全流程：训练 → 解析 EXP_NAME → 评测。训练失败时不进入 eval。
 
 ### tmux 会话命名
 
@@ -231,7 +210,7 @@ tmux new-session -d -s "${SESSION}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
    conda activate streamvln-baseline && \
    cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN && \
-   SATNAV_VERSION=ver_260306 TRAIN_GPUS=8 EVAL_GPUS=8 \
+   SATNAV_DATASET=SatNav-v0.1 TRAIN_GPUS=8 EVAL_GPUS=8 \
    bash baseline/streamvln/scripts/train_eval_satnav.sh continue \
    2>&1 | tee ${LOG}"
 
@@ -249,7 +228,7 @@ ssh 10.246.152.73 "
   'source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
    conda activate streamvln-baseline && \
    cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN && \
-   SATNAV_VERSION=ver_260306 TRAIN_GPUS=8 EVAL_GPUS=8 \
+   SATNAV_DATASET=SatNav-v0.1 TRAIN_GPUS=8 EVAL_GPUS=8 \
    bash baseline/streamvln/scripts/train_eval_satnav.sh continue \
    2>&1 | tee ${LOG}'
 "
@@ -269,7 +248,7 @@ ssh 10.246.132.17 "
     'source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
      conda activate streamvln-baseline && \
      cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN && \
-     SATNAV_VERSION=ver_260306 TRAIN_GPUS=8 EVAL_GPUS=8 \
+     SATNAV_DATASET=SatNav-v0.1 TRAIN_GPUS=8 EVAL_GPUS=8 \
      bash baseline/streamvln/scripts/train_eval_satnav.sh continue \
      2>&1 | tee ${LOG}'
   \"
@@ -278,21 +257,11 @@ ssh 10.246.132.17 "
 
 ### 仅训练模式（不自动 eval）
 
-当用户明确要求"只训练"时，改用 `train_satnav.sh`，需手动发送 webhook：
+当用户明确要求"只训练"时，改用 `train_satnav.sh`：
 
 ```bash
 SESSION="train_streamvln_baseline_$(date +%H%M%S)"
 LOG="/tmp/${SESSION}.log"
-
-TRAIN_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
-TRAIN_START_TS="$(date +%s)"
-TRAIN_START_MSG="## StreamVLN Baseline Train Started
-server: <98|73|17>
-mode: <continue|scratch>
-satnav_version: <ver_xxxxxx>
-tmux_session: ${SESSION}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_START_MSG}"
 
 tmux new-session -d -s "${SESSION}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
@@ -307,13 +276,12 @@ tmux ls | grep "${SESSION}"
 ### 使用自定义参数
 
 ```bash
-SATNAV_VERSION=ver_260306 \
+SATNAV_DATASET=SatNav-v0.1 \
 NUM_EPOCHS=1 \
 LEARNING_RATE=2e-5 \
 BATCH_SIZE=2 \
 GRAD_ACCUM=2 \
 USE_SWANLAB=true \
-USE_WXWORK_NOTIFICATION=true \
   bash baseline/streamvln/scripts/train_satnav.sh continue
 ```
 
@@ -321,14 +289,15 @@ USE_WXWORK_NOTIFICATION=true \
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `SATNAV_VERSION` | auto-detect latest | SatNav data version (e.g. `ver_260306`) |
+| `SATNAV_DATASET` | `SatNav-v0.1` | SatNav data dir name under `/mnt/data3/jiangjiajun/dataset/satnav_datasets` |
+| `SATNAV_TRAIN_DATA_DIR` | `<data_root>/<SATNAV_DATASET>/trajectory_data` | Explicit training trajectory dir override |
+| `SATNAV_VERSION` | unset | Deprecated alias for `SATNAV_DATASET`, kept only for old launchers |
 | `NUM_EPOCHS` | `1` | Training epochs |
 | `LEARNING_RATE` | `2e-5` | Learning rate |
-| `BATCH_SIZE` | `2` | Per-device batch size |
+| `BATCH_SIZE` | `3` | Per-device batch size |
 | `GRAD_ACCUM` | `2` | Gradient accumulation steps |
 | `GPUS_PER_NODE` | `8` | Number of GPUs |
 | `USE_SWANLAB` | `false` | Enable SwanLab cloud logging |
-| `USE_WXWORK_NOTIFICATION` | `false` | Enable WXWork webhook on completion |
 | `SMOKE_TEST` | `false` | Save under `output/streamvln-baseline/smoketest/` when `true` |
 | `SAVE_STRATEGY` | `epoch` | `epoch` or `steps` |
 | `SAVE_STEPS` | `1000` | Save interval (when `SAVE_STRATEGY=steps`) |
@@ -387,7 +356,7 @@ pgrep -f "train_satnav" >/dev/null && echo "PROCESS_ALIVE" || echo "PROCESS_GONE
 **退出条件：**
 
 - 训练正常完成（日志出现 `Training completed!`）→ 退出循环，进入校验步骤
-- 训练失败且自动修复无效 → 退出循环，发送失败 webhook，报告用户
+- 训练失败且自动修复无效 → 退出循环，报告用户
 - 用户主动中断 → 退出循环
 
 ### 校验训练产物
@@ -405,41 +374,15 @@ ls output/streamvln-baseline/<EXP_NAME>/checkpoint-*/*.bin
 - [ ] `train.log` 无 `Traceback` / `RuntimeError`
 - [ ] 训练 loss 有下降趋势
 
-### 发送训练结束 webhook（仅训练模式需要，一键串行模式自动发送）
+## 步骤 5 — 执行评测
 
-训练结束后（无论成功失败）发送：
-
-```bash
-TRAIN_END_TS="$(date +%s)"
-TRAIN_DURATION_SEC=$((TRAIN_END_TS - TRAIN_START_TS))
-TRAIN_STATUS="SUCCESS"   # 失败时改为 FAILED
-TRAIN_OUTPUT_DIR="output/streamvln-baseline/<EXP_NAME>"
-TRAIN_LOG_PATH="${TRAIN_OUTPUT_DIR}/train.log"
-
-TRAIN_END_MSG="## StreamVLN Baseline Train Finished
-status: ${TRAIN_STATUS}
-exp_name: <EXP_NAME>
-duration_sec: ${TRAIN_DURATION_SEC}
-output_dir: ${TRAIN_OUTPUT_DIR}
-log: ${TRAIN_LOG_PATH}
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-
-send_wecom_markdown "${TRAIN_WEBHOOK_URL}" "${TRAIN_END_MSG}"
-```
-
----
-
-## 步骤 5 — 执行评测（默认 `val_seen` + `val_unseen` 都跑）
-
-> **必须发送 eval 开始 / 结束通知。**
-> 本 skill 当前约定：**默认 val_seen 和 val_unseen 两个 split 均跑（8卡）**。若用户明确指定了单个 split，则只跑指定的那个。
-> 当前 `ver_260418` 的默认 eval 目录只有 `val_seen/` 和 `val_unseen/`：
-> - `val_seen = 4574`
-> - `val_unseen = 8756`
-> - `2026-04-20` 已从 `val_seen` 中移除 `27` 个与 train 路线重复的 episodes
-> - `val_seen_update` 已不再作为默认目录存在
+> 本 skill 当前约定：eval split 和 eval 数据只由
+> `baseline/streamvln/configs/satnav_task.yaml` 控制。默认 `SPLIT: all`，
+> 即顺序评测 `val_seen` 和 `val_unseen`。如需单 split，先把 YAML 中
+> `DATASET.SPLIT` 改为 `val_seen` 或 `val_unseen`，不要给
+> `eval_satnav.sh` 或 `train_eval_satnav.sh` 传位置 split 参数。
 >
-> 如果使用了一键串行模式（`train_eval_satnav.sh`），eval 已自动执行且 webhook 已自动发送，可跳过本步骤中的手动 eval 和手动 webhook 部分，直接进入"校验评测产物"。
+> 如果使用了一键串行模式（`train_eval_satnav.sh`），eval 已自动执行，可跳过本步骤中的手动 eval 部分，直接进入"校验评测产物"。
 
 ### 评测前清理（必做）
 
@@ -451,85 +394,46 @@ tmux ls | grep streamvln_eval | awk -F: '{print $1}' | xargs -r -n1 tmux kill-se
 pkill -f "baseline/streamvln/scripts/eval_satnav.sh|baseline/streamvln/src/eval_satnav.py|streamvln_eval" || true
 
 # 2) 仅清理当前实验的 eval 结果（保留其他实验的历史结果）
-rm -rf "results/streamvln-baseline/<EXP_NAME>/val_seen"
-rm -rf "results/streamvln-baseline/<EXP_NAME>/val_unseen"
-rm -rf "results/streamvln-baseline/<EXP_NAME>/test"
+rm -rf "results/streamvln-baseline/<EXP_NAME>"
 ```
 
-> **禁止**使用 `rm -rf results/streamvln-baseline/by-path` 或 `find ... -name val_unseen ... -exec rm` 等全局清理命令——这会误删其他实验的已有评测结果。
+> **禁止**使用 `find results/streamvln-baseline ... -exec rm` 等全局清理命令——这会误删其他实验的已有评测结果。
 
-### 评测数据约束（按 split 子目录路由）
+### 评测数据约束
 
-默认直接使用：
+StreamVLN eval 数据和 split 由
+`baseline/streamvln/configs/satnav_task.yaml` 控制：
 
-`/mnt/data3/jiangjiajun/dataset/satnav_datasets/<ver_xxxxxx>/episodes/eval/val_seen/all_episodes.json`
+```yaml
+DATASET:
+  SPLIT: all
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
+  SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
+```
 
-**eval_satnav.sh 根据 `SPLIT` 参数自动路由到对应子目录**（`val_seen/` 或 `val_unseen/`）。
-**若不传 `SPLIT` 参数，则脚本会顺序运行 `val_seen` 和 `val_unseen` 两个 split。**
-不做城市过滤，使用全量 eval episodes。
+- `SPLIT: all`：顺序评测 `val_seen` 和 `val_unseen`
+- `SPLIT: val_seen` / `val_unseen`：只评测对应 split
+- `DATA_PATH` 必须是 eval split 父目录，脚本会解析为 `<DATA_PATH>/<split>/all_episodes.json`
 
-### 按实验名评测（推荐）
+### 按模型名评测（推荐）
 
-从训练日志末尾获取 EXP_NAME。若未指定单个 split，直接调用一次即可默认顺序跑完 `val_seen` 和 `val_unseen`：
+从训练日志末尾获取 EXP_NAME，或使用 model zoo 中的精简模型名。脚本只支持命名参数，不再支持位置参数、checkpoint path、命令行 split 或 `SATNAV_VERSION` 覆盖。
+`<model_dir>/<model_name>` 必须是可直接传给 Hugging Face `from_pretrained()` 的模型目录，包含 `config.json` 和 safetensors/bin 权重；脚本不再读取 `checkpoint-*` 子目录。
+脚本会从模型 `config.json` 读取 `mm_vision_tower` / `vision_tower`，优先搜索本地同名视觉塔目录（如 `baseline/streamvln/model/siglip-so400m-patch14-384`）；如果本地找不到，则保留原始 Hugging Face id，让 Transformers 使用 cache 或下载。需要强制指定时可加 `--vision_tower <path-or-hf-id>`。
 
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate streamvln-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
-# 默认两个 split 都跑（除非用户明确指定了单个 split）
-bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> "" 8
+bash baseline/streamvln/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name <EXP_NAME> \
+  --gpus 8
 ```
 
-如果需要为每个 split 单独发送 webhook，可按下面形式显式循环：
-
-```bash
-EVAL_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=2504fe89-9e8a-4767-9e12-61383bbe456e"
-
-for SPLIT in val_seen val_unseen; do
-  EVAL_START_TS="$(date +%s)"
-
-  EVAL_START_MSG="## StreamVLN Baseline Eval Started
-exp_name: <EXP_NAME>
-split: ${SPLIT}
-gpus: 8
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-  send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_START_MSG}"
-
-  if bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> "${SPLIT}" 8; then
-    eval_rc=0
-  else
-    eval_rc=$?
-  fi
-
-  EVAL_END_TS="$(date +%s)"
-  EVAL_DURATION_SEC=$((EVAL_END_TS - EVAL_START_TS))
-  EVAL_STATUS="SUCCESS"
-  [ $eval_rc -ne 0 ] && EVAL_STATUS="FAILED"
-
-  EVAL_END_MSG="## StreamVLN Baseline Eval Finished
-status: ${EVAL_STATUS}
-exp_name: <EXP_NAME>
-split: ${SPLIT}
-duration_sec: ${EVAL_DURATION_SEC}
-eval_log: results/streamvln-baseline/<EXP_NAME>/${SPLIT}/eval.log
-time: $(date '+%Y-%m-%d %H:%M:%S')"
-  send_wecom_markdown "${EVAL_WEBHOOK_URL}" "${EVAL_END_MSG}"
-done
-```
-
-### 评测时覆盖数据版本
-
-```bash
-SATNAV_VERSION=ver_260306 \
-  bash baseline/streamvln/scripts/eval_satnav.sh <EXP_NAME> val_seen 8
-```
-
-### 按 checkpoint 路径评测（兼容旧方式）
-
-```bash
-bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_seen 8
-```
+如需只跑单个 split，先把 `baseline/streamvln/configs/satnav_task.yaml` 中的
+`DATASET.SPLIT` 改成 `val_seen` 或 `val_unseen`，再运行同一个命令。
 
 ### 校验评测产物
 
@@ -543,11 +447,11 @@ bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_seen 8
 
 ### 通过/失败矩阵
 
-| 服务器 | 模式 | 数据版本 | 训练 | EXP_NAME | Checkpoint | Split | 评测 | SR / SPL | 失败原因 |
+| 服务器 | 模式 | 数据集 | 训练 | EXP_NAME | Checkpoint | Split | 评测 | SR / SPL | 失败原因 |
 |---|---|---|---|---|---|---|---|---|---|
-| 98/73/17 | continue | ver_XXXXXX | ✅/❌ | `...` | `output/...` | val_seen | ✅/❌ | X.X / X.X | — |
+| 98/73/17 | continue | SatNav-v0.1 | ✅/❌ | `...` | `output/...` | val_seen | ✅/❌ | X.X / X.X | — |
 | | | | — | | | val_unseen | ✅/❌ | X.X / X.X | — |
-| 98/73/17 | scratch | ver_XXXXXX | ✅/❌ | `...` | `output/...` | val_seen | ✅/❌ | X.X / X.X | — |
+| 98/73/17 | scratch | SatNav-v0.1 | ✅/❌ | `...` | `output/...` | val_seen | ✅/❌ | X.X / X.X | — |
 | | | | — | | | val_unseen | ✅/❌ | X.X / X.X | — |
 
 ### 报告还应包含
@@ -556,7 +460,6 @@ bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_seen 8
 2. 关键日志 / checkpoint / 结果路径
 3. 训练耗时和 GPU 利用情况
 4. 任何异常或告警
-5. 4 条 webhook 已发送的证据（时间戳 + 阶段）
 
 ---
 
@@ -564,11 +467,12 @@ bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_seen 8
 
 | 问题 | 解决方案 |
 |---|---|
-| `No SatNav data versions found` | 检查 `/mnt/data3/jiangjiajun/dataset/satnav_datasets/` 是否有 `ver_*` 目录 |
+| `SatNav trajectory data not found` | 检查 `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`，或设置 `SATNAV_TRAIN_DATA_DIR` |
 | `Official checkpoint not found` | 运行 `bash baseline/streamvln/scripts/download_model.sh` |
 | `Base model not found` | 检查 `baseline/streamvln/model/LLaVA-Video-7B-Qwen2/` 是否存在 |
-| `CUDA out of memory` | 减小 `BATCH_SIZE`（默认 2）或 `GRAD_ACCUM` |
-| `No checkpoint found in exp dir` | 训练可能未完成，检查 `train.log` |
+| `CUDA out of memory` | 减小 `BATCH_SIZE`（默认 3）或 `GRAD_ACCUM` |
+| `config.json not found in model directory` | `--model_dir/--model_name` 需要指向可直接 `from_pretrained()` 的 HF 模型目录 |
+| `No safetensors/bin model weights found` | 检查模型目录是否已完整下载 HF safetensors/bin 权重 |
 | `tokenizer_config.json not found` | 官方 checkpoint 正常现象，eval 脚本自动 fallback 到本地 `LLaVA-Video-7B-Qwen2` |
 | `torchrun` 端口冲突 | 脚本用随机端口，重试即可 |
 | server 17 Docker 容器名未知 | `ssh 10.246.132.17 "docker ps"` 查看容器名 |
@@ -581,7 +485,7 @@ bash baseline/streamvln/scripts/eval_satnav.sh /path/to/checkpoint val_seen 8
    - 运行环境/资源问题（GPU、端口、路径、权限、依赖）
    - 数据或checkpoint问题
    - 命令参数/流程问题
-   - **skill 本身问题**（文档命令错误、步骤顺序错误、缺少关键前置条件、webhook示例不正确等）
+   - **skill 本身问题**（文档命令错误、步骤顺序错误、缺少关键前置条件等）
 
 2. 若是运行问题：
    - 先修复并重试当前任务；

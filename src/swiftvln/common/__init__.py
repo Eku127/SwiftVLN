@@ -21,11 +21,8 @@ from .history_processors import (
 )
 from .history_processors.compressor import HistoryTokenCompressor
 from .training import (
-    BaseVLNDataset,
     BaseVLNSft,
     BaseVLNTrainArguments,
-    MixedVLNQADataset,
-    VLNMixedTrainingMixin,
 )
 
 _lazy_imports = {
@@ -40,7 +37,6 @@ _lazy_imports = {
     'get_swanlab_url_from_train_metadata': '.eval',
     'append_text_to_image': '.utils',
     'init_distributed': '.utils',
-    'gather_metrics': '.utils',
     'compress_videos': '.utils',
     'TrajectoryRecorder': '.utils',
     'ErrorAnalyzer': '.utils',
@@ -60,9 +56,6 @@ def __getattr__(name):
 __all__ = [
     'BaseVLNTrainArguments',
     'BaseVLNSft',
-    'MixedVLNQADataset',
-    'VLNMixedTrainingMixin',
-    'BaseVLNDataset',
     'DEFAULT_IMAGE_TOKEN',
     'HISTORY_MEMORY_TOKEN',
     'CURRENT_IMAGE_TOKEN',
@@ -90,7 +83,6 @@ __all__ = [
     'create_history_processor',
     'append_text_to_image',
     'init_distributed',
-    'gather_metrics',
     'compress_videos',
     'TrajectoryRecorder',
     'ErrorAnalyzer',

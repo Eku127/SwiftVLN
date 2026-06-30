@@ -1,6 +1,6 @@
 ---
 name: baseline-smoke-test
-description: "Run smoke tests for any baseline (streamvln / navila / uninavid) on SatNav: 8-GPU train smoke with latest production data (limited steps), checkpoint handoff to eval smoke (limited episodes), loss trend verification, and post-test cleanup."
+description: "Run smoke tests for any baseline (streamvln / navila / uninavid / openfly) on SatNav: 8-GPU train smoke with the current baseline data default, eval smoke by --model_dir/--model_name, loss trend verification, and post-test cleanup."
 ---
 
 # Baseline Smoke Test
@@ -13,7 +13,7 @@ description: "Run smoke tests for any baseline (streamvln / navila / uninavid) o
 - "baseline `<name>` 冒烟测试"
 - "`<name>` baseline smoke"
 
-其中 `<name>` ∈ `streamvln` | `navila` | `uninavid`
+其中 `<name>` ∈ `streamvln` | `navila` | `uninavid` | `openfly`
 
 **第一步：从用户输入中识别 baseline 名称，然后跳转到对应分支。**
 
@@ -22,31 +22,47 @@ description: "Run smoke tests for any baseline (streamvln / navila / uninavid) o
 ## 通用原则（所有 baseline 一致）
 
 - 全部固定 **8 GPU** 训练。
-- 全部使用 **生产数据最新版本**（auto-detect），不使用 `smoke_test_data/` 专用数据。
+- 当前 refactor 验证口径：`streamvln` / `navila` / `uninavid` / `openfly`
+  均默认使用 `SatNav-v0.1`。
+- 不使用 `smoke_test_data/` 专用数据。
 - 训练：`MAX_STEPS=8`，`SAVE_STRATEGY=steps`，`SAVE_STEPS=8`，`LOGGING_STEPS=1`。
 - 评测：尽量贴近正式默认路径；若 baseline 支持则优先用正式 split，仅缩小 episode 数量。
 - baseline eval 入口：
   `baseline/streamvln/scripts/eval_satnav.sh`
   `baseline/navila/scripts/eval_satnav.sh`
   `baseline/uninavid/scripts/eval_satnav.sh`
-- 上述三个脚本在 **不显式传 split** 时，均默认顺序运行 `val_seen` 和 `val_unseen`。
+  `baseline/openfly/scripts/eval_satnav.sh`
+- eval 入口统一使用 `--model_dir <root> --model_name <name>`；不要再传位置参数、
+  `--checkpoint_path`、`--split` 或 `--satnav_version`。
+- eval split 和数据只由 `baseline/<baseline>/configs/satnav_task.yaml` 控制；
+  当前 `SPLIT: all` 会顺序运行 `val_seen` 和 `val_unseen`。
 - 验证训练 loss 是否有限且呈下降趋势（见 [Loss 验证](#loss-验证) 节）。
 - 验证评测 summary 写入成功。
 - 完成后**必须清理** smoke 输出和结果目录。
 
 ---
 
-## Step 0 — 自动检测最新数据版本
+## Step 0 — 当前数据口径
 
-**适用于所有 baseline。** 在构建命令前先确定数据路径：
+所有 baseline 在本轮 refactor 后固定使用 `SatNav-v0.1`：
 
 ```bash
 SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
-LATEST_VER=$(ls -d "${SATNAV_DATA_ROOT}"/ver_* | sort | tail -1 | xargs basename)
-LATEST_DATA_DIR="${SATNAV_DATA_ROOT}/${LATEST_VER}/trajectory_data"
-LATEST_ANNOTATIONS="${LATEST_DATA_DIR}/annotations.json"
-echo "Latest SatNav version: ${LATEST_VER}"
-echo "Annotations: ${LATEST_ANNOTATIONS}"
+SATNAV_DATASET="SatNav-v0.1"
+SATNAV_TRAIN_DATA_DIR="${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data"
+SATNAV_ANNOTATIONS="${SATNAV_TRAIN_DATA_DIR}/annotations.json"
+SATNAV_EVAL_ROOT="${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/episodes/eval"
+echo "SatNav dataset: ${SATNAV_DATASET}"
+echo "Train annotations: ${SATNAV_ANNOTATIONS}"
+echo "Eval root: ${SATNAV_EVAL_ROOT}"
+```
+
+确认对应 baseline 的 `configs/satnav_task.yaml` 中：
+
+```yaml
+DATASET:
+  SPLIT: all
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
 ```
 
 ---
@@ -68,7 +84,7 @@ cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
 python -c "import torch; print(torch.__version__, torch.cuda.device_count())"
 ls baseline/streamvln/model/StreamVLN_Video_qwen_1_5_r2r_rxr_envdrop_scalevln_v1_3/config.json
-ls "${LATEST_ANNOTATIONS}"
+ls /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data/annotations.json
 ```
 
 ### Full-Path Smoke（缩步数，保留正式主路径）
@@ -81,7 +97,7 @@ cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 SMOKE_PIPE_LOG="/tmp/streamvln_smoke_train_eval_$(date +%Y%m%d_%H%M%S).log"
 
 SMOKE_TEST=true \
-SATNAV_VERSION="${LATEST_VER}" \
+SATNAV_DATASET=SatNav-v0.1 \
 MAX_STEPS=8 \
 SAVE_STRATEGY=steps \
 SAVE_STEPS=8 \
@@ -175,8 +191,8 @@ conda activate navila-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
 nvidia-smi -L | wc -l        # 应为 8
-ls baseline/navila/model/navila-siglip-llama3-8b-v1.5-pretrain/config.json
-ls "${LATEST_ANNOTATIONS}"
+ls baseline/navila/model/navila-llama3-8b-8f/config.json
+ls /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data/annotations.json
 ```
 
 ### Train Smoke
@@ -188,8 +204,7 @@ source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate navila-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
-DATA_PATH="${LATEST_ANNOTATIONS}" \
-IMAGE_FOLDER="${LATEST_DATA_DIR}" \
+SATNAV_DATASET=SatNav-v0.1 \
 MAX_STEPS=8 \
 SAVE_STEPS=8 \
 SAVE_TOTAL_LIMIT=1 \
@@ -198,15 +213,16 @@ GRAD_ACCUM=1 \
 DATALOADER_WORKERS=2 \
 REPORT_TO=none \
 MASTER_PORT=29640 \
-bash baseline/navila/scripts/train_satnav.sh "smoketest/${SMOKE_NAME}" \
+bash baseline/navila/scripts/train_satnav.sh continue "smoketest/${SMOKE_NAME}" \
   2>&1 | tee /tmp/navila_smoke_train.log
 ```
 
-> `CUSTOM_EXP_NAME = smoketest/${SMOKE_NAME}` → 输出至 `output/navila-baseline/smoketest/${SMOKE_NAME}/`
+> `CUSTOM_EXP_NAME = smoketest/${SMOKE_NAME}`，脚本会自动追加采样标签；
+> 输出至 `output/navila-baseline/smoketest/${SMOKE_NAME}-sample-hk7-fs7-stopx4/`
 
 ### 验证训练产物
 
-验证 `output/navila-baseline/smoketest/${SMOKE_NAME}/` 下包含：
+验证 `output/navila-baseline/smoketest/${SMOKE_NAME}-sample-hk7-fs7-stopx4/` 下包含：
 - `config.json`
 - `llm/`（NaVILA 特有的合并输出格式）
 - 无 `Traceback` 字样
@@ -220,21 +236,24 @@ source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate navila-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
-# smoke 为了分别保留两边日志，这里显式逐 split 执行；
-# 正式调用若不传 split，脚本默认也会顺序跑 val_seen + val_unseen。
-for SPLIT in val_seen val_unseen; do
-  bash baseline/navila/scripts/eval_satnav.sh \
-    "smoketest/${SMOKE_NAME}" "${SPLIT}" 1 10 \
-    2>&1 | tee "/tmp/navila_smoke_eval_${SPLIT}.log"
-done
+SCRIPT_MODEL_DIR="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/navila-baseline"
+bash baseline/navila/scripts/eval_satnav.sh \
+  --model_dir "${SCRIPT_MODEL_DIR}" \
+  --model_name "smoketest/${SMOKE_NAME}-sample-hk7-fs7-stopx4" \
+  --gpus 8 \
+  --max_episodes 10 \
+  2>&1 | tee "/tmp/navila_smoke_eval.log"
 ```
+
+`eval_satnav.sh` 只支持命名参数主路径：
+`--model_dir <root> --model_name <name> --gpus <n>`。
 
 ### Cleanup
 
 ```bash
 REPO=/mnt/data1/home/jiangjiajun/workspace/SwiftVLN
-rm -rf ${REPO}/output/navila-baseline/smoketest/${SMOKE_NAME}
-rm -rf ${REPO}/results/navila-baseline/smoketest/${SMOKE_NAME}
+rm -rf ${REPO}/output/navila-baseline/smoketest/${SMOKE_NAME}-sample-hk7-fs7-stopx4
+rm -rf ${REPO}/results/navila-baseline/smoketest/${SMOKE_NAME}-sample-hk7-fs7-stopx4
 ```
 
 ---
@@ -253,7 +272,7 @@ rm -rf ${REPO}/results/navila-baseline/smoketest/${SMOKE_NAME}
 ssh 10.246.152.73 '
   nvidia-smi -L | wc -l        # 应为 8
   ls /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/baseline/uninavid/model/Uni-Navid/config.json
-  ls '"${LATEST_ANNOTATIONS}"'
+  ls /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data/annotations.json
 '
 ```
 
@@ -274,8 +293,7 @@ source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate uninavid-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
-DATA_PATH='${LATEST_ANNOTATIONS}' \
-VIDEO_FOLDER='${LATEST_DATA_DIR}' \
+SATNAV_DATASET=SatNav-v0.1 \
 MAX_STEPS=8 \
 SAVE_STRATEGY=steps \
 SAVE_STEPS=8 \
@@ -285,7 +303,7 @@ GRAD_ACCUM=1 \
 DATALOADER_WORKERS=0 \
 REPORT_TO=none \
 MASTER_PORT=29618 \
-bash baseline/uninavid/scripts/train_satnav.sh 'smoketest/${SMOKE_NAME}'
+bash baseline/uninavid/scripts/train_satnav.sh continue 'smoketest/${SMOKE_NAME}'
 " 2>&1 | tee /tmp/uninavid_smoke_train.log
 ```
 
@@ -294,18 +312,20 @@ bash baseline/uninavid/scripts/train_satnav.sh 'smoketest/${SMOKE_NAME}'
 ### Eval Smoke（在 73 上执行）
 
 ```bash
-# smoke 为了分别保留两边日志，这里显式逐 split 执行；
-# 正式调用若不传 split，脚本默认也会顺序跑 val_seen + val_unseen。
-for SPLIT in val_seen val_unseen; do
-  ssh 10.246.152.73 "
+ssh 10.246.152.73 "
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 conda activate uninavid-baseline
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 bash baseline/uninavid/scripts/eval_satnav.sh \
-  'smoketest/${SMOKE_NAME}' '${SPLIT}' 1 10
-" 2>&1 | tee "/tmp/uninavid_smoke_eval_${SPLIT}.log"
-done
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline \
+  --model_name 'smoketest/${SMOKE_NAME}' \
+  --gpus 8 \
+  --max_episodes 10
+" 2>&1 | tee "/tmp/uninavid_smoke_eval.log"
 ```
+
+`eval_satnav.sh` 只支持命名参数主路径：
+`--model_dir <root> --model_name <name> --gpus <n>`。
 
 ### Cleanup
 
@@ -313,6 +333,81 @@ done
 ssh 10.246.152.73 "
   rm -rf /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/uninavid-baseline/smoketest/${SMOKE_NAME}
   rm -rf /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/uninavid-baseline/smoketest/${SMOKE_NAME}
+"
+```
+
+---
+
+## Baseline: OpenFly
+
+### 环境
+
+- 服务器：`73`（`ssh 10.246.152.73`，远程执行）
+- Conda 环境：`openfly-baseline`
+- 脚本：`baseline/openfly/scripts/train_satnav.sh` / `eval_satnav.sh`
+
+### Preflight（在 73 上执行）
+
+```bash
+ssh 10.246.152.73 '
+  nvidia-smi -L | wc -l        # 应为 8
+  ls /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/baseline/openfly/model/openfly-agent-7b/config.json
+  ls /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data/annotations.json
+'
+```
+
+### Train Smoke（在 73 上执行）
+
+```bash
+SMOKE_NAME="smoke_openfly_$(date +%Y%m%d_%H%M%S)"
+
+ssh 10.246.152.73 "
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda activate openfly-baseline
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+
+SATNAV_DATASET=SatNav-v0.1 \
+OPENFLY_BACKEND=continue \
+EXP_NAME='smoketest/${SMOKE_NAME}' \
+MAX_STEPS=8 \
+SAVE_STEPS=8 \
+SAVE_TOTAL_LIMIT=1 \
+NUM_GPUS=8 \
+TRAIN_BSZ=1 \
+GRAD_ACCUM=1 \
+DATALOADER_NUM_WORKERS=2 \
+REPORT_TO=none \
+MASTER_PORT=29619 \
+bash baseline/openfly/scripts/train_satnav.sh
+" 2>&1 | tee /tmp/openfly_smoke_train.log
+```
+
+> 输出至 `output/openfly-baseline/smoketest/${SMOKE_NAME}/`。
+
+### Eval Smoke（在 73 上执行）
+
+```bash
+ssh 10.246.152.73 "
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda activate openfly-baseline
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+bash baseline/openfly/scripts/eval_satnav.sh \
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/openfly-baseline \
+  --model_name 'smoketest/${SMOKE_NAME}' \
+  --gpus 8 \
+  --max_episodes 10
+" 2>&1 | tee "/tmp/openfly_smoke_eval.log"
+```
+
+OpenFly eval 会从模型名解析 `-act<format>` 与 `-hist<N>`；smoke 名没有这些字段时默认
+`action_format=auto -> compact`、`action_history_limit=16`。
+
+### Cleanup
+
+```bash
+ssh 10.246.152.73 "
+  rm -rf /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/openfly-baseline/smoketest/${SMOKE_NAME}
+  rm -rf /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/openfly-baseline/smoketest/${SMOKE_NAME}
 "
 ```
 
@@ -374,15 +469,22 @@ for SPLIT in val_seen val_unseen; do
 done
 
 # navila
+NAVILA_SMOKE_MODEL="${SMOKE_NAME}-sample-hk7-fs7-stopx4"
 for SPLIT in val_seen val_unseen; do
   echo "=== navila ${SPLIT} ===" && \
-  cat results/navila-baseline/smoketest/${SMOKE_NAME}/${SPLIT}/evaluation_summary.json
+  cat results/navila-baseline/smoketest/${NAVILA_SMOKE_MODEL}/${SPLIT}/evaluation_summary.json
 done
 
 # uninavid
 for SPLIT in val_seen val_unseen; do
   echo "=== uninavid ${SPLIT} ===" && \
   ssh 10.246.152.73 "cat /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/uninavid-baseline/smoketest/${SMOKE_NAME}/${SPLIT}/evaluation_summary.json"
+done
+
+# openfly
+for SPLIT in val_seen val_unseen; do
+  echo "=== openfly ${SPLIT} ===" && \
+  ssh 10.246.152.73 "cat /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/results/openfly-baseline/smoketest/${SMOKE_NAME}/${SPLIT}/evaluation_summary.json"
 done
 ```
 
@@ -401,8 +503,8 @@ done
 
 | 项目 | 状态 |
 |---|---|
-| Baseline | streamvln / navila / uninavid |
-| 数据版本 | `ver_XXXXXX` |
+| Baseline | streamvln / navila / uninavid / openfly |
+| 数据版本 | `SatNav-v0.1` |
 | 训练步数 | 8 步 |
 | Step losses | `[x.xx, x.xx, ...]` |
 | Loss 趋势 | ✅ PASS / ⚠️ 稳定 / ❌ FAIL |

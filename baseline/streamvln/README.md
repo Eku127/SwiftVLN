@@ -2,9 +2,45 @@
 
 本说明面向在 SwiftVLN 仓库内运行 StreamVLN baseline 的训练与评测流程。
 
-- 上游仓库：默认通过 `$STREAMVLN_REPO` 指向本地 StreamVLN clone
+- 上游仓库：按第 0 节的 `$STREAMVLN_REPO` 路径准备本地 StreamVLN clone
 - 运行范围：当前集成面向 SatNav trajectory 数据训练和 SatNav 在线评测。
 - 训练/评测 skill：`.codex/skills/run-streamvln-baseline/SKILL.md`
+
+## 0. 上游源码 clone 与路径
+
+当前 StreamVLN baseline 不在本仓库内复制完整上游实现；训练和评测会把本地
+StreamVLN 上游源码加入 `PYTHONPATH`。SatNav 评测环境也需要本地 SatNav
+editable install。建议按当前 workspace 使用的 commit 固定版本：
+
+| 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
+|------|--------------|----------|-----------------|
+| StreamVLN | `/mnt/data1/home/jiangjiajun/workspace/StreamVLN` | `git@github.com:Eku127/StreamVLN.git` | `60476e81f4c01b29f1a51a7469f1cb4addbc1d62` |
+| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+
+从空 workspace 准备源码：
+
+```bash
+WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+
+git clone git@github.com:Eku127/StreamVLN.git "$WORKSPACE/StreamVLN"
+git -C "$WORKSPACE/StreamVLN" checkout 60476e81f4c01b29f1a51a7469f1cb4addbc1d62
+
+git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
+```
+
+路径约定：
+
+```bash
+export STREAMVLN_REPO=/mnt/data1/home/jiangjiajun/workspace/StreamVLN
+export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+export PYTHONPATH="${STREAMVLN_REPO}:${STREAMVLN_REPO}/streamvln:${PYTHONPATH:-}"
+```
+
+当前 `train_satnav.sh` 和 `eval_satnav.sh` 默认也会把
+`/mnt/data1/home/jiangjiajun/workspace/StreamVLN` 加入 `PYTHONPATH`，因此最稳妥的
+做法是 clone 到上表路径。若 clone 到其他位置，启动前显式设置上面的
+`PYTHONPATH`，并在环境安装阶段使用 `pip install -e "$SATNAV_REPO"`。
 
 ## 1. 模型
 
@@ -93,7 +129,9 @@ pip install -e "$SATNAV_REPO"
 
 - 若通过 ModelScope 下载模型，需额外安装 `modelscope`。
 - 训练脚本会把 `$STREAMVLN_REPO` 加入 `PYTHONPATH`，因此该上游源码目录必须存在。
-- 目标 SatNav 数据版本需包含 `trajectory_data` 和 `episodes/eval`。
+- 默认 SatNav 数据集为 `SatNav-v0.1`；训练需要
+  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data/annotations.json`
+  以及对应 image folders，评测需要 `SatNav-v0.1/episodes/eval`。
 - H100 上如需编译 CUDA op，可设置 `CUDA_HOME` 指向支持 `sm_90` 的 CUDA Toolkit。
 
 ## 4. 训练
@@ -125,7 +163,7 @@ bash baseline/streamvln/scripts/train_satnav.sh scratch
 常用覆盖项：
 
 ```bash
-SATNAV_VERSION=ver_260418 \
+SATNAV_DATASET=SatNav-v0.1 \
 GPUS_PER_NODE=8 \
 BATCH_SIZE=3 \
 GRAD_ACCUM=2 \
@@ -136,7 +174,8 @@ bash baseline/streamvln/scripts/train_satnav.sh continue
 
 当前默认训练配置：
 
-- `SATNAV_VERSION=ver_260418`
+- `SATNAV_DATASET=SatNav-v0.1`
+- `SATNAV_TRAIN_DATA_DIR=/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
 - `NUM_FRAMES=32`
 - `NUM_HISTORY=8`
 - `NUM_FUTURE_STEPS=4`
@@ -152,46 +191,70 @@ bash baseline/streamvln/scripts/train_satnav.sh continue
 
 - 普通训练输出：`output/streamvln-baseline/<EXP_NAME>/`
 - smoke 输出：`output/streamvln-baseline/smoketest/<EXP_NAME>/`
-- 默认实验名格式：`streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{ver}-bs{effective_bs}-lr{lr}-{timestamp}`
+- 默认实验名格式：`streamvln-baseline-{mode}-{epochs}ep-f{frames}h{history}s{future}-data{dataset}-bs{effective_bs}-lr{lr}-{timestamp}`
 
 实现方式：
 
 - 训练脚本使用上游 StreamVLN/LLaVA 代码路径，不在本仓库复制完整模型实现。
 - `baseline/streamvln/src/train_satnav.py` 负责 SatNav trajectory 数据接入。
 - 默认使用 `baseline/streamvln/configs/zero2.json` 做 DeepSpeed 训练。
-- 可通过 `USE_SWANLAB=true` 开启 SwanLab；`USE_WXWORK_NOTIFICATION=true` 可打开企业微信通知。
+- 可通过 `USE_SWANLAB=true` 开启 SwanLab。
 
 ## 5. 评测
 
-SatNav 评测入口：
+StreamVLN baseline 评测分两步：先确定评测数据，再指定模型目录和模型名启动 eval。
 
-```bash
-bash baseline/streamvln/scripts/eval_satnav.sh <exp_name_or_checkpoint_path>
+### 5.1 配置评测数据
+
+评测数据写在 `baseline/streamvln/configs/satnav_task.yaml`：
+
+```yaml
+DATASET:
+  TYPE: SatNav
+  SPLIT: all
+  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
+  SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
 ```
 
-支持两种模式：
+字段说明：
 
-- 按实验名评测：从 `output/streamvln-baseline/<EXP_NAME>/` 自动解析最新 checkpoint。
-- 按 checkpoint 路径评测：直接传入绝对路径，用于兼容历史目录或手工路径。
+- `SPLIT: all`：默认依次评测 `val_seen` 和 `val_unseen`。
+- `SPLIT: val_seen` / `val_unseen`：默认只评测对应 split。
+- `DATA_PATH` 推荐填写 eval split 父目录。脚本会解析为 `<DATA_PATH>/<split>/all_episodes.json`。
+- `SCENES_DIR` 指向 SatNav scenes 目录。
 
-SatNav 评测 split 约定：
+### 5.2 启动评测
 
-- 不传 `split`：默认顺序运行 `val_seen` 和 `val_unseen`
-- 传 `val_seen` / `val_unseen` / `test`：只跑指定单个 split
-
-常用覆盖项：
+推荐使用命名参数：
 
 ```bash
-SATNAV_VERSION=ver_260418 \
 bash baseline/streamvln/scripts/eval_satnav.sh \
-  streamvln-baseline-continue-1ep-f32h8s4-data260418-bs48-lr2e-5-<timestamp> \
-  val_seen 8
+  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_name streamvln-baseline-continue-1ep-f32h8s4-lr2e-5 \
+  --gpus 8
 ```
 
-评测实现约定：
+常用模型名：
 
-- 输出目录：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/`
-- 评测日志：`results/streamvln-baseline/<EXP_NAME_or_subpath>/<split>/eval.log`
-- eval by name 会从实验名中的 `data{ver}` 自动解析 `SATNAV_VERSION`；也可用环境变量显式覆盖。
-- 若 checkpoint 缺少 tokenizer，评测脚本会回退到 `baseline/streamvln/model/LLaVA-Video-7B-Qwen2`。
-- 评测固定使用 `num_frames=32`、`num_history=8`、`num_future_steps=4`、`model_max_length=32768`。
+```text
+streamvln-baseline-continue-1ep-f32h8s4-lr2e-5
+streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5
+streamvln-satnav-continue-1ep-f32h8s4-lr2e-5
+streamvln-satnav-scratch-1ep-f32h8s4-lr2e-5
+```
+
+模型名约定：
+
+- `streamvln-baseline-*`：本地 model zoo 归档版，保留训练日志、`trainer_state.json` 和历史 `checkpoint-*` 目录。
+- `streamvln-satnav-*`：对应权重的 Hugging Face upload-ready 精简版，只保留 eval/inference 所需的 safetensors、config、tokenizer 等文件。
+- 两组都可以用当前 `eval_satnav.sh` 直接评测；`baseline_0418` 报告当前主引用 `streamvln-baseline-*`，对外发布/复现实验优先使用 `streamvln-satnav-*`。
+
+### 5.3 行为说明
+
+- 脚本会直接加载 `<model_dir>/<model_name>/` 下的 Hugging Face safetensors/bin 模型文件。
+- 脚本会从模型名里的 `f32h8s4` 解析 `frames=32`、`history=8`、`future_steps=4`。
+- 脚本会从模型 `config.json` 读取 `mm_vision_tower` / `vision_tower`，优先搜索本地同名视觉塔目录；若本地不存在，则保留原始 Hugging Face id 交给 Transformers 解析或下载。
+- 如需手动指定视觉塔，可加 `--vision_tower /path/or/hf-id`。
+- 脚本不会从模型名里的数据版本字段选择 eval 数据；eval 数据和 split 都由 `satnav_task.yaml` 控制。
+- 输出目录：`results/streamvln-baseline/<model_name>/<split>/`。
+- 评测日志：`results/streamvln-baseline/<model_name>/<split>/eval.log`。

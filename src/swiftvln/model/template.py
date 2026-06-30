@@ -35,51 +35,17 @@ from swiftvln.common.history_processors import (
     GlobalTokenClustering,
 )
 
-# Special tokens (must match dataset.py and model.py)
-HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
-
-# Debug flag - set to True to see detailed GTC/SGTC processing info
-DEBUG_COMPRESSION = False
-# Debug flag - set to True to verify processor type in _encode
-DEBUG_PROCESSOR_TYPE = False
-# Debug flag - set via SWIFTVLN_DEBUG env var to verify initial strategy
-DEBUG_INITIAL = os.environ.get('SWIFTVLN_DEBUG', '') != ''
-
-
-def _debug_rank() -> int:
+def _is_rank0() -> bool:
     raw = os.environ.get('RANK', os.environ.get('LOCAL_RANK', '0'))
     try:
-        return int(raw)
+        return int(raw) == 0
     except ValueError:
-        return 0
+        return True
 
 
-def _preview_list(values: List[int], limit: int = 8) -> str:
-    if len(values) <= limit:
-        return str(values)
-    return str(values[:limit] + ['...'])
-
-
-def _tensor_debug_stats(tensor: Optional[torch.Tensor], sample_limit: int = 4) -> str:
-    if tensor is None:
-        return "none"
-    if not isinstance(tensor, torch.Tensor):
-        return f"type={type(tensor).__name__}"
-    if tensor.numel() == 0:
-        return f"shape={tuple(tensor.shape)} empty"
-    with torch.no_grad():
-        flat = tensor.detach().float().cpu().reshape(-1)
-        mean = float(flat.mean().item())
-        std = float(flat.std(unbiased=False).item()) if flat.numel() > 1 else 0.0
-        checksum = float(flat.sum().item())
-        abs_checksum = float(flat.abs().sum().item())
-        l2 = float(torch.linalg.vector_norm(flat).item())
-        sample = ", ".join(f"{v:.4f}" for v in flat[:sample_limit].tolist())
-    return (
-        f"shape={tuple(tensor.shape)} mean={mean:.6f} std={std:.6f} "
-        f"sum={checksum:.6f} abs_sum={abs_checksum:.6f} l2={l2:.6f} "
-        f"sample=[{sample}]"
-    )
+def _print_rank0(message: str) -> None:
+    if _is_rank0():
+        print(message)
 
 
 class SwiftVLNTemplateMixin:
@@ -107,15 +73,12 @@ class SwiftVLNTemplateMixin:
     """
     
     # Token IDs (set in init_processor)
-    history_image_token_id: Optional[int] = None
     history_memory_token_id: Optional[int] = None
     current_image_token_id: Optional[int] = None
     
     # History processor
     history_processor: Optional[HistoryProcessor] = None
     
-    # Pixel embedding enhancement (set by trainer)
-    use_pixel_embed: bool = False
     use_uav_adapter: bool = False
     
     def __init__(
@@ -166,32 +129,23 @@ class SwiftVLNTemplateMixin:
             return
         
         # Get token IDs (tokens are added in model.py's get_model_tokenizer function)
-        self.history_image_token_id = processor.tokenizer.convert_tokens_to_ids(HISTORY_IMAGE_TOKEN)
         self.history_memory_token_id = processor.tokenizer.convert_tokens_to_ids(HISTORY_MEMORY_TOKEN)
         self.current_image_token_id = processor.tokenizer.convert_tokens_to_ids(CURRENT_IMAGE_TOKEN)
         
-        # Verify tokens exist and print configuration
+        # Verify tokens exist and print a concise rank-0 configuration summary.
         if self.history_memory_token_id != processor.tokenizer.unk_token_id:
-            print(f"[SwiftVLNTemplate] Using special tokens (unified memory mode):")
-            print(f"  - {HISTORY_MEMORY_TOKEN}: {self.history_memory_token_id} (unified)")
-            print(f"  - {HISTORY_IMAGE_TOKEN}: {self.history_image_token_id} (legacy)")
-            print(f"  - {CURRENT_IMAGE_TOKEN}: {self.current_image_token_id}")
-            print(f"  - Standard image_token_id (<|image_pad|>): {self.image_token_id}")
-            print(f"  - History Processor: {self.history_processor.name}")
+            _print_rank0("[SwiftVLNTemplate] Using special tokens (unified memory mode):")
+            _print_rank0(f"  - {HISTORY_MEMORY_TOKEN}: {self.history_memory_token_id} (unified)")
+            _print_rank0(f"  - {CURRENT_IMAGE_TOKEN}: {self.current_image_token_id}")
+            _print_rank0(f"  - Standard image_token_id (<|image_pad|>): {self.image_token_id}")
+            _print_rank0(f"  - History Processor: {self.history_processor.name}")
             
             # Print processor-specific info
             if isinstance(self.history_processor, PerFrameCompressor):
                 method = "tome" if self.use_tome else "pool"
-                print(f"    └─ h={self.num_history}, b={self.log_base}, {method}, s={self.compress_stride}")
-                # Debug output
-                if os.environ.get('SWIFTVLN_DEBUG'):
-                    print(f"    [DEBUG] PerFrameCompressor configuration:")
-                    print(f"      -> num_history: {self.num_history}")
-                    print(f"      -> log_base: {self.log_base} ({'UNIFORM' if self.log_base == 1.0 else 'LOGARITHMIC'})")
-                    print(f"      -> method: {method.upper()}")
-                    print(f"      -> stride: {self.compress_stride} ({self.compress_stride**2}x compression)")
+                _print_rank0(f"    - h={self.num_history}, b={self.log_base}, {method}, s={self.compress_stride}")
             elif isinstance(self.history_processor, GlobalTokenClustering):
-                print(f"    └─ output_tokens={self.gtc_output_tokens}, τ={self.gtc_temperature}")
+                _print_rank0(f"    - output_tokens={self.gtc_output_tokens}, temperature={self.gtc_temperature}")
     
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -203,7 +157,7 @@ class SwiftVLNTemplateMixin:
         raise RuntimeError(
             "\n" + "="*70 + "\n"
             "[SwiftVLNTemplate] ERROR: padding_free=true is NOT supported!\n\n"
-            "SwiftVLN uses custom tokens (<history_image>, <current_image>) which are\n"
+            "SwiftVLN uses custom tokens (<history_memory>, <current_image>) which are\n"
             "incompatible with Qwen2.5-VL's get_rope_index function.\n\n"
             "Solution: Set padding_free=false in your training script.\n"
             "  - In shell script: PADDING_FREE=false\n"
@@ -236,12 +190,9 @@ class SwiftVLNTemplateMixin:
             
             # Get num_history_images from dataset metadata
             num_history_images = inputs.extra_kwargs.get('num_history_images', 0)
-            num_initial_images = inputs.extra_kwargs.get('num_initial_images', 0)
             
             # Determine if this is a history or current image
             is_history = (index < num_history_images)
-            # Initial image is the first image after history images
-            is_initial = (num_initial_images > 0 and index == num_history_images)
             
             if is_history:
                 # History images: no <image> tag in prompt for them
@@ -249,18 +200,8 @@ class SwiftVLNTemplateMixin:
                 # Return empty - this shouldn't be called for history images in normal flow
                 return []
             else:
-                # Current images (including initial): convert <image> to our custom token with vision wrapper
-                # This enables ROPE position encoding while using our custom token
-                # Debug: log initial image detection
-                if DEBUG_INITIAL and is_initial:
-                    if not hasattr(self, '_debug_initial_replace_count'):
-                        self._debug_initial_replace_count = 0
-                    if self._debug_initial_replace_count < 3:
-                        rank = int(os.environ.get('RANK', os.environ.get('LOCAL_RANK', 0)))
-                        print(f"[INITIAL DEBUG] Rank={rank} replace_tag: index={index} is INITIAL image "
-                              f"(num_history={num_history_images}, num_initial={num_initial_images}) "
-                              f"-> <current_image> (uncompressed)")
-                        self._debug_initial_replace_count += 1
+                # Current images (including initial): convert <image> to our custom token with vision wrapper.
+                # This enables ROPE position encoding while using our custom token.
                 return [f'<|vision_start|>{CURRENT_IMAGE_TOKEN}<|vision_end|>']
         
         return super().replace_tag(media_type, index, inputs)
@@ -332,49 +273,6 @@ class SwiftVLNTemplateMixin:
                     num_current = 0
                 elif num_history + num_current > num_images:
                     num_current = num_images - num_history
-
-            if DEBUG_INITIAL and getattr(self, 'memory_method', 'history') == 'map':
-                if not hasattr(self, '_debug_map_tokenize_count'):
-                    self._debug_map_tokenize_count = 0
-                if self._debug_map_tokenize_count < 6:
-                    history_positions_before = list(history_memory_idx_list[:8])
-                    current_positions_before = list(current_idx_list[:8])
-                    pose_entries = len(frame_poses) if isinstance(frame_poses, list) else 0
-                    none_pose_entries = (
-                        sum(1 for pose in frame_poses if pose is None)
-                        if isinstance(frame_poses, list)
-                        else 0
-                    )
-                    print(
-                        f"[MAP DEBUG][template._encode.pre] Rank={_debug_rank()} "
-                        f"input_len={len(input_ids)} num_images={num_images} "
-                        f"num_history_images={num_history} num_initial_images={num_initial_images} "
-                        f"num_current_placeholders={num_current} "
-                        f"history_placeholder_count={len(history_memory_idx_list)} "
-                        f"current_placeholder_count={len(current_idx_list)} "
-                        f"frame_poses={pose_entries} none_poses={none_pose_entries} "
-                        f"history_pos={_preview_list(history_positions_before)} "
-                        f"current_pos={_preview_list(current_positions_before)}"
-                    )
-                    self._debug_map_tokenize_count += 1
-            
-            # Debug: log initial image in _encode
-            if DEBUG_INITIAL and num_initial_images > 0:
-                if not hasattr(self, '_debug_initial_encode_count'):
-                    self._debug_initial_encode_count = 0
-                if self._debug_initial_encode_count < 3:
-                    rank = int(os.environ.get('RANK', os.environ.get('LOCAL_RANK', 0)))
-                    print(f"[INITIAL DEBUG] Rank={rank} _encode: num_images={num_images}, "
-                          f"num_history={num_history}, num_initial={num_initial_images}, "
-                          f"num_current_tokens={num_current} "
-                          f"(expected: {num_history} + {num_initial_images} + {num_current - num_initial_images} current_turns = {num_images})")
-                    # The initial image is at index num_history in the image list
-                    # It produces a <current_image> token in the system prompt
-                    # which is the first entry in current_idx_list
-                    if current_idx_list:
-                        print(f"[INITIAL DEBUG] Rank={rank} _encode: first <current_image> token at position {current_idx_list[0]} "
-                              f"(this is the INITIAL image in system prompt, uncompressed)")
-                    self._debug_initial_encode_count += 1
             
             # Store metadata for _post_encode (only essential counts)
             encoded['_history_image_count'] = num_history
@@ -399,36 +297,8 @@ class SwiftVLNTemplateMixin:
                 )
                 total_history_tokens = max(1, total_history_tokens)
                 
-                # Debug: verify processor type and token calculation
-                if DEBUG_PROCESSOR_TYPE or DEBUG_COMPRESSION:
-                    total_input = sum(t * h * w for t, h, w in frame_infos)
-                    processor_type = self.history_processor_type if hasattr(self, 'history_processor_type') else 'unknown'
-                    print(f"\n[_encode DEBUG] HistoryProcessor Token Calculation:")
-                    print(f"  - processor_type attr: {processor_type}")
-                    print(f"  - processor.name: {self.history_processor.name}")
-                    print(f"  - processor class: {type(self.history_processor).__name__}")
-                    print(f"  - num_history_frames: {num_history}")
-                    print(f"  - frame_infos: {frame_infos}")
-                    print(f"  - total_input_tokens: {total_input}")
-                    print(f"  - calculated_output: {total_history_tokens}")
-                    if 'GTC' in self.history_processor.name or 'Segment' in self.history_processor.name:
-                        print(f"  - GTC output_tokens setting: {getattr(self.history_processor, 'output_tokens', 'N/A')}")
-                    print(f"  - RESULT: Will create {total_history_tokens} placeholder tokens")
-                
                 # Store total for _post_encode
                 encoded['_total_history_tokens'] = total_history_tokens
-
-                if DEBUG_INITIAL and getattr(self, 'memory_method', 'history') == 'map':
-                    if not hasattr(self, '_debug_map_encode_count'):
-                        self._debug_map_encode_count = 0
-                    if self._debug_map_encode_count < 5:
-                        rank = int(os.environ.get('RANK', os.environ.get('LOCAL_RANK', 0)))
-                        print(
-                            f"[MAP DEBUG][template._encode] Rank={rank} "
-                            f"num_history_images={num_history} frame_infos={frame_infos} "
-                            f"unified_history_tokens={total_history_tokens}"
-                        )
-                        self._debug_map_encode_count += 1
                 
                 # Only process the first <history_memory> token (should be only one)
                 history_to_process = history_memory_idx_list[:1]
@@ -459,21 +329,6 @@ class SwiftVLNTemplateMixin:
                     input_ids, labels, loss_scale, current_to_process, _get_current_tokens
                 )
 
-            if DEBUG_INITIAL and getattr(self, 'memory_method', 'history') == 'map':
-                if not hasattr(self, '_debug_map_expand_count'):
-                    self._debug_map_expand_count = 0
-                if self._debug_map_expand_count < 6:
-                    history_token_count = sum(1 for token in input_ids if token == self.history_memory_token_id)
-                    current_token_count = sum(1 for token in input_ids if token == self.current_image_token_id)
-                    print(
-                        f"[MAP DEBUG][template._encode.post] Rank={_debug_rank()} "
-                        f"expanded_input_len={len(input_ids)} "
-                        f"history_tokens={history_token_count} "
-                        f"current_tokens={current_token_count} "
-                        f"stored_total_history_tokens={encoded.get('_total_history_tokens', 0)}"
-                    )
-                    self._debug_map_expand_count += 1
-        
         # Process videos (unchanged from parent)
         if videos:
             kwargs = {}
@@ -539,7 +394,7 @@ class SwiftVLNTemplateMixin:
         num_history_raw = inputs.pop('_history_image_count', 0)
         num_current_raw = inputs.pop('_current_image_count', 0)
         total_history_tokens_raw = inputs.pop('_total_history_tokens', None)
-        num_initial_raw = inputs.pop('_num_initial_images', 0)
+        inputs.pop('_num_initial_images', None)
         frame_poses_raw = inputs.pop('_frame_poses', None)
         
         def _to_list(value):
@@ -556,7 +411,6 @@ class SwiftVLNTemplateMixin:
         # Get per-sample counts (important for batch_size > 1)
         history_counts = _to_list(num_history_raw)
         current_counts = _to_list(num_current_raw)
-        initial_counts = _to_list(num_initial_raw)
         
         # Ensure same number of samples
         num_samples = max(len(history_counts), len(current_counts))
@@ -564,8 +418,6 @@ class SwiftVLNTemplateMixin:
             history_counts.append(0)
         while len(current_counts) < num_samples:
             current_counts.append(0)
-        while len(initial_counts) < num_samples:
-            initial_counts.append(0)
 
         def _is_pose_vec(item):
             if not isinstance(item, (list, tuple)) or len(item) < 4:
@@ -654,10 +506,9 @@ class SwiftVLNTemplateMixin:
         if image_grid_thw is not None:
             num_images = image_grid_thw.shape[0]
             if total_history + total_current != num_images:
-                if DEBUG_COMPRESSION:
-                    print(f"[SwiftVLN] WARNING: Image count mismatch! "
-                          f"history={total_history}, current={total_current}, "
-                          f"total={total_history + total_current}, actual={num_images}")
+                print(f"[SwiftVLN] WARNING: Image count mismatch! "
+                      f"history={total_history}, current={total_current}, "
+                      f"total={total_history + total_current}, actual={num_images}")
         
         if pixel_values is None:
             # No images, handle training stability
@@ -684,7 +535,7 @@ class SwiftVLNTemplateMixin:
             all_image_embeds = visual_res
         
         # --- Embedding Enhancement Pipeline ---
-        # Apply embedding enhancements (pixel, pose, etc.) to ALL images
+        # Apply embedding enhancements to ALL images
         # This must happen BEFORE history compression so both history and current
         # images benefit from the learned enhancements
         if hasattr(model, 'embed_enhance') and not model.embed_enhance.is_empty:
@@ -708,24 +559,10 @@ class SwiftVLNTemplateMixin:
                 offset += n_tokens
             
             all_image_embeds = torch.cat(enhanced, dim=0)
-            
-            if DEBUG_COMPRESSION:
-                print(f"  [EmbedEnhance] Applied {model.embed_enhance.enhancement_names} to {image_grid_thw.shape[0]} images")
         # --- End Embedding Enhancement Pipeline ---
         
         merge_size = self.processor.image_processor.merge_size
         merge_length = merge_size ** 2
-        
-        if DEBUG_COMPRESSION:
-            print("\n" + "="*70)
-            print("[DEBUG] SwiftVLN _post_encode: History Processing")
-            print(f"  Batch size: {num_samples}")
-            print(f"  Per-sample history counts: {history_counts}")
-            print(f"  Per-sample current counts: {current_counts}")
-            print(f"  Total images: {total_history + total_current} (history: {total_history}, current: {total_current})")
-            print(f"  History Processor: {self.history_processor.name}")
-            print(f"  merge_size: {merge_size} (Qwen2.5-VL visual encoder merge)")
-            print(f"  all_image_embeds shape: {all_image_embeds.shape}")
         
         # Split embeddings by image, processing per-sample to maintain correct order
         # Image order in image_grid_thw: [sample1_all_images, sample2_all_images, ...]
@@ -738,18 +575,12 @@ class SwiftVLNTemplateMixin:
         all_history_frame_grid_thws = []  # List of [3] grid_thw per frame
         current_embeds_list = []
         
-        total_history_tokens_before = 0
-        total_current_tokens = 0
-        
         for sample_idx in range(num_samples):
             sample_num_history = history_counts[sample_idx]
             sample_num_current = current_counts[sample_idx]
             
-            if DEBUG_COMPRESSION:
-                print(f"\n  Sample {sample_idx}: {sample_num_history} history + {sample_num_current} current")
-            
             # Collect history frame embeddings (raw, before compression)
-            for h_idx in range(sample_num_history):
+            for _ in range(sample_num_history):
                 if img_idx >= image_grid_thw.shape[0]:
                     break
                 num_tokens = int(image_grid_thw[img_idx].prod() // merge_length)
@@ -763,18 +594,12 @@ class SwiftVLNTemplateMixin:
                 
                 all_history_frame_embeds.append(img_embeds)
                 all_history_frame_grid_thws.append(grid_after_merge)
-                
-                if DEBUG_COMPRESSION:
-                    total_history_tokens_before += num_tokens
-                    print(f"    History[{h_idx}] img_idx={img_idx}: {num_tokens} tokens (raw)")
-                
+
                 img_idx += 1
-            
-            sample_num_initial = initial_counts[sample_idx] if sample_idx < len(initial_counts) else 0
             
             # Process current images for this sample (no compression)
             # Image order within current: [initial_image (if any), turn_images...]
-            for c_idx in range(sample_num_current):
+            for _ in range(sample_num_current):
                 if img_idx >= image_grid_thw.shape[0]:
                     break
                 num_tokens = int(image_grid_thw[img_idx].prod() // merge_length)
@@ -782,19 +607,13 @@ class SwiftVLNTemplateMixin:
                 embed_idx += num_tokens
                 
                 current_embeds_list.append(img_embeds)
-                
-                if DEBUG_COMPRESSION:
-                    total_current_tokens += num_tokens
-                    is_init_str = " [INITIAL]" if (c_idx == 0 and sample_num_initial > 0) else ""
-                    print(f"    Current[{c_idx}] img_idx={img_idx}: {num_tokens} tokens (no compression){is_init_str}")
-                
+
                 img_idx += 1
         
         # Process history frames using HistoryProcessor
         # IMPORTANT: For GTC/SegmentGTC, must process each sample separately to match
         # the token counts calculated in _encode() for each sample
         history_embeds_list = []
-        total_history_tokens_after = 0
         
         if all_history_frame_embeds:
             # Get per-sample token counts for validation
@@ -802,12 +621,6 @@ class SwiftVLNTemplateMixin:
                 expected_tokens_per_sample = _to_list(total_history_tokens_raw)
             else:
                 expected_tokens_per_sample = None
-            
-            if DEBUG_COMPRESSION:
-                print(f"\n  [GTC/SGTC Processing] History Processor: {self.history_processor.name}")
-                print(f"    Total history frames: {len(all_history_frame_embeds)}")
-                print(f"    Expected tokens per sample: {expected_tokens_per_sample}")
-                print(f"    Processing {num_samples} samples separately...")
             
             # Rebuild per-sample history frame lists for separate processing
             # This is necessary because GTC/SegmentGTC should not mix frames across samples
@@ -823,20 +636,11 @@ class SwiftVLNTemplateMixin:
                 sample_frame_grid_thws = all_history_frame_grid_thws[frame_idx:frame_idx + sample_num_history]
                 frame_idx += sample_num_history
                 
-                # Calculate input tokens for this sample
-                input_tokens_this_sample = sum(e.shape[0] for e in sample_frame_embeds)
-                
-                if DEBUG_COMPRESSION:
-                    print(f"\n    Sample {sample_idx}: {sample_num_history} history frames, {input_tokens_this_sample} input tokens")
-                
                 # Process this sample's history
                 processed_sample = self.history_processor.process(
                     frame_embeds_list=sample_frame_embeds,
                     frame_grid_thws=sample_frame_grid_thws,
                 )
-                
-                if DEBUG_COMPRESSION:
-                    print(f"      -> Processed output: {processed_sample.shape[0]} tokens (compression: {input_tokens_this_sample / max(1, processed_sample.shape[0]):.2f}x)")
                 
                 # Validate token count matches what _encode() calculated
                 # Use expected_idx (not sample_idx) because expected_tokens_per_sample only contains
@@ -845,38 +649,20 @@ class SwiftVLNTemplateMixin:
                     expected = expected_tokens_per_sample[expected_idx]
                     actual = processed_sample.shape[0]
                     if expected != actual:
-                        if DEBUG_COMPRESSION:
-                            print(f"[SwiftVLN] DEBUG: Sample {sample_idx} (expected_idx={expected_idx}) token mismatch! "
-                                  f"expected={expected}, actual={actual}, diff={expected - actual}")
+                        print(f"[SwiftVLN] WARNING: Sample {sample_idx} history token count mismatch; "
+                              f"expected={expected}, actual={actual}. Adjusting embeddings to match placeholders.")
                         # Pad or truncate to match expected count
                         if actual < expected:
                             # Pad with zeros (shouldn't happen often)
                             padding = torch.zeros(expected - actual, processed_sample.shape[1], 
                                                   device=processed_sample.device, dtype=processed_sample.dtype)
                             processed_sample = torch.cat([processed_sample, padding], dim=0)
-                            if DEBUG_COMPRESSION:
-                                print(f"      -> Padded {expected - actual} tokens to match expected")
                         else:
                             # Truncate
                             processed_sample = processed_sample[:expected]
-                            if DEBUG_COMPRESSION:
-                                print(f"      -> Truncated {actual - expected} tokens to match expected")
-                    else:
-                        if DEBUG_COMPRESSION:
-                            print(f"      -> Token count matches expected: {expected}")
                 
                 expected_idx += 1  # Increment expected_idx for each sample with history
                 history_embeds_list.append(processed_sample)
-                total_history_tokens_after += processed_sample.shape[0]
-        
-        if DEBUG_COMPRESSION:
-            print("\n" + "-"*70)
-            print("  SUMMARY:")
-            if total_history > 0:
-                print(f"    History: {total_history_tokens_before} -> {total_history_tokens_after} tokens")
-                print(f"    Compression ratio: {total_history_tokens_before / max(1, total_history_tokens_after):.2f}x")
-            print(f"    Current: {total_current_tokens} tokens")
-            print("="*70 + "\n")
         
         # Replace unified history memory tokens
         # All history embeddings are concatenated into a single block
@@ -889,9 +675,6 @@ class SwiftVLNTemplateMixin:
             # Validate before masked_scatter
             mask_true_count = (input_ids == self.history_memory_token_id).sum().item()
             embeds_count = history_embeds.shape[0]
-            if DEBUG_COMPRESSION:
-                print(f"\n  [masked_scatter] History: mask_true={mask_true_count}, embeds={embeds_count}")
-            injection_matched_before_fix = (mask_true_count == embeds_count)
             if mask_true_count != embeds_count:
                 print(f"[SwiftVLN] CRITICAL: History token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
@@ -904,34 +687,6 @@ class SwiftVLNTemplateMixin:
                 else:
                     history_embeds = history_embeds[:mask_true_count]
                     print(f"  -> Truncated history_embeds to {history_embeds.shape[0]}")
-
-            if DEBUG_INITIAL and getattr(self, 'memory_method', 'history') == 'map':
-                if not hasattr(self, '_debug_map_post_encode_count'):
-                    self._debug_map_post_encode_count = 0
-                if self._debug_map_post_encode_count < 5:
-                    rank = _debug_rank()
-                    per_sample_tokens = [embed.shape[0] for embed in history_embeds_list]
-                    per_sample_mask = [
-                        int((input_ids[sample_idx] == self.history_memory_token_id).sum().item())
-                        for sample_idx in range(input_ids.shape[0])
-                    ]
-                    per_sample_current_mask = [
-                        int((input_ids[sample_idx] == self.current_image_token_id).sum().item())
-                        for sample_idx in range(input_ids.shape[0])
-                    ]
-                    print(
-                        f"[MAP DEBUG][template._post_encode] Rank={rank} "
-                        f"history_counts={history_counts} per_sample_tokens={per_sample_tokens} "
-                        f"per_sample_history_mask={per_sample_mask} "
-                        f"per_sample_current_mask={per_sample_current_mask} "
-                        f"mask_true={mask_true_count} embeds={embeds_count} "
-                        f"matched_before_fix={injection_matched_before_fix}"
-                    )
-                    print(
-                        f"[MAP DEBUG][template._post_encode] "
-                        f"history_embed_stats={_tensor_debug_stats(history_embeds)}"
-                    )
-                    self._debug_map_post_encode_count += 1
             
             inputs_embeds = inputs_embeds.masked_scatter(history_mask, history_embeds)
         
@@ -944,64 +699,9 @@ class SwiftVLNTemplateMixin:
             # Validate before masked_scatter
             mask_true_count = (input_ids == self.current_image_token_id).sum().item()
             embeds_count = current_embeds.shape[0]
-            if DEBUG_COMPRESSION:
-                print(f"  [masked_scatter] Current: mask_true={mask_true_count}, embeds={embeds_count}")
             if mask_true_count != embeds_count:
                 print(f"[SwiftVLN] CRITICAL: Current token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
-            
-            # ============================================================
-            # DEBUG: Verify initial token injection in multi-sample batch
-            # ============================================================
-            if DEBUG_INITIAL and any(ic > 0 for ic in initial_counts):
-                if not hasattr(self, '_debug_initial_post_encode_count'):
-                    self._debug_initial_post_encode_count = 0
-                if self._debug_initial_post_encode_count < 5:
-                    rank = int(os.environ.get('RANK', os.environ.get('LOCAL_RANK', 0)))
-                    print(f"\n{'='*70}")
-                    print(f"[INITIAL DEBUG] Rank={rank} _post_encode: Initial Token Injection Verification")
-                    print(f"  Batch size: {num_samples}")
-                    print(f"  Per-sample: history={history_counts}, current={current_counts}, initial={initial_counts}")
-                    print(f"  Total <current_image> mask positions: {mask_true_count}")
-                    print(f"  Total current embeds to inject: {embeds_count}")
-                    
-                    # Per-sample position analysis
-                    embed_offset = 0
-                    for s_idx in range(num_samples):
-                        s_num_init = initial_counts[s_idx] if s_idx < len(initial_counts) else 0
-                        s_num_current = current_counts[s_idx] if s_idx < len(current_counts) else 0
-                        s_num_turn = s_num_current - s_num_init  # turn images = current - initial
-                        
-                        # Count <current_image> positions in this sample's input_ids
-                        if input_ids.dim() == 2 and s_idx < input_ids.shape[0]:
-                            s_positions = (input_ids[s_idx] == self.current_image_token_id).nonzero(as_tuple=True)[0]
-                            s_mask_count = len(s_positions)
-                        else:
-                            # 1D input_ids (single sample or already flattened)
-                            s_positions = (input_ids.view(-1) == self.current_image_token_id).nonzero(as_tuple=True)[0]
-                            s_mask_count = len(s_positions)
-                        
-                        # Calculate token counts for each current image in this sample
-                        token_counts_str = []
-                        for c_i in range(s_num_current):
-                            idx = embed_offset + c_i
-                            if idx < len(current_embeds_list):
-                                tc = current_embeds_list[idx].shape[0]
-                                label = "INITIAL" if (c_i == 0 and s_num_init > 0) else f"turn{c_i - s_num_init}"
-                                token_counts_str.append(f"{label}:{tc}")
-                        embed_offset += s_num_current
-                        
-                        print(f"  Sample {s_idx}: {s_num_current} current images "
-                              f"({s_num_init} initial + {s_num_turn} turns), "
-                              f"mask_positions={s_mask_count}, "
-                              f"embeds=[{', '.join(token_counts_str)}]")
-                    
-                    # Verify total consistency
-                    total_from_list = sum(e.shape[0] for e in current_embeds_list)
-                    status = "OK" if mask_true_count == total_from_list else "MISMATCH"
-                    print(f"  Verification: mask={mask_true_count} vs embeds={total_from_list} -> {status}")
-                    print(f"{'='*70}\n")
-                    self._debug_initial_post_encode_count += 1
             
             inputs_embeds = inputs_embeds.masked_scatter(current_mask, current_embeds)
         
@@ -1044,8 +744,6 @@ register_template(
     exist_ok=True,
 )
 
-print("[SwiftVLNTemplate] Template 'swiftvln_qwen2_5_vl' registered successfully!")
-
 register_template(
     QwenTemplateMeta(
         'swiftvln_qwen3_vl',
@@ -1055,5 +753,3 @@ register_template(
     ),
     exist_ok=True,
 )
-
-print("[SwiftVLNTemplate] Template 'swiftvln_qwen3_vl' registered successfully!")

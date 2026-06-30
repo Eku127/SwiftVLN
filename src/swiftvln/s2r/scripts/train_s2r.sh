@@ -9,7 +9,8 @@ REPO_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
 cd "${REPO_ROOT}"
 
 MANIFEST_PATH="${MANIFEST_PATH:-runtime/s2r/manifests/manifest_v1.jsonl}"
-TEACHER_MODEL_PATH="${TEACHER_MODEL_PATH:-output/swiftvln/swiftvln-satnav-stage1-3b-1ep-f32s4-overlap16-gtc-k512-noembed-data260317-bs64-lr2e-5-20260318-202149/v0-20260318-202212/checkpoint-3957}"
+BASE_MODEL_PATH="${BASE_MODEL_PATH:-/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct}"
+TEACHER_MODEL_PATH="${TEACHER_MODEL_PATH:-$BASE_MODEL_PATH}"
 OUTPUT_DIR="${OUTPUT_DIR:-output/s2r/$(date +%Y%m%d-%H%M%S)}"
 export PYTHONPATH="${REPO_ROOT}/src:${PYTHONPATH:-}"
 
