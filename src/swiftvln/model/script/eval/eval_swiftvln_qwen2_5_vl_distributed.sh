@@ -127,8 +127,8 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
 # Map-memory render cache.
 # "auto" (default): let the Python layer derive {dataset_root}/map_cache from
-# the habitat DATA_PATH (e.g. ver_260404/map_cache), so eval warms / reuses the
-# same cache as training. Any absolute path overrides; set to one of
+# DATA_PATH (e.g. SatNav-v0.1/map_cache or a custom abcd/map_cache), so eval
+# warms / reuses the same cache as training. Any absolute path overrides; set to one of
 # {off,false,none,0,disable,disabled,no} to disable caching.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
@@ -176,7 +176,7 @@ export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
 
 # Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
 # SWIFTVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (derive
-# {dataset_root}/map_cache from habitat DATA_PATH); explicit paths or "off"-
+# {dataset_root}/map_cache from DATA_PATH); explicit paths or "off"-
 # family sentinels are passed through verbatim.
 if [ "$MEMORY_METHOD" = "map" ]; then
     if [ -n "$MAP_CACHE_DIR" ] && [ "$MAP_CACHE_DIR" != "auto" ]; then

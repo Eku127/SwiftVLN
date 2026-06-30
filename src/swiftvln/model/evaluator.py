@@ -124,6 +124,32 @@ def _tensor_debug_stats(tensor: Optional[torch.Tensor], sample_limit: int = 4) -
     )
 
 
+def _derive_dataset_cache_dir(data_path_tmpl: str) -> Optional[str]:
+    """Infer {dataset_root}/map_cache from a SatNav DATA_PATH template."""
+    if not data_path_tmpl:
+        return None
+
+    parts = str(data_path_tmpl).split(os.sep)
+    if 'episodes' in parts:
+        idx = parts.index('episodes')
+        if idx > 0:
+            dataset_root = os.sep.join(parts[:idx])
+            if os.path.isabs(str(data_path_tmpl)) and not dataset_root.startswith(os.sep):
+                dataset_root = os.sep + dataset_root
+            return os.path.join(os.path.abspath(dataset_root), 'map_cache')
+
+    probe_dir = os.path.dirname(str(data_path_tmpl))
+    for _ in range(8):
+        base = os.path.basename(probe_dir.rstrip('/'))
+        if base.startswith('ver_'):
+            return os.path.join(os.path.abspath(probe_dir), 'map_cache')
+        parent = os.path.dirname(probe_dir)
+        if not parent or parent == probe_dir:
+            break
+        probe_dir = parent
+    return None
+
+
 @dataclass
 class OverlapContext:
     """Context from the last num_overlap/num_future_steps turns of previous window."""
@@ -246,23 +272,11 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
                 raise ValueError("SwiftVLN memory_method=map requires use_pose_embed=false.")
             if getattr(self.args, 'use_uav_adapter', False):
                 raise ValueError("SwiftVLN memory_method=map requires use_uav_adapter=false.")
-            # Derive cache dir from DATA_PATH so eval warms the same on-disk
-            # cache as training (e.g. ver_260404/map_cache). Env var
+            # Derive cache dir from DATA_PATH so any dataset root name, such as
+            # SatNav-v0.1 or a custom abcd directory, maps to {root}/map_cache.
             # SWIFTVLN_MAP_CACHE_DIR overrides this; "off" disables it.
-            default_map_cache_dir: Optional[str] = None
             data_path_tmpl = getattr(self.config.DATASET, 'DATA_PATH', '') or ''
-            probe_dir = os.path.dirname(str(data_path_tmpl))
-            for _ in range(8):
-                base = os.path.basename(probe_dir.rstrip('/'))
-                if base.startswith('ver_'):
-                    default_map_cache_dir = os.path.join(
-                        os.path.abspath(probe_dir), 'map_cache'
-                    )
-                    break
-                parent = os.path.dirname(probe_dir)
-                if not parent or parent == probe_dir:
-                    break
-                probe_dir = parent
+            default_map_cache_dir = _derive_dataset_cache_dir(str(data_path_tmpl))
             self.map_builder = SatNavMapMemoryBuilder(
                 scenes_dir=self.config.DATASET.SCENES_DIR,
                 global_side_m=self.map_global_side_m,

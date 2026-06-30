@@ -381,10 +381,11 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 依赖说明：
     - `map_memory.py` 运行时依赖可选 geo 包：`rasterio` 与 `pyproj`
     - 当前仓库实现已做惰性导入；若环境缺依赖，只会在 `memory_method=map` 真正执行到地图渲染时报错
-  - **On-disk render cache**（Updated: 2026-04-17）：
-    - 位置：默认 `{dataset_root}/map_cache`（例：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/map_cache`）
+  - **On-disk render cache**（Updated: 2026-06-30）：
+    - 位置：默认 `{dataset_root}/map_cache`（例：`/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/map_cache`）
       - 训练入口（`dataset.py`）从 `SatNavTrajectoryMetadataResolver.dataset_root` 推导
-      - 评测入口（`evaluator.py`）从 habitat `DATA_PATH` 回溯找第一个 `ver_*` 目录
+      - 评测入口（`evaluator.py`）从 `DATA_PATH` 中的 `episodes` 段推导其上级目录为 dataset root；
+        因此任意数据集目录名（如 `SatNav-v0.1`、`abcd`、`ver_*`）都会映射到同级 `map_cache`
     - 开关（优先级从高到低）：
       1. 环境变量 `SWIFTVLN_MAP_CACHE_DIR=<path>` 强制指定路径
       2. 环境变量 `SWIFTVLN_MAP_CACHE_DIR=off|false|none|0|disable|disabled|no` 关闭缓存
