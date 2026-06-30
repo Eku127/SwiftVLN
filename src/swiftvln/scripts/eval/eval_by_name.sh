@@ -62,6 +62,7 @@ SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 VLN_ROOT="${SWIFTVLN_ROOT}/src/swiftvln"
 OUTPUT_ROOT="${SWIFTVLN_ROOT}/output"
+source "${SCRIPT_DIR}/eval_lib.sh"
 
 # ============================================================================
 # 参数检查
@@ -119,24 +120,6 @@ print_info "检测到模型架构: ${MODEL_ARCH}"
 # SwiftVLN (gtc):         swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
 # SwiftVLN (segment_gtc): swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
 #   embed_slot: noembed | pose | posefilm | uav | pose+uav | posefilm+uav
-
-# ============================================================================
-# 解析环境类型 (从模型名中提取 env_type，兼容新旧格式)
-# ============================================================================
-parse_env_type() {
-    local name="$1"
-    
-    # 新格式: {arch}-{env_type}-{model_size}-...
-    # 检测是否为新格式 (第二个字段是 habitat 或 satnav)
-    local second_field=$(echo "$name" | cut -d'-' -f2)
-    
-    if [[ "$second_field" == "habitat" ]] || [[ "$second_field" == "satnav" ]]; then
-        echo "$second_field"
-    else
-        # 旧格式，默认 habitat
-        echo "habitat"
-    fi
-}
 
 parse_swiftvln_params() {
     local name="$1"
@@ -266,11 +249,86 @@ parse_swiftvln_params() {
     echo "LEARNING_RATE=$learning_rate"
 }
 
+print_swiftvln_params() {
+    if [ "$MODEL_ARCH" != "swiftvln" ]; then
+        return
+    fi
+
+    echo "NUM_OVERLAP:    ${NUM_OVERLAP:-N/A}"
+    echo "MEMORY_METHOD:  ${MEMORY_METHOD:-history}"
+    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
+        echo "MAP_GLOBAL_SIDE_M: ${MAP_GLOBAL_SIDE_M:-1000}"
+        echo "MAP_LOCAL_SIDE_M: ${MAP_LOCAL_SIDE_M:-400}"
+        echo "MAP_RENDER_PX: ${MAP_RENDER_PX:-448}"
+        echo "MAP_MASK_METHOD: ${MAP_MASK_METHOD:-dilate20}"
+        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
+    else
+        echo "HISTORY_PROCESSOR_TYPE: ${HISTORY_PROCESSOR_TYPE:-per_frame}"
+    fi
+    if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
+        echo "GTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+    elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
+        echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+        echo "SGTC_NUM_SEGMENTS: 8 (fixed)"
+    elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
+        echo "NUM_HISTORY:    ${NUM_HISTORY:-8}"
+        echo "LOG_BASE:       ${LOG_BASE:-1.0}"
+        echo "USE_RANDOM:     ${USE_RANDOM:-false}"
+        if [ "${USE_RANDOM:-false}" = "true" ]; then
+            echo "SAMPLING_MODE:  random (LOG_BASE metadata only)"
+        fi
+        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
+        echo "USE_TOME:       ${USE_TOME:-false}"
+    fi
+    echo "SYSTEM_PROMPT:  ${SYSTEM_PROMPT_SETTING:-vanilla}"
+    echo "USE_POSE_EMBED: ${USE_POSE_EMBED:-false}"
+    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
+    fi
+}
+
+print_swiftvln_env_assignments() {
+    for name in NUM_FRAMES NUM_HISTORY NUM_FUTURE_STEPS COMPRESS_STRIDE NUM_OVERLAP MEMORY_METHOD HISTORY_PROCESSOR_TYPE; do
+        if [ -n "${!name:-}" ]; then
+            echo "${name}=${!name}"
+        fi
+    done
+
+    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
+        for name in MAP_GLOBAL_SIDE_M MAP_LOCAL_SIDE_M MAP_RENDER_PX MAP_MASK_METHOD; do
+            if [ -n "${!name:-}" ]; then
+                echo "${name}=${!name}"
+            fi
+        done
+    elif [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "gtc" ] || [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "segment_gtc" ]; then
+        if [ -n "${GTC_OUTPUT_TOKENS:-}" ]; then
+            echo "GTC_OUTPUT_TOKENS=${GTC_OUTPUT_TOKENS}"
+        fi
+        if [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "segment_gtc" ]; then
+            echo "SGTC_NUM_SEGMENTS=8 (fixed)"
+        fi
+    else
+        for name in LOG_BASE USE_RANDOM USE_TOME; do
+            if [ -n "${!name:-}" ]; then
+                echo "${name}=${!name}"
+            fi
+        done
+    fi
+
+    if [ -n "${SYSTEM_PROMPT_SETTING:-}" ]; then
+        echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
+    fi
+    if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
+        echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
+        echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
+    fi
+}
+
 # 解析 swiftvln 参数
 eval "$(parse_swiftvln_params "$MODEL_NAME")"
 
 # 解析环境类型 (从模型名中提取，如果用户没有指定 ENV_TYPE)
-PARSED_ENV_TYPE=$(parse_env_type "$MODEL_NAME" "$MODEL_ARCH")
+PARSED_ENV_TYPE=$(parse_env_type_from_model "$MODEL_NAME")
 
 # 如果用户没有指定 ENV_TYPE，则使用从模型名解析出的值
 if [ -z "$ENV_TYPE" ]; then
@@ -298,39 +356,7 @@ echo "NUM_FRAMES:     ${NUM_FRAMES:-N/A}"
 echo "NUM_HISTORY:    ${NUM_HISTORY:-N/A}"
 echo "NUM_FUTURE_STEPS: ${NUM_FUTURE_STEPS:-N/A}"
 
-# SwiftVLN 特有参数
-if [ "$MODEL_ARCH" == "swiftvln" ]; then
-    echo "NUM_OVERLAP:    ${NUM_OVERLAP:-N/A}"
-    echo "MEMORY_METHOD:  ${MEMORY_METHOD:-history}"
-    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
-        echo "MAP_GLOBAL_SIDE_M: ${MAP_GLOBAL_SIDE_M:-1000}"
-        echo "MAP_LOCAL_SIDE_M: ${MAP_LOCAL_SIDE_M:-400}"
-        echo "MAP_RENDER_PX: ${MAP_RENDER_PX:-448}"
-        echo "MAP_MASK_METHOD: ${MAP_MASK_METHOD:-dilate20}"
-        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
-    else
-        echo "HISTORY_PROCESSOR_TYPE: ${HISTORY_PROCESSOR_TYPE:-per_frame}"
-    fi
-    if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
-        echo "GTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
-    elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-        echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
-        echo "SGTC_NUM_SEGMENTS: 8 (fixed)"
-    elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
-        echo "NUM_HISTORY:    ${NUM_HISTORY:-8}"
-        echo "LOG_BASE:       ${LOG_BASE:-1.0}"
-        echo "USE_RANDOM:     ${USE_RANDOM:-false}"
-        if [ "${USE_RANDOM:-false}" = "true" ]; then
-            echo "SAMPLING_MODE:  random (LOG_BASE metadata only)"
-        fi
-        echo "COMPRESS_STRIDE: ${COMPRESS_STRIDE:-2}"
-        echo "USE_TOME:       ${USE_TOME:-false}"
-    fi
-    echo "USE_POSE_EMBED: ${USE_POSE_EMBED:-false}"
-    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
-    fi
-fi
+print_swiftvln_params
 
 echo "BATCH_SIZE:     ${BATCH_SIZE:-N/A}"
 echo "LEARNING_RATE:  ${LEARNING_RATE:-N/A}"
@@ -372,68 +398,7 @@ if [ "$CHECK_ONLY" == "true" ]; then
     echo "EVAL_SPLIT=${EVAL_SPLIT:-val_unseen}"
     echo "CUDA_DEVICES=${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
     echo "MASTER_PORT=${MASTER_PORT:-29600} (实际运行时会自动检测端口占用)"
-    if [ -n "$NUM_FRAMES" ]; then
-        echo "NUM_FRAMES=${NUM_FRAMES}"
-    fi
-    if [ -n "$NUM_HISTORY" ]; then
-        echo "NUM_HISTORY=${NUM_HISTORY}"
-    fi
-    if [ -n "$NUM_FUTURE_STEPS" ]; then
-        echo "NUM_FUTURE_STEPS=${NUM_FUTURE_STEPS}"
-    fi
-    if [ -n "$COMPRESS_STRIDE" ]; then
-        echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
-    fi
-    # SwiftVLN 特有参数
-    if [ -n "$NUM_OVERLAP" ]; then
-        echo "NUM_OVERLAP=${NUM_OVERLAP}"
-    fi
-    if [ -n "$MEMORY_METHOD" ]; then
-        echo "MEMORY_METHOD=${MEMORY_METHOD}"
-    fi
-    if [ -n "$HISTORY_PROCESSOR_TYPE" ]; then
-        echo "HISTORY_PROCESSOR_TYPE=${HISTORY_PROCESSOR_TYPE}"
-    fi
-    if [ "$MEMORY_METHOD" == "map" ]; then
-        [ -n "$MAP_GLOBAL_SIDE_M" ] && echo "MAP_GLOBAL_SIDE_M=${MAP_GLOBAL_SIDE_M}"
-        [ -n "$MAP_LOCAL_SIDE_M" ] && echo "MAP_LOCAL_SIDE_M=${MAP_LOCAL_SIDE_M}"
-        [ -n "$MAP_RENDER_PX" ] && echo "MAP_RENDER_PX=${MAP_RENDER_PX}"
-        [ -n "$MAP_MASK_METHOD" ] && echo "MAP_MASK_METHOD=${MAP_MASK_METHOD}"
-        if [ -n "$COMPRESS_STRIDE" ]; then
-            echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
-        fi
-    elif [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-        if [ -n "$GTC_OUTPUT_TOKENS" ]; then
-            echo "GTC_OUTPUT_TOKENS=${GTC_OUTPUT_TOKENS}"
-        fi
-        if [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-            echo "SGTC_NUM_SEGMENTS=8 (fixed)"
-        fi
-    else
-        # per_frame 参数
-        if [ -n "$NUM_HISTORY" ]; then
-            echo "NUM_HISTORY=${NUM_HISTORY}"
-        fi
-        if [ -n "$LOG_BASE" ]; then
-            echo "LOG_BASE=${LOG_BASE}"
-        fi
-        if [ -n "$USE_RANDOM" ]; then
-            echo "USE_RANDOM=${USE_RANDOM}"
-        fi
-        if [ -n "$COMPRESS_STRIDE" ]; then
-            echo "COMPRESS_STRIDE=${COMPRESS_STRIDE}"
-        fi
-        if [ -n "$USE_TOME" ]; then
-            echo "USE_TOME=${USE_TOME}"
-        fi
-    fi
-    if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
-        echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
-    fi
-    if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
-        echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
-    fi
+    print_swiftvln_env_assignments
     echo "SAVE_VIDEO=${SAVE_VIDEO:-false}"
     if [ -n "$MAX_EPISODES" ]; then
         echo "MAX_EPISODES=${MAX_EPISODES}"
@@ -602,15 +567,7 @@ export MODEL_FAMILY="${MODEL_FAMILY:-qwen2_5_vl}"
 
 # 确定要评测的 split 列表
 # 若用户已显式设置 EVAL_SPLIT，仅跑该 split；否则 SatNav 默认同时跑两个 split，Habitat 默认 val_unseen
-if [ -n "$EVAL_SPLIT" ]; then
-    EVAL_SPLITS_LIST="$EVAL_SPLIT"
-else
-    if [ "$ENV_TYPE" == "satnav" ]; then
-        EVAL_SPLITS_LIST="val_seen val_unseen"
-    else
-        EVAL_SPLITS_LIST="val_unseen"
-    fi
-fi
+EVAL_SPLITS_LIST="$(infer_eval_splits "$ENV_TYPE" "${EVAL_SPLIT:-}")"
 export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
 export MASTER_PORT
 export SAVE_VIDEO="${SAVE_VIDEO:-false}"
@@ -696,37 +653,7 @@ fi
 # SwiftVLN 特有参数
 if [ "$MODEL_ARCH" == "swiftvln" ]; then
     echo "--- SwiftVLN Parameters ---"
-    echo "NUM_OVERLAP:        ${NUM_OVERLAP:-N/A}"
-    echo "MEMORY_METHOD:      ${MEMORY_METHOD:-history}"
-    if [ "${MEMORY_METHOD:-history}" == "map" ]; then
-        echo "MAP_GLOBAL_SIDE_M:  ${MAP_GLOBAL_SIDE_M:-1000}"
-        echo "MAP_LOCAL_SIDE_M:   ${MAP_LOCAL_SIDE_M:-400}"
-        echo "MAP_RENDER_PX:      ${MAP_RENDER_PX:-448}"
-        echo "MAP_MASK_METHOD:    ${MAP_MASK_METHOD:-dilate20}"
-        echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"
-    else
-        echo "HISTORY_PROCESSOR:  ${HISTORY_PROCESSOR_TYPE:-per_frame}"
-    fi
-    if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
-        echo "GTC_OUTPUT_TOKENS:  ${GTC_OUTPUT_TOKENS:-512}"
-    elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-        echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
-        echo "SGTC_NUM_SEGMENTS:  8 (fixed)"
-    elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
-        echo "NUM_HISTORY:        ${NUM_HISTORY:-8}"
-        echo "LOG_BASE:           ${LOG_BASE:-1.0}"
-        echo "USE_RANDOM:         ${USE_RANDOM:-false}"
-        if [ "${USE_RANDOM:-false}" = "true" ]; then
-            echo "SAMPLING_MODE:      random (LOG_BASE metadata only)"
-        fi
-        echo "COMPRESS_STRIDE:    ${COMPRESS_STRIDE:-2}"
-        echo "USE_TOME:           ${USE_TOME:-false}"
-    fi
-    echo "SYSTEM_PROMPT:      ${SYSTEM_PROMPT_SETTING:-vanilla}"
-    echo "USE_POSE_EMBED:     ${USE_POSE_EMBED:-false}"
-    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
-    fi
+    print_swiftvln_params
 fi
 echo "=============================================="
 echo ""

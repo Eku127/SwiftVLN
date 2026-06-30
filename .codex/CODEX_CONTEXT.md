@@ -439,7 +439,9 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - `enqueue_eval.sh` 现在对 `eval_todo.txt.lock` 使用带超时的 `flock -w`
     ，避免训练队列在“准备自动入评测队列”阶段无限阻塞
 - 评测 worker：`src/swiftvln/scripts/eval/start_eval_worker.sh`
-- 评测 monitor：`src/swiftvln/scripts/eval/start_eval_monitor.sh`
+- 评测 auto-stop monitor（Updated: 2026-06-30）：旧的三机特供
+  `src/swiftvln/scripts/eval/start_eval_monitor.sh` 已移除；队列常驻消费统一使用
+  `start_eval_worker.sh`，单轮/批量消费使用 `eval_queue.sh`
 - 评测 watchdog：`src/swiftvln/scripts/eval/eval_watchdog.sh`
 - 数据处理：`src/swiftvln/scripts/data_process/*.py`
 - 数据集 merge：`src/swiftvln/scripts/data_process/merge_satnav_data.py`

@@ -69,8 +69,7 @@ Before starting, confirm the following with the user:
 |---|---|---|
 | One-off eval of a single model | `eval_by_name.sh` | Run once and exit |
 | Serial queue consumption (long-lived) | `start_eval_worker.sh` | Keeps polling `eval_todo.txt`, waits for new tasks |
-| Auto-stop queue consumption | `start_eval_monitor.sh` | Polls `eval_todo.txt`, stops when all hosts idle |
-| Low-level queue runner | `eval_queue.sh` | Internal queue engine, usually invoked by worker/monitor |
+| Low-level queue runner | `eval_queue.sh` | Internal queue engine, usually invoked by worker |
 | Async completion monitor | `eval_watchdog.sh` | Background watchdog, triggers Codex callback |
 
 ## Map-Memory Parsing Notes (SwiftVLN)
@@ -377,7 +376,6 @@ runtime/eval_queue/runs/<hostname>_<session_name>/
 | Single eval by name | `src/swiftvln/scripts/eval/eval_by_name.sh` |
 | Queue engine | `src/swiftvln/scripts/eval/eval_queue.sh` |
 | Long-lived worker | `src/swiftvln/scripts/eval/start_eval_worker.sh` |
-| Auto-stop monitor | `src/swiftvln/scripts/eval/start_eval_monitor.sh` |
 | **Async watchdog** | `src/swiftvln/scripts/eval/eval_watchdog.sh` |
 | Local enqueue helper | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
 | CSV collector | `src/swiftvln/scripts/eval/collect_eval_results.py` |
@@ -423,15 +421,15 @@ Fix: Always use `ssh -o BatchMode=yes -o ConnectTimeout=8 10.246.152.73`.
 
 Treat as **non-fatal** if: `torchrun` alive, `Rank 0` progress increasing, no `Traceback`.
 
-### 3) Concurrent eval monitor/worker
+### 3) Concurrent eval worker
 
 During preflight, check:
 
 ```bash
-pgrep -af "start_eval_monitor.sh|eval_queue.sh|eval_by_name.sh"
+pgrep -af "start_eval_worker.sh|eval_queue.sh|eval_by_name.sh"
 ```
 
-Stop existing monitor/worker if not intended for current run.
+Stop existing worker if not intended for current run.
 
 ### 4) Codex session ID capture fails
 

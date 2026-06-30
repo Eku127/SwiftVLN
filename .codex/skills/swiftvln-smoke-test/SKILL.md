@@ -26,7 +26,6 @@ Use this skill when the user asks for主线 SwiftVLN 的 smoke test / 冒烟测�
 | Eval queue | `src/swiftvln/scripts/eval/eval_queue.sh` |
 | Enqueue eval | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
 | Eval worker | `src/swiftvln/scripts/eval/start_eval_worker.sh` |
-| Eval monitor | `src/swiftvln/scripts/eval/start_eval_monitor.sh` |
 
 ## Fixed Environments
 
