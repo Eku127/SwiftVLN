@@ -51,6 +51,11 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 该脚本是 Qwen-VL family 入口，通过 `MODEL_FAMILY=qwen2_5_vl|qwen3_vl`
     选择 Qwen2.5-VL 或 Qwen3-VL
   - 旧的 Qwen2.5 专名脚本已移除；新文档、队列和 skills 统一使用该入口
+- 单次评测主入口（Updated: 2026-06-30）：
+  - `src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh`
+  - 该脚本是 Qwen-VL family distributed eval 入口，通过
+    `MODEL_FAMILY=qwen2_5_vl|qwen3_vl` 选择 Qwen2.5-VL 或 Qwen3-VL
+  - 旧的 Qwen2.5 专名 eval 脚本已移除；新文档和按名评测入口统一使用该入口
 - 训练队列端口/重试与配置注入（Updated: 2026-06-30）：
   - `src/swiftvln/scripts/train/train_queue.sh`
   - `train_queue.sh` 不再复制单次训练脚本并用 `sed/awk` 改写变量或数据路径；
@@ -207,7 +212,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - SwiftVLN 评测窗口默认与 `overlap=0` 修复（Updated: 2026-04-27）：
   - 相关文件：
     - `src/swiftvln/scripts/eval/eval_by_name.sh`
-    - `src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
+    - `src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh`
     - `src/swiftvln/model/eval.py`
     - `src/swiftvln/model/evaluator.py`
   - `eval_by_name.sh` 会从实验名中的 `f{num_frames}s{num_future_steps}` 与
@@ -315,7 +320,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 2026-04-20 起，`per_frame` 的 `USE_RANDOM=true` 已在**评测端**完整接通：
     - Python CLI：`src/swiftvln/model/eval.py`
     - evaluator 实际采样：`src/swiftvln/model/evaluator.py`
-    - distributed eval 脚本：`src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
+    - distributed eval 脚本：`src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh`
     - `eval_by_name.sh` 解析出的 `USE_RANDOM=true` 不再只是命名元数据，而会真实影响 eval 的 history sampling
   - `log_base` / `use_random` 在 `NUM_HISTORY=0` 时保留为配置元数据，但不会实际影响采样
   - `gtc` / `segment_gtc` 不适用该 no-memory 约定，因为其历史采样逻辑不看 `NUM_HISTORY`
@@ -344,7 +349,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 评测链路：
     - CLI 参数：`src/swiftvln/model/eval.py`
     - evaluator window 刷新：`src/swiftvln/model/evaluator.py`
-    - 单次 eval 脚本：`src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
+    - 单次 eval 脚本：`src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh`
     - 按名评测解析：`src/swiftvln/scripts/eval/eval_by_name.sh`
   - 队列透传：
     - `src/swiftvln/scripts/train/train_queue.sh`
@@ -442,7 +447,6 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 评测 auto-stop monitor（Updated: 2026-06-30）：旧的三机特供
   `src/swiftvln/scripts/eval/start_eval_monitor.sh` 已移除；队列常驻消费统一使用
   `start_eval_worker.sh`，单轮/批量消费使用 `eval_queue.sh`
-- 评测 watchdog：`src/swiftvln/scripts/eval/eval_watchdog.sh`
 - 数据处理：`src/swiftvln/scripts/data_process/*.py`
 - 数据集 merge：`src/swiftvln/scripts/data_process/merge_satnav_data.py`
 - 数据同步：`src/swiftvln/scripts/data_sync/*.sh`
@@ -454,6 +458,8 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     为当前 split 内所有 episode 的**直接平均**，无任何 trajectory-type 重加权
   - `evaluation_summary.json` 仍会写出 `by_trajectory_type` 细分，便于分类查看
   - `collect_eval_results.py` 的 `ALL_*` 列直接读顶层指标
+  - `collect_eval_results.py` 不再从模型名或旧 `ver_XXXXXX` 路径解析 data version；
+    每个 split 的汇总固定写入 `results/eval_collected/<split>/eval_results.csv`
   - 同等清理已同步至所有 baseline：
     `baseline/{streamvln,navila,uninavid,openfly}/src/eval_satnav.py`
 - 主线评测结果写入与 resume（Updated: 2026-06-30）：
@@ -461,6 +467,11 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 每个 rank 在 episode 完成后立即 append 到结果目录下 `result.jsonl`
   - 启动时读取既有 `result.jsonl`，按 `scene_id::episode_id` 联合键跳过已完成 episode；
     重复行按最后写入覆盖，用于断点续跑与重跑去重
+  - `src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh` 默认
+    `AUTO_RESUME_EVAL=true`：未显式设置 `OUTPUT_DIR` 时，会在
+    `results/eval/swiftvln/<model>/<split>/` 下查找最近的未完成目录
+    （有 `result.jsonl` / `.dist_sync` 且无 `evaluation_summary.json`）并复用；
+    找不到才创建新的 timestamp 目录。显式设置 `OUTPUT_DIR` 时不做自动探测。
   - 分布式收尾不再使用 `gather_metrics` / `dist.all_gather` / `dist.gather_object`
   - 每个 rank 完成后写 `.dist_sync/rank_<rank>.done.json`，rank0 轮询 marker 后从
     `result.jsonl` 离线去重汇总并写 `evaluation_summary.json`
@@ -924,26 +935,14 @@ UniNaVid SatNav eval 约定（Updated: 2026-06-29）：
 
 注意：不再使用旧路径 `src/swiftvln/scripts/eval/*.txt`。
 
-### Eval Watchdog 异步回调机制（Updated: 2026-03-18）
+### Eval tmux 与队列状态（Updated: 2026-06-30）
 
-评测默认使用 **tmux + watchdog** 异步模式，多服务器并发安全：
+评测默认使用 tmux 启动，队列状态通过共享文件记录：
 
 - 评测在 tmux session 中运行（命名：`eval_<short_desc>_<HHMMSS>`）
-- `eval_watchdog.sh` 后台监控 tmux session，完成/失败时通过 `codex exec resume` 回调
 - Per-host 完成状态：`runtime/eval_queue/eval_queue_last_run_<hostname>.json`
-- Per-run 独立目录：`runtime/eval_queue/runs/<hostname>_<session_name>/`
-  - `watchdog_result.json`、`watchdog.log`、`codex_response.txt`、`eval_queue_status.json`
-- 自动清理：watchdog 启动时默认清理 7 天前的旧 run 目录（`--cleanup-days`）
-
-Watchdog 启动方式（Codex 在启动评测后自动注册）：
-
-```bash
-nohup bash src/swiftvln/scripts/eval/eval_watchdog.sh \
-  --tmux-session <session_name> \
-  --codex-session <codex_uuid> \
-  --eval-log <log_path> \
-  --cleanup-days 7 &
-```
+- Queue 文件：`runtime/eval_queue/eval_{todo,done,failed_todo}.txt`
+- 结果目录：`results/eval/<model_arch>/<model_name>/<split>/<timestamp>/`
 
 ### Train Watchdog 异步回调机制（Updated: 2026-04-21）
 
@@ -1299,7 +1298,7 @@ SwiftVLN 已接入 `uav_adapter` 的 Stage-B 最小链路：
 - SwiftVLN eval 参数透传：
   `src/swiftvln/model/eval.py`
 - SwiftVLN 分布式评测脚本参数透传：
-  `src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh`
+  `src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh`
 - 训练脚本参数透传：
   `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`
 
