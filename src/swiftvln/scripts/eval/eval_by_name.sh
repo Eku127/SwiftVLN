@@ -368,6 +368,7 @@ echo ""
 # ============================================================================
 MODEL_DIR="${OUTPUT_ROOT}/${MODEL_ARCH}/${MODEL_NAME}"
 HF_MODEL_DIR="${SWIFTVLN_ROOT}/output/model_zoo/${MODEL_ARCH}/HF_model/${MODEL_NAME}"
+USER_MODEL_PATH="${MODEL_PATH:-}"
 
 is_hf_model_dir() {
     local model_dir="$1"
@@ -412,21 +413,30 @@ find_latest_checkpoint() {
 }
 
 resolve_model_path() {
-    # Prefer upload-ready HF model zoo directories. They are already complete
-    # model directories and do not need a checkpoint-* wrapper.
-    if is_hf_model_dir "$HF_MODEL_DIR"; then
-        echo "$HF_MODEL_DIR"
-        return 0
-    fi
-
-    if [ ! -d "$MODEL_DIR" ]; then
+    # Highest priority: explicit MODEL_PATH from the caller.
+    if [ -n "$USER_MODEL_PATH" ]; then
+        if is_hf_model_dir "$USER_MODEL_PATH" || [ -f "$USER_MODEL_PATH/config.json" ]; then
+            echo "$USER_MODEL_PATH"
+            return 0
+        fi
         return 1
     fi
 
-    local ckpt
-    ckpt=$(find_latest_checkpoint "$MODEL_DIR")
-    if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
-        echo "$ckpt"
+    # Default: prefer live training outputs so same-name in-progress or freshly
+    # trained models are not shadowed by archived HF model-zoo copies.
+    if [ -d "$MODEL_DIR" ]; then
+        local ckpt
+        ckpt=$(find_latest_checkpoint "$MODEL_DIR")
+        if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+            echo "$ckpt"
+            return 0
+        fi
+    fi
+
+    # Fallback: upload-ready HF model zoo directories. They are already complete
+    # model directories and do not need a checkpoint-* wrapper.
+    if is_hf_model_dir "$HF_MODEL_DIR"; then
+        echo "$HF_MODEL_DIR"
         return 0
     fi
 
@@ -447,7 +457,9 @@ if [ "$CHECK_ONLY" == "true" ]; then
     print_info "预期HF模型目录: $HF_MODEL_DIR"
     RESOLVED_MODEL_PATH="$(resolve_model_path || true)"
     if [ -n "$RESOLVED_MODEL_PATH" ]; then
-        if [ "$RESOLVED_MODEL_PATH" = "$HF_MODEL_DIR" ]; then
+        if [ -n "$USER_MODEL_PATH" ]; then
+            print_success "将使用用户指定MODEL_PATH: $RESOLVED_MODEL_PATH"
+        elif [ "$RESOLVED_MODEL_PATH" = "$HF_MODEL_DIR" ]; then
             print_success "将直接使用HF模型目录: $RESOLVED_MODEL_PATH"
         else
             print_success "将使用checkpoint目录: $RESOLVED_MODEL_PATH"

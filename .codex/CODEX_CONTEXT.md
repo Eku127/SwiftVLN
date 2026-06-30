@@ -134,9 +134,10 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     preprocessor 配置、`model-*.safetensors`、`model.safetensors.index.json`、
     `.gitattributes`、`README.md`；不包含 checkpoint wrapper、trainer state、
     rng state、logs、TensorBoard runs 或训练曲线图
-  - 主线 `eval_by_name.sh <model_name>` 会优先直接使用
-    `output/model_zoo/swiftvln/HF_model/<model_name>`；若不存在，再回退到旧训练输出目录
-    `output/swiftvln/<model_name>/v*/checkpoint-*` 或 `checkpoint-*`
+  - 主线 `eval_by_name.sh <model_name>` 的模型路径优先级：
+    1) 显式环境变量 `MODEL_PATH=<hf-or-checkpoint-dir>`；
+    2) 训练输出目录 `output/swiftvln/<model_name>/v*/checkpoint-*` 或 `checkpoint-*`；
+    3) HF model zoo 目录 `output/model_zoo/swiftvln/HF_model/<model_name>`
   - `eval_by_name.sh` 的 embed slot 解析支持 `-posefilm` / `-pose` / `-noembed`
     出现在模型名末尾，适配上述短名
 - Baseline eval by name with model root（Updated: 2026-06-29）：

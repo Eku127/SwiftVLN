@@ -78,9 +78,10 @@ For map experiments, confirm `MEMORY_METHOD=map` and the expected `MAP_*` values
 - SwiftVLN HF upload-ready model directories live under
   `output/model_zoo/swiftvln/HF_model/`; `output/model_zoo/swiftvln/` should not
   contain old long-name model directories outside `HF_model`.
-- Mainline `eval_by_name.sh <model_name>` resolves
-  `output/model_zoo/swiftvln/HF_model/<model_name>` directly before falling
-  back to old training-output `checkpoint-*` discovery.
+- Mainline `eval_by_name.sh <model_name>` model-path priority is:
+  explicit `MODEL_PATH=<hf-or-checkpoint-dir>`, then old training-output
+  `output/swiftvln/<model_name>/checkpoint-*` discovery, then
+  `output/model_zoo/swiftvln/HF_model/<model_name>`.
 - Current short-name SwiftVLN HF models:
   `swiftvln-satnav-3b-1ep-f32s4-overlap0-gtc-k512-noembed`,
   `swiftvln-satnav-3b-1ep-f32s4-overlap0-map-g1000-l400-r448-d20-s2-noembed`,
