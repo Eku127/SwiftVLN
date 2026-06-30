@@ -108,15 +108,6 @@ def _derive_dataset_cache_dir(data_path_tmpl: str) -> Optional[str]:
                 dataset_root = os.sep + dataset_root
             return os.path.join(os.path.abspath(dataset_root), 'map_cache')
 
-    probe_dir = os.path.dirname(str(data_path_tmpl))
-    for _ in range(8):
-        base = os.path.basename(probe_dir.rstrip('/'))
-        if base.startswith('ver_'):
-            return os.path.join(os.path.abspath(probe_dir), 'map_cache')
-        parent = os.path.dirname(probe_dir)
-        if not parent or parent == probe_dir:
-            break
-        probe_dir = parent
     return None
 
 

@@ -37,7 +37,7 @@ No SSH is required for queue-file operations.
 | Single eval by name | `src/swiftvln/scripts/eval/eval_by_name.sh` |
 | Queue runner | `src/swiftvln/scripts/eval/eval_queue.sh` |
 | CSV collector | `src/swiftvln/scripts/eval/collect_eval_results.py` |
-| Collected CSV | `results/eval_collected/eval_results_data<version>.csv` |
+| Collected CSV | `results/eval_collected/<split>/eval_results.csv` |
 
 ## Failure Policy
 

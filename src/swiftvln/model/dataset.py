@@ -147,8 +147,8 @@ class SwiftVLNDataset(Dataset):
                 map_resolver = SatNavTrajectoryMetadataResolver(vf)
                 scenes_dir = os.path.abspath(map_resolver.scenes_dir)
                 if self.map_builder is None:
-                    # Default cache next to the dataset version (e.g.
-                    # ver_260404/map_cache). Env var SWIFTVLN_MAP_CACHE_DIR
+                    # Default cache next to the dataset root. Env var
+                    # SWIFTVLN_MAP_CACHE_DIR
                     # overrides this, and the sentinel value "off" disables
                     # caching entirely. See map_memory._resolve_cache_dir.
                     default_cache_dir = os.path.join(
