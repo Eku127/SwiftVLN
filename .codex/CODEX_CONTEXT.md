@@ -466,14 +466,6 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - `GPUS_PER_NODE=8`
   - 即默认有效 batch size 为 `48`
   - `scratch` 与 `continue` 都复用同一组默认 batch 配置；如需更保守，可显式覆盖 `BATCH_SIZE=2`
-- SatNav 0404 eval 子集管理工具（Updated: 2026-04-18）：
-  - eval 子集生成脚本：`src/swiftvln/scripts/eval/generate_satnav_keep_lists.py`
-  - 将生成的子集写回数据盘（先备份再覆盖）：
-    `src/swiftvln/scripts/eval/trim_satnav_eval_episodes_by_keep_csv.py`
-  - 分析产物目录：`runtime/analysis/satnav_keep_lists/`
-- Baseline eval 结果子集回填脚本（Updated: 2026-04-18）：
-  - `src/swiftvln/scripts/eval/apply_keep_subset_to_baselines.py`
-
 ### Baseline StreamVLN Layout (Updated: 2026-03-09)
 
 `baseline/streamvln` 已按“入口脚本 / 源码实现”分层：
