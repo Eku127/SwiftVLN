@@ -83,6 +83,7 @@ class SwiftVLNDataset(Dataset):
         history_processor_type: str = "per_frame",  # History sampling strategy
         log_base: float = 1.0,  # Sampling distribution (1.0=uniform, >1.0=logarithmic)
         system_prompt_setting: str = "vanilla",  # System prompt strategy: "vanilla" or "initial"
+        need_frame_poses: bool = False,
         memory_method: str = "history",
         map_global_side_m: float = 1000.0,
         map_local_side_m: float = 400.0,
@@ -107,6 +108,7 @@ class SwiftVLNDataset(Dataset):
         self.history_processor_type = history_processor_type.lower()
         self.log_base = log_base  # Sampling distribution
         self.system_prompt_setting = system_prompt_setting.lower()  # "vanilla" or "initial"
+        self.need_frame_poses = bool(need_frame_poses)
         self.memory_method = memory_method.lower()
         self.map_global_side_m = float(map_global_side_m)
         self.map_local_side_m = float(map_local_side_m)
@@ -481,26 +483,28 @@ class SwiftVLNDataset(Dataset):
         actions = raw_actions[1:] + [0]
         actions_len = len(actions)
 
-        # Reconstruct per-frame pose from raw actions (aligned with frame indices).
-        # Pose format: [delta_forward, delta_right, sin(delta_heading), cos(delta_heading)].
-        # SatNav defaults: step=10m, turn=15deg. Habitat defaults: step=0.25m, turn=30deg.
-        step_size = 10.0 if self.env_type == 'satnav' else 0.25
-        turn_angle = 15.0 if self.env_type == 'satnav' else 30.0
-        frame_poses_all = reconstruct_pose_from_actions(
-            raw_actions,
-            step_size=step_size,
-            turn_angle=turn_angle,
-        )
-        if frame_poses_all.shape[0] < num_video_frames:
-            if frame_poses_all.shape[0] == 0:
-                padding = np.zeros((num_video_frames, 4), dtype=np.float32)
-            else:
-                last_pose = frame_poses_all[-1:]
-                repeat = num_video_frames - frame_poses_all.shape[0]
-                padding = np.repeat(last_pose, repeat, axis=0)
-            frame_poses_all = np.concatenate([frame_poses_all, padding], axis=0)
-        elif frame_poses_all.shape[0] > num_video_frames:
-            frame_poses_all = frame_poses_all[:num_video_frames]
+        frame_poses_all = None
+        if self.need_frame_poses:
+            # Reconstruct per-frame pose from raw actions (aligned with frame indices).
+            # Pose format: [delta_forward, delta_right, sin(delta_heading), cos(delta_heading)].
+            # SatNav defaults: step=10m, turn=15deg. Habitat defaults: step=0.25m, turn=30deg.
+            step_size = 10.0 if self.env_type == 'satnav' else 0.25
+            turn_angle = 15.0 if self.env_type == 'satnav' else 30.0
+            frame_poses_all = reconstruct_pose_from_actions(
+                raw_actions,
+                step_size=step_size,
+                turn_angle=turn_angle,
+            )
+            if frame_poses_all.shape[0] < num_video_frames:
+                if frame_poses_all.shape[0] == 0:
+                    padding = np.zeros((num_video_frames, 4), dtype=np.float32)
+                else:
+                    last_pose = frame_poses_all[-1:]
+                    repeat = num_video_frames - frame_poses_all.shape[0]
+                    padding = np.repeat(last_pose, repeat, axis=0)
+                frame_poses_all = np.concatenate([frame_poses_all, padding], axis=0)
+            elif frame_poses_all.shape[0] > num_video_frames:
+                frame_poses_all = frame_poses_all[:num_video_frames]
         
         # Get time slice
         time_ids = np.arange(start_idx, min(start_idx + self.num_frames, actions_len))
@@ -552,12 +556,15 @@ class SwiftVLNDataset(Dataset):
         # Order: history frames, initial frame, current frames
         from PIL import Image
         images = list(history_images)
-        frame_poses: List[Optional[List[float]]] = [None] * len(history_images)
+        frame_poses: Optional[List[Optional[List[float]]]] = (
+            [None] * len(history_images) if self.need_frame_poses else None
+        )
 
         history_files_to_load: List[str] = []
         if self.memory_method != "map":
             all_history_indices = list(history_step_ids.tolist())
-            frame_poses.extend(frame_poses_all[idx].tolist() for idx in all_history_indices)
+            if frame_poses is not None and frame_poses_all is not None:
+                frame_poses.extend(frame_poses_all[idx].tolist() for idx in all_history_indices)
             history_files_to_load = history_frame_paths
 
         image_files_to_load = history_files_to_load + initial_frame_paths + sample_frame_paths
@@ -565,7 +572,8 @@ class SwiftVLNDataset(Dataset):
         if num_initial_images > 0:
             non_history_indices.append(0)
         non_history_indices.extend(sample_step_ids.tolist())
-        frame_poses.extend(frame_poses_all[idx].tolist() for idx in non_history_indices)
+        if frame_poses is not None and frame_poses_all is not None:
+            frame_poses.extend(frame_poses_all[idx].tolist() for idx in non_history_indices)
 
         for image_file in image_files_to_load:
             try:
@@ -653,9 +661,10 @@ class SwiftVLNDataset(Dataset):
             'images': images,
             'num_history_images': num_history_images,  # Metadata for template
             'num_initial_images': num_initial_images,  # Metadata for initial prompt
-            'frame_poses': frame_poses,  # Per-image metadata, aligned with image order
             'memory_method': self.memory_method,
         }
+        if frame_poses is not None:
+            result['frame_poses'] = frame_poses  # Per-image metadata, aligned with image order
         
         # Debug: log initial strategy details for first few samples
         if _debug_enabled() and self._debug_initial_count < 3:
@@ -689,13 +698,14 @@ class SwiftVLNDataset(Dataset):
             sys_content = messages[0].get('content', '')
             user_turns = [m for m in messages if m.get('role') == 'user']
             assistant_turns = [m for m in messages if m.get('role') == 'assistant']
-            none_pose_count = sum(1 for pose in frame_poses if pose is None)
+            frame_poses_for_log = frame_poses or []
+            none_pose_count = sum(1 for pose in frame_poses_for_log if pose is None)
             print(
                 f"[MAP DEBUG][dataset.prompt] sample[{self._debug_prompt_count}] "
                 f"rank={rank} ep={ep_id} ins={ins_id} start={start_idx} "
                 f"memory_method={self.memory_method} images={len(images)} "
                 f"history={num_history_images} initial={num_initial_images} current={num_current_images} "
-                f"frame_poses={len(frame_poses)} none_poses={none_pose_count}"
+                f"frame_poses={len(frame_poses_for_log)} none_poses={none_pose_count}"
             )
             print(
                 f"[MAP DEBUG][dataset.prompt] system tags: "

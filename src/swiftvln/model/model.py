@@ -270,77 +270,23 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
     if model is None:
         return
 
-    from swiftvln.common.embedding_enhancement import create_embedding_pipeline
+    from swiftvln.common.embedding_enhancement.runtime import configure_embedding_enhancement
 
-    use_pose_embed = options['use_pose_embed']
-    use_uav_adapter = options['use_uav_adapter']
-    uav_adapter_path = options['uav_adapter_path']
-    uav_adapter_type = options['uav_adapter_type']
-    uav_adapter_apply_scope = options['uav_adapter_apply_scope']
-    pose_fusion_method = options['pose_fusion_method']
-    pose_norm_scale = options['pose_norm_scale']
+    def _restore_if_available(loaded_model) -> None:
+        # This is needed at eval time when loading a finetuned checkpoint that
+        # contains trained enhancement parameters.
+        if os.path.isdir(model_dir):
+            _restore_enhancement_weights(loaded_model, model_dir)
 
-    embed_dim = model.config.hidden_size
-
-    model.embed_enhance = create_embedding_pipeline(
-        embed_dim=embed_dim,
-        use_pose_embed=use_pose_embed,
-        use_uav_adapter=use_uav_adapter,
-        pose_fusion=pose_fusion_method,
-        pose_norm_scale=pose_norm_scale,
-        uav_adapter_path=uav_adapter_path,
-        uav_adapter_type=uav_adapter_type,
-        uav_adapter_apply_scope=uav_adapter_apply_scope,
+    configure_embedding_enhancement(
+        model,
+        **options,
+        force_rebuild=True,
+        restore_callback=_restore_if_available,
+        clear_disabled_aliases=True,
+        log_embed_dim=True,
+        log_train_save_note=True,
     )
-
-    # Move to the same device/dtype as the visual encoder/model
-    target_dtype = model.visual.dtype if hasattr(model, 'visual') and hasattr(model.visual, 'dtype') else None
-    try:
-        target_device = next(model.parameters()).device
-    except (StopIteration, AttributeError, TypeError):
-        target_device = getattr(model, 'device', torch.device('cpu'))
-    to_kwargs = {}
-    if target_dtype is not None:
-        to_kwargs['dtype'] = target_dtype
-    if target_device is not None:
-        to_kwargs['device'] = target_device
-    if to_kwargs and not model.embed_enhance.is_empty:
-        model.embed_enhance = model.embed_enhance.to(**to_kwargs)
-
-    # Try to restore embed_enhance weights from local checkpoint (if present).
-    # This is needed at eval time when loading a finetuned checkpoint that
-    # contains trained enhancement parameters.
-    if not model.embed_enhance.is_empty and os.path.isdir(model_dir):
-        _restore_enhancement_weights(model, model_dir)
-
-    # Explicit external UAV adapter should win over local embed_enhance weights.
-    if use_uav_adapter and uav_adapter_path and 'uav' in model.embed_enhance.enhancements:
-        resolved_path = model.embed_enhance.enhancements['uav'].load_external_checkpoint(
-            uav_adapter_path,
-            strict=True,
-        )
-        print(f"[SwiftVLN] Loaded external UAV adapter from: {resolved_path}")
-
-    if not model.embed_enhance.is_empty:
-        print(f"[SwiftVLN] Embedding enhancement pipeline: {model.embed_enhance}")
-        print(f"  - embed_dim: {embed_dim}")
-        print(f"  - Enhancements: {model.embed_enhance.enhancement_names}")
-        print(f"  - Module will be trained and saved with checkpoints")
-
-    # Backward compatibility: expose aliases without registering duplicate submodules.
-    def _set_alias(alias_name: str, value) -> None:
-        if hasattr(model, '_modules'):
-            model._modules.pop(alias_name, None)
-        model.__dict__[alias_name] = value
-
-    if use_pose_embed and 'pose' in model.embed_enhance.enhancements:
-        _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
-    else:
-        _set_alias('pose_embed', None)
-    if use_uav_adapter and 'uav' in model.embed_enhance.enhancements:
-        _set_alias('uav_adapter', model.embed_enhance.enhancements['uav'])
-    else:
-        _set_alias('uav_adapter', None)
 
 
 class SwiftVLNQwen25VLLoader(Qwen2_5VLLoader):

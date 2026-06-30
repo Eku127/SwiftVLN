@@ -9,7 +9,6 @@ Usage:
 import os
 from typing import List, Optional, Union
 
-import torch
 from swift.utils import get_logger
 
 from swiftvln.common.training.base_sft import BaseVLNSft
@@ -141,79 +140,20 @@ class SwiftVLNSft(BaseVLNSft):
 
         model = getattr(self, 'model', None)
         if model is not None:
-            desired_enhancements = []
-            if use_pose_embed:
-                desired_enhancements.append('pose')
-            if use_uav_adapter:
-                desired_enhancements.append('uav')
+            from swiftvln.common.embedding_enhancement.runtime import configure_embedding_enhancement
 
-            def _needs_rebuild_pipeline() -> bool:
-                if not hasattr(model, 'embed_enhance') or model.embed_enhance is None:
-                    return True
-                if len(desired_enhancements) == 0:
-                    return False
-                if model.embed_enhance.is_empty:
-                    return True
-                return any(
-                    name not in getattr(model.embed_enhance, 'enhancements', {})
-                    for name in desired_enhancements
-                )
-
-            # Ensure embed_enhance pipeline exists on the model
-            if _needs_rebuild_pipeline():
-                from swiftvln.common.embedding_enhancement import create_embedding_pipeline
-
-                embed_dim = model.config.hidden_size
-                model.embed_enhance = create_embedding_pipeline(
-                    embed_dim=embed_dim,
-                    use_pose_embed=use_pose_embed,
-                    use_uav_adapter=use_uav_adapter,
-                    pose_fusion=pose_fusion_method,
-                    pose_norm_scale=pose_norm_scale,
-                    uav_adapter_path=uav_adapter_path,
-                    uav_adapter_type=uav_adapter_type,
-                    uav_adapter_apply_scope=uav_adapter_apply_scope,
-                )
-                logger.info(f"[SwiftVLN] Rebuilt embed_enhance pipeline in trainer: {model.embed_enhance}")
-
-            # Move to matching device/dtype
-            if not model.embed_enhance.is_empty:
-                target_dtype = model.visual.dtype if hasattr(model, 'visual') and hasattr(model.visual, 'dtype') else None
-                try:
-                    target_device = next(model.parameters()).device
-                except (StopIteration, AttributeError, TypeError):
-                    target_device = getattr(model, 'device', torch.device('cpu'))
-                to_kwargs = {}
-                if target_dtype is not None:
-                    to_kwargs['dtype'] = target_dtype
-                if target_device is not None:
-                    to_kwargs['device'] = target_device
-                if to_kwargs:
-                    model.embed_enhance = model.embed_enhance.to(**to_kwargs)
-
-                logger.info(f"[SwiftVLN] Embedding enhancement pipeline: {model.embed_enhance}")
-                logger.info(f"  - Enhancements: {model.embed_enhance.enhancement_names}")
-                if use_uav_adapter and uav_adapter_path and 'uav' in model.embed_enhance.enhancements:
-                    resolved_path = model.embed_enhance.enhancements['uav'].load_external_checkpoint(
-                        uav_adapter_path,
-                        strict=True,
-                    )
-                    logger.info(f"[SwiftVLN] Loaded external UAV adapter from: {resolved_path}")
-
-            # Backward compatibility: aliases without duplicate module registration.
-            def _set_alias(alias_name: str, value) -> None:
-                if hasattr(model, '_modules'):
-                    model._modules.pop(alias_name, None)
-                model.__dict__[alias_name] = value
-
-            if use_pose_embed and hasattr(model.embed_enhance, 'enhancements') and 'pose' in model.embed_enhance.enhancements:
-                _set_alias('pose_embed', model.embed_enhance.enhancements['pose'])
-            elif not hasattr(model, 'pose_embed'):
-                _set_alias('pose_embed', None)
-            if use_uav_adapter and hasattr(model.embed_enhance, 'enhancements') and 'uav' in model.embed_enhance.enhancements:
-                _set_alias('uav_adapter', model.embed_enhance.enhancements['uav'])
-            elif not hasattr(model, 'uav_adapter'):
-                _set_alias('uav_adapter', None)
+            configure_embedding_enhancement(
+                model,
+                use_pose_embed=use_pose_embed,
+                use_uav_adapter=use_uav_adapter,
+                uav_adapter_path=uav_adapter_path,
+                uav_adapter_type=uav_adapter_type,
+                uav_adapter_apply_scope=uav_adapter_apply_scope,
+                pose_fusion_method=pose_fusion_method,
+                pose_norm_scale=pose_norm_scale,
+                clear_disabled_aliases=False,
+                logger=logger,
+            )
 
     def _build_dataset_kwargs(self, data_path: str):
         return {
@@ -228,6 +168,7 @@ class SwiftVLNSft(BaseVLNSft):
             "history_processor_type": self.args.history_processor_type,
             "log_base": self.args.log_base,
             "system_prompt_setting": self.args.system_prompt_setting,
+            "need_frame_poses": self.args.use_pose_embed,
             "memory_method": self.args.memory_method,
             "map_global_side_m": self.args.map_global_side_m,
             "map_local_side_m": self.args.map_local_side_m,
