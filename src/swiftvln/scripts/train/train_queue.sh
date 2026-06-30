@@ -925,23 +925,7 @@ run_experiment() {
             _SWANLAB_PROJECT="${SWANLAB_PROJECT:-}" \
             _SWANLAB_EXP="$exp_name" \
             _OUTPUT_DIR="$output_path" \
-            python3 -c "
-import json, pathlib, os
-meta = {}
-url = os.environ.get('_SWANLAB_URL', '')
-if url:
-    meta['swanlab_url'] = url
-proj = os.environ.get('_SWANLAB_PROJECT', '')
-if proj:
-    meta['swanlab_project'] = proj
-exp = os.environ.get('_SWANLAB_EXP', '')
-if exp:
-    meta['swanlab_exp_name'] = exp
-if meta:
-    out = pathlib.Path(os.environ['_OUTPUT_DIR']) / 'train_metadata.json'
-    out.write_text(json.dumps(meta, indent=2))
-    print(f'Saved train metadata: {out}')
-" 2>/dev/null || true
+            python3 "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/_write_train_metadata.py" 2>/dev/null || true
         fi
 
         # 格式: idx|model|changes|ds_names|status|duration|exp_name

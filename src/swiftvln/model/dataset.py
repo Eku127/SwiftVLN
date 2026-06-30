@@ -114,6 +114,7 @@ class SwiftVLNDataset(Dataset):
         self.map_mask_method = str(map_mask_method).lower()
         self.map_builder: Optional[SatNavMapMemoryBuilder] = None
         self._map_scenes_dir: Optional[str] = None
+        self._frame_list_cache: Dict[str, List[str]] = {}
         self._debug_map_sample_count = 0
         self._debug_prompt_count = 0
         
@@ -308,6 +309,13 @@ class SwiftVLNDataset(Dataset):
     def __len__(self) -> int:
         return len(self.data_list)
 
+    def _get_video_frames(self, rgb_path: str) -> List[str]:
+        frames = self._frame_list_cache.get(rgb_path)
+        if frames is None:
+            frames = sorted(os.listdir(rgb_path))
+            self._frame_list_cache[rgb_path] = frames
+        return frames
+
     def actions2text(self, actions: List[int]) -> str:
         """Convert action indices to compact action symbols."""
         if len(actions) == 0:
@@ -449,7 +457,7 @@ class SwiftVLNDataset(Dataset):
         rgb_path = os.path.join(video_path, 'rgb')
         if not os.path.exists(rgb_path):
             raise FileNotFoundError(f"RGB frames not found: {rgb_path}")
-        video_frames = sorted(os.listdir(rgb_path))
+        video_frames = self._get_video_frames(rgb_path)
         num_video_frames = len(video_frames)
         
         if num_video_frames == 0:
