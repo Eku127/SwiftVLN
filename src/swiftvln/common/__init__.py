@@ -21,7 +21,6 @@ from .history_processors import (
 )
 from .history_processors.compressor import HistoryTokenCompressor
 from .training import (
-    BaseVLNDataset,
     BaseVLNSft,
     BaseVLNTrainArguments,
 )
@@ -58,7 +57,6 @@ def __getattr__(name):
 __all__ = [
     'BaseVLNTrainArguments',
     'BaseVLNSft',
-    'BaseVLNDataset',
     'DEFAULT_IMAGE_TOKEN',
     'HISTORY_MEMORY_TOKEN',
     'CURRENT_IMAGE_TOKEN',
