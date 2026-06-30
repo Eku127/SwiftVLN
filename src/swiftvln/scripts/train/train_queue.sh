@@ -310,26 +310,6 @@ find_latest_checkpoint() {
 }
 
 # ============================================================================
-# 数据集名称映射
-# ============================================================================
-get_dataset_short_name() {
-    local path="$1"
-    if [[ "$path" == *"R2R"* ]]; then
-        echo "R2R"
-    elif [[ "$path" == *"RxR"* ]]; then
-        echo "RxR"
-    elif [[ "$path" == *"EnvDrop"* ]]; then
-        echo "EnvDrop"
-    elif [[ "$path" == *"ScaleVLN"* ]]; then
-        echo "ScaleVLN"
-    elif [[ "$path" == *"satnav"* ]]; then
-        echo "SatNav"
-    else
-        echo "Custom"
-    fi
-}
-
-# ============================================================================
 # 模型默认配置
 # ============================================================================
 get_default_config() {
