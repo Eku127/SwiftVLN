@@ -3,7 +3,45 @@
 本说明面向在 SwiftVLN 仓库内运行 NaVILA baseline 的训练与评测流程。
 
 - 论文：[NaVILA: Legged Robot Vision-Language-Action Model for Navigation (RSS'25)](https://arxiv.org/abs/2412.04453)
-- 上游仓库：[NaVILA GitHub](https://github.com/a8cheng/NaVILA)（默认通过 `$NAVILA_REPO` 指向本地 clone）
+- 上游仓库：[NaVILA GitHub](https://github.com/AnjieCheng/NaVILA)（按第 0 节的 `$NAVILA_REPO` 路径准备本地 clone）
+
+## 0. 上游源码 clone 与路径
+
+当前 NaVILA baseline 只在本仓库维护 SatNav 数据接入、启动脚本和评测 wrapper；
+VILA/NaVILA 的模型、trainer、Transformers/DeepSpeed patch 仍来自本地上游
+NaVILA clone。SatNav 评测环境也需要本地 SatNav editable install。建议按当前
+workspace 使用的 commit 固定版本：
+
+| 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
+|------|--------------|----------|-----------------|
+| NaVILA | `/mnt/data1/home/jiangjiajun/workspace/NaVILA` | `git@github.com:AnjieCheng/NaVILA.git` | `76b98f233dd0fff05dfcd69435eec6740febff9d` |
+| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+
+从空 workspace 准备源码：
+
+```bash
+WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+
+git clone git@github.com:AnjieCheng/NaVILA.git "$WORKSPACE/NaVILA"
+git -C "$WORKSPACE/NaVILA" checkout 76b98f233dd0fff05dfcd69435eec6740febff9d
+
+git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
+```
+
+路径约定：
+
+```bash
+export NAVILA_REPO=/mnt/data1/home/jiangjiajun/workspace/NaVILA
+export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+```
+
+`baseline/navila/scripts/setup_env.sh` 当前默认使用
+`/mnt/data1/home/jiangjiajun/workspace/NaVILA` 安装 VILA/NaVILA，并从该目录复制
+`llava/train/transformers_replace` 与 `llava/train/deepspeed_replace` patch。
+因此推荐直接 clone 到上表路径。若使用其他路径，需要同步调整
+`setup_env.sh` 中的 `NAVILA_REPO`，或按 `baseline/navila/doc/env_setup.md`
+手动安装并使用 `pip install -e "$SATNAV_REPO"` 安装 SatNav。
 
 ## 1. 模型
 

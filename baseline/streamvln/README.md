@@ -2,9 +2,45 @@
 
 本说明面向在 SwiftVLN 仓库内运行 StreamVLN baseline 的训练与评测流程。
 
-- 上游仓库：默认通过 `$STREAMVLN_REPO` 指向本地 StreamVLN clone
+- 上游仓库：按第 0 节的 `$STREAMVLN_REPO` 路径准备本地 StreamVLN clone
 - 运行范围：当前集成面向 SatNav trajectory 数据训练和 SatNav 在线评测。
 - 训练/评测 skill：`.codex/skills/run-streamvln-baseline/SKILL.md`
+
+## 0. 上游源码 clone 与路径
+
+当前 StreamVLN baseline 不在本仓库内复制完整上游实现；训练和评测会把本地
+StreamVLN 上游源码加入 `PYTHONPATH`。SatNav 评测环境也需要本地 SatNav
+editable install。建议按当前 workspace 使用的 commit 固定版本：
+
+| 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
+|------|--------------|----------|-----------------|
+| StreamVLN | `/mnt/data1/home/jiangjiajun/workspace/StreamVLN` | `git@github.com:Eku127/StreamVLN.git` | `60476e81f4c01b29f1a51a7469f1cb4addbc1d62` |
+| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+
+从空 workspace 准备源码：
+
+```bash
+WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+
+git clone git@github.com:Eku127/StreamVLN.git "$WORKSPACE/StreamVLN"
+git -C "$WORKSPACE/StreamVLN" checkout 60476e81f4c01b29f1a51a7469f1cb4addbc1d62
+
+git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
+```
+
+路径约定：
+
+```bash
+export STREAMVLN_REPO=/mnt/data1/home/jiangjiajun/workspace/StreamVLN
+export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+export PYTHONPATH="${STREAMVLN_REPO}:${STREAMVLN_REPO}/streamvln:${PYTHONPATH:-}"
+```
+
+当前 `train_satnav.sh` 和 `eval_satnav.sh` 默认也会把
+`/mnt/data1/home/jiangjiajun/workspace/StreamVLN` 加入 `PYTHONPATH`，因此最稳妥的
+做法是 clone 到上表路径。若 clone 到其他位置，启动前显式设置上面的
+`PYTHONPATH`，并在环境安装阶段使用 `pip install -e "$SATNAV_REPO"`。
 
 ## 1. 模型
 

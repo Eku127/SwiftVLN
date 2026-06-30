@@ -3,8 +3,46 @@
 本说明面向在 SwiftVLN 仓库内运行 Uni-NaVid baseline 的训练与评测流程。
 
 - 论文/项目：Uni-NaVid（RSS 2025）
-- 上游仓库：[Uni-NaVid GitHub](https://github.com/jzhzhang/Uni-NaVid)（默认通过 `$UNINAVID_REPO` 指向本地 clone）
+- 上游仓库：[Uni-NaVid GitHub](https://github.com/jzhzhang/Uni-NaVid)（按第 0 节的 `$UNINAVID_REPO` 路径准备本地 clone）
 - 训练与评测约定：详见 `baseline/uninavid/doc/train_eval_conventions.md`
+
+## 0. 上游源码 clone 与路径
+
+当前 Uni-NaVid baseline 只在本仓库维护 SatNav 数据接入、启动脚本和评测 wrapper；
+模型定义、trainer 逻辑以及 `uninavid/processor/clip-patch14-224` image processor
+仍来自本地 Uni-NaVid 上游 clone。SatNav 评测环境也需要本地 SatNav editable
+install。建议按当前 workspace 使用的 commit 固定版本：
+
+| 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
+|------|--------------|----------|-----------------|
+| Uni-NaVid | `/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid` | `git@github.com:jzhzhang/Uni-NaVid.git` | `79ef5ea3fea14c205342d1ab070563d84c7a966a` |
+| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+
+从空 workspace 准备源码：
+
+```bash
+WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+
+git clone git@github.com:jzhzhang/Uni-NaVid.git "$WORKSPACE/Uni-NaVid"
+git -C "$WORKSPACE/Uni-NaVid" checkout 79ef5ea3fea14c205342d1ab070563d84c7a966a
+
+git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
+```
+
+路径约定：
+
+```bash
+export UNINAVID_REPO=/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid
+export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+```
+
+`baseline/uninavid/scripts/train_satnav.sh` 当前默认读取
+`/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid/uninavid/processor/clip-patch14-224`
+作为 `IMAGE_PROCESSOR`，因此推荐直接 clone 到上表路径。若使用其他路径，需要同步
+调整训练脚本里的 `UNINAVID_REPO`，或在手动启动 Python 入口前确保上游
+Uni-NaVid 代码和对应 processor 路径可用。环境安装阶段仍需
+`pip install -e "$SATNAV_REPO"`。
 
 ## 1. 模型
 

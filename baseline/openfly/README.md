@@ -6,6 +6,43 @@
 - 运行范围：当前集成是 SatNav-only baseline，不依赖外部 `OpenFly-Platform` repo。
 - 配置历史：详见 `baseline/openfly/doc/config_history.md`
 
+## 0. 上游源码 clone 与路径
+
+当前 OpenFly baseline 的运行代码已经在本仓库 `baseline/openfly/src` 内做了
+SatNav-only 适配，训练/评测脚本不会从 `OpenFly-Platform` 动态 import 代码。
+但为了明确来源、对照上游实现或重建环境，建议仍按当前 workspace 使用的
+OpenFly-Platform 与 SatNav commit 固定版本。SatNav 评测环境需要本地 SatNav
+editable install。
+
+| 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
+|------|--------------|----------|-----------------|
+| OpenFly-Platform | `/mnt/data1/home/jiangjiajun/workspace/OpenFly-Platform` | `git@github.com:SHAILAB-IPEC/OpenFly-Platform.git` | `c075075497a7122bad82f5b76b9be926ad5a81b3` |
+| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+
+从空 workspace 准备源码：
+
+```bash
+WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+
+git clone git@github.com:SHAILAB-IPEC/OpenFly-Platform.git "$WORKSPACE/OpenFly-Platform"
+git -C "$WORKSPACE/OpenFly-Platform" checkout c075075497a7122bad82f5b76b9be926ad5a81b3
+
+git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
+```
+
+路径约定：
+
+```bash
+export OPENFLY_PLATFORM_REPO=/mnt/data1/home/jiangjiajun/workspace/OpenFly-Platform
+export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+```
+
+`OPENFLY_PLATFORM_REPO` 当前主要用于人工对照上游代码，不是训练/评测脚本的运行时
+必需变量。实际训练起点来自 `baseline/openfly/model/openfly-agent-7b` 或
+`baseline/openfly/model/openvlaopenvla-7b-prismatic`，模型下载见下一节。环境安装
+阶段仍需 `pip install -e "$SATNAV_REPO"`。
+
 ## 1. 模型
 
 OpenFly 当前支持两种起训后端：
