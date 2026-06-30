@@ -117,7 +117,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - NaVILA / UniNaVid / OpenFly 当前默认也使用 `SatNav-v0.1` 数据：
     `baseline/{navila,uninavid,openfly}/configs/satnav_task.yaml` 中 `DATASET.DATA_PATH`
     指向 `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
-  - 四个 baseline 的 `satnav_task.yaml` 不再携带 `SIMULATOR.AERIAL` / API key；
+  - 四个 baseline 的 `satnav_task.yaml` 只保留任务、传感器、数据路径和 scenes 路径；
     eval 只保留任务、传感器、数据路径和 scenes 路径
   - OpenFly eval 会从模型名中的 `actcompact|actoriginal`、`hist<N>` 解析动作格式和 action history 长度；
     不再从模型名中的 `data<N>` 解析 eval 数据版本
