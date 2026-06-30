@@ -567,7 +567,7 @@ run_evaluation() {
         RESULT_PATHS+=("$exp_idx|$model|${_paths_str:-${result_path:-N/A}}")
         print_success "评估 $exp_idx 完成! 耗时: $duration_str"
 
-        # 自动收集到 results/eval_collected/<split>/eval_results_data<version>.csv
+        # 自动收集到 results/eval_collected/<split>/eval_results.csv
         # 对每个实际评测的 split 分别收集
         if [[ -f "$COLLECT_SCRIPT" ]]; then
             for _sp in "${_split_result_paths[@]}"; do
@@ -599,7 +599,7 @@ run_evaluation() {
 }
 
 # ============================================================================
-# 写入机器可读的完成状态（供 eval_watchdog / 外部工具使用）
+# 写入机器可读的完成状态（供外部工具使用）
 # ============================================================================
 write_completion_status() {
     local result_file="${1:-}"
@@ -610,12 +610,6 @@ write_completion_status() {
 
     # per-host 状态文件（多服务器并发安全）
     local status_file="${EVAL_QUEUE_DIR}/eval_queue_last_run_${_hostname}.json"
-
-    # 如果调用方设置了 EVAL_RUN_DIR，同时写入 per-run 目录
-    local run_status_file=""
-    if [[ -n "${EVAL_RUN_DIR:-}" && -d "${EVAL_RUN_DIR}" ]]; then
-        run_status_file="${EVAL_RUN_DIR}/eval_queue_status.json"
-    fi
 
     local success_list=""
     local failed_list=""
@@ -648,10 +642,6 @@ EOF
     echo "$json_body" > "$status_file"
     print_info "完成状态已写入: $status_file"
 
-    if [[ -n "$run_status_file" ]]; then
-        echo "$json_body" > "$run_status_file"
-        print_info "Per-run 状态已写入: $run_status_file"
-    fi
 }
 
 # ============================================================================
@@ -750,7 +740,7 @@ show_final_results() {
         fi
     done
 
-    # 写入机器可读的完成状态文件（供 eval_watchdog 等外部工具使用）
+    # 写入机器可读的完成状态文件（供外部工具使用）
     write_completion_status "$RESULT_FILE" "$success_count" "$fail_count"
 
     echo ""

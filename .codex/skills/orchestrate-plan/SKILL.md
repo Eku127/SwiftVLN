@@ -14,7 +14,7 @@ This skill coordinates the existing `swiftvln-train` and `swiftvln-eval` skills 
 ## Related Skills & Scripts
 
 - **Training**: `swiftvln-train` skill (Step 2/3/4/5 conventions reused here)
-- **Evaluation**: `swiftvln-eval` skill (eval launch, watchdog, results collection)
+- **Evaluation**: `swiftvln-eval` skill (eval launch and results collection)
 - **Train queue**: `src/swiftvln/scripts/train/train_queue.sh` (non-interactive mode via `TRAIN_EXPERIMENTS_FILE`)
 - **Eval queue**: `runtime/eval_queue/eval_todo.txt` (auto-populated by train_queue after each training)
 - **Results**: `src/swiftvln/scripts/eval/collect_eval_results.py`
@@ -256,17 +256,15 @@ After all servers are launched:
    - Training running on server(s) `<hosts>` in tmux session(s) `<names>`
    - Watchdog PID(s): `<pids>`
    - Progress: `tmux attach -t <name>`
-   - What happens next: "训练完成后 watchdog 自动触发评测，评测完成后 Codex 将自动回调并返回结果"
+   - What happens next: "训练完成后 watchdog 自动触发评测启动；评测在 tmux 中运行，完成后查看队列状态与结果文件"
 
 **The Codex session can safely end here.** Everything from this point is handled automatically.
 
 ---
 
-## Step 7 → Eval Completion Callback (Codex Resume)
+## Step 7 → Eval Completion Check
 
-When all evals finish, `eval_watchdog` resumes this Codex session. The injected prompt will say evaluation is done.
-
-Upon resume:
+To report final results, manually inspect queue state and result files after the eval tmux session exits.
 
 1. Read `runtime/eval_queue/eval_done.txt` to confirm which models finished.
 2. Check `runtime/eval_queue/eval_failed_todo.txt` for any failures.
@@ -277,7 +275,7 @@ Upon resume:
    conda activate swift-vln-eval
    python src/swiftvln/scripts/eval/collect_eval_results.py
    ```
-4. Read the output CSV at `results/eval_collected/eval_results_data<version>.csv`.
+4. Read the output CSV at `results/eval_collected/<split>/eval_results.csv`.
 5. Present results to the user as a formatted table showing SR / SPL / NE for each experiment.
 6. If there are failures, diagnose and offer to requeue.
 

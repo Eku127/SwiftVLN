@@ -517,14 +517,13 @@ ${models}
 
 1. 检查服务器 98 和 73 的 GPU 可用性（nvidia-smi，检查是否有 torchrun/train 进程）
 2. 如果找到空闲服务器（8 卡均空闲）：
-   - 在该服务器上 tmux 启动评测 + eval_watchdog
+   - 在该服务器上 tmux 启动评测
 3. 如果两台服务器都在忙（仍有训练在跑）：
    - 不要强行启动 eval（会 OOM）
    - 模型已经在 eval_todo.txt 中，不会丢失
    - 在空闲率最高的服务器上启动 start_eval_worker.sh（在 tmux 中）
    - worker 会持续轮询 eval_todo.txt，训练结束 GPU 释放后自动开始 eval
-   - 注册 eval_watchdog 监控这个 worker 的 tmux session
-4. 确认评测已启动或 worker 已注册后，报告状态
+4. 确认评测已启动或 worker 已启动后，报告状态
 
 关键信息：
 - 评测 conda env: swift-vln-eval
