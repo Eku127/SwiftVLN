@@ -46,16 +46,23 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 - 实验计划目录：`runtime/plans/` （自然语言实验计划文件，供 orchestrate-plan skill 读取）
 - 实验计划 skill：`.codex/skills/orchestrate-plan/SKILL.md`
 - 训练队列：`src/swiftvln/scripts/train/train_queue.sh`
-- 训练队列端口/重试修复（Updated: 2026-04-15）：
+- 训练队列端口/重试与配置注入（Updated: 2026-06-30）：
   - `src/swiftvln/scripts/train/train_queue.sh`
-  - 串行训练在每次 attempt 启动前会先检查临时训练脚本中的 `MASTER_PORT` 是否可用；
-    若端口已被占用，会在启动前直接改写为本机空闲端口，避免 `torchrun`
+  - `train_queue.sh` 不再复制单次训练脚本并用 `sed/awk` 改写变量或数据路径；
+    当前通过 per-run env map 注入配置，直接执行原始
+    `src/swiftvln/model/script/train/train_swiftvln_qwen2_5_vl.sh`
+  - 单次训练脚本支持通过环境变量覆盖：
+    - `VLN_DATA_PATH`：覆盖默认 habitat/satnav data path arrays
+    - `TORCH_DTYPE`：默认 `bfloat16`，auto-fix 可改为 `float16`
+    - `SAVE_SAFETENSORS`：仅设置时追加 `--save_safetensors <value>`
+  - 串行训练在每次 attempt 启动前会检查 env map 中的 `MASTER_PORT` 是否可用；
+    若端口已被占用，会在启动前写入本机空闲端口，避免 `torchrun`
     在 rendezvous 阶段直接因 `EADDRINUSE` 失败
-  - 训练执行现在按 `bash "$temp_script" | tee "$run_log_file"` 的真实
-    `PIPESTATUS[0]` 判断成功/失败，不再被 `tee` 的返回码掩盖
+  - 训练执行现在按 `env ... bash "$train_script" | tee "$run_log_file"` 的真实
+    `PIPESTATUS[0]` 判断成功/失败，不被 `tee` 的返回码掩盖
   - 因此 `address already in use` 这类错误现在可以稳定进入 auto-fix 重试链路
-  - 2026-04-17 起脚本末尾显式 `exit $?`，避免长跑队列执行期间若脚本文件被原地改写，
-    在收尾阶段继续解释被修改后的尾部内容，导致异常“重入”重跑
+  - auto-fix 会更新 env map 后重试，例如调整 `MASTER_PORT`、降低 batch、
+    设置 `DATALOADER_*`、`TORCH_DTYPE=float16` 或 `SAVE_SAFETENSORS=false`
 - 链式启动脚本进程检测修复（Updated: 2026-04-29）：
   - `runtime/train_queue/launchers/launch_overlap0418_notail_after_navila.sh`
   - `runtime/tmp/navila0418_eval_after_98_and_17.sh`

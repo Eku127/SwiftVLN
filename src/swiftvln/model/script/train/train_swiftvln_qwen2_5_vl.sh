@@ -165,6 +165,7 @@ MODEL_SIZE=${MODEL_SIZE:-"3b"}
 # ============================================================================
 # Environment type: "habitat" (forward=0.25m) or "satnav" (forward=10m)
 VLN_ENV_TYPE="${VLN_ENV_TYPE:-satnav}"
+VLN_DATA_PATH_OVERRIDE="${VLN_DATA_PATH:-}"
 
 # Define data paths for each environment
 HABITAT_DATA_PATHS=(
@@ -176,14 +177,19 @@ SATNAV_DATA_PATHS=(
     "/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data"
 )
 
-# Select data paths based on VLN_ENV_TYPE (using nameref)
-declare -n VLN_DATA_PATHS="${VLN_ENV_TYPE^^}_DATA_PATHS"
-if [ ${#VLN_DATA_PATHS[@]} -eq 0 ]; then
-    echo "[ERROR] Unknown VLN_ENV_TYPE: $VLN_ENV_TYPE. Available: habitat, satnav"
-    exit 1
-fi
+# Select data paths based on VLN_ENV_TYPE (using nameref), unless explicitly
+# injected by train_queue or a caller.
+if [[ -n "$VLN_DATA_PATH_OVERRIDE" ]]; then
+    VLN_DATA_PATH="$VLN_DATA_PATH_OVERRIDE"
+else
+    declare -n VLN_DATA_PATHS="${VLN_ENV_TYPE^^}_DATA_PATHS"
+    if [ ${#VLN_DATA_PATHS[@]} -eq 0 ]; then
+        echo "[ERROR] Unknown VLN_ENV_TYPE: $VLN_ENV_TYPE. Available: habitat, satnav"
+        exit 1
+    fi
 
-VLN_DATA_PATH=$(IFS=','; echo "${VLN_DATA_PATHS[*]}")
+    VLN_DATA_PATH=$(IFS=','; echo "${VLN_DATA_PATHS[*]}")
+fi
 
 # VLN-Specific Parameters
 NUM_FRAMES="${NUM_FRAMES:-32}"
@@ -428,6 +434,11 @@ fi
 # explicitly if they need per-step checkpointing.
 SAVE_STEPS="${SAVE_STEPS:-1000}"
 SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-1}"
+SAVE_SAFETENSORS="${SAVE_SAFETENSORS:-}"
+SAVE_SAFETENSORS_ARG=""
+if [[ -n "$SAVE_SAFETENSORS" ]]; then
+    SAVE_SAFETENSORS_ARG="--save_safetensors $SAVE_SAFETENSORS"
+fi
 LOGGING_STEPS="${LOGGING_STEPS:-10}"
 
 # Note: MAX_SAMPLES is a soft cap - if actual samples < MAX_SAMPLES, all available samples are used.
@@ -620,6 +631,8 @@ if [[ "$USE_SWANLAB" == "true" && "$SWANLAB_DIRECT_NETWORK" == "true" ]]; then
     unset_proxy_for_swanlab
 fi
 
+TORCH_DTYPE="${TORCH_DTYPE:-bfloat16}"
+
 torchrun \
     --nnodes=1 \
     --node_rank=0 \
@@ -632,7 +645,7 @@ torchrun \
     --model $MODEL_PATH \
     --dataset $VLN_DATA_PATH \
     "${TRAIN_MODE_ARGS[@]}" \
-    --torch_dtype bfloat16 \
+    --torch_dtype $TORCH_DTYPE \
     --num_train_epochs $NUM_EPOCHS \
     --learning_rate $LEARNING_RATE \
     --per_device_train_batch_size $BATCH_SIZE \
@@ -642,6 +655,7 @@ torchrun \
     --output_dir $OUTPUT_DIR \
     --save_steps $SAVE_STEPS \
     --save_total_limit $SAVE_TOTAL_LIMIT \
+    $SAVE_SAFETENSORS_ARG \
     --logging_steps $LOGGING_STEPS \
     --save_strategy steps \
     --warmup_ratio $WARMUP_RATIO \

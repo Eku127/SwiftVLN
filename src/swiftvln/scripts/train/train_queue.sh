@@ -116,21 +116,37 @@ enqueue_model_for_eval() {
     return 1
 }
 
-resolve_master_port_from_script() {
-    local temp_script="$1"
-    local port=""
+set_train_env() {
+    local env_name="$1"
+    local key="$2"
+    local value="$3"
+    local -n env_ref="$env_name"
+    env_ref["$key"]="$value"
+}
 
-    port="$(sed -n 's/^MASTER_PORT="\${MASTER_PORT:-\([0-9]\+\)}".*/\1/p' "$temp_script" | head -n 1)"
-    if [[ -z "$port" ]]; then
-        port="$(sed -n 's/^MASTER_PORT=\([0-9]\+\).*/\1/p' "$temp_script" | head -n 1)"
-    fi
+resolve_master_port_from_env() {
+    local env_name="$1"
+    local -n env_ref="$env_name"
+    echo "${env_ref[MASTER_PORT]:-${MASTER_PORT:-29500}}"
+}
 
-    echo "$port"
+train_env_to_args() {
+    local env_name="$1"
+    local out_name="$2"
+    local -n env_ref="$env_name"
+    local -n out_ref="$out_name"
+    local key=""
+
+    out_ref=()
+    while IFS= read -r key; do
+        [[ -z "$key" ]] && continue
+        out_ref+=("${key}=${env_ref[$key]}")
+    done < <(printf '%s\n' "${!env_ref[@]}" | sort)
 }
 
 is_local_tcp_port_free() {
     local port="$1"
-    python - "$port" <<'PY'
+    python3 - "$port" <<'PY'
 import socket
 import sys
 
@@ -148,7 +164,7 @@ PY
 
 find_available_master_port() {
     local preferred_port="${1:-29500}"
-    python - "$preferred_port" <<'PY'
+    python3 - "$preferred_port" <<'PY'
 import socket
 import sys
 
@@ -180,11 +196,12 @@ PY
 }
 
 ensure_available_master_port() {
-    local temp_script="$1"
+    local env_name="$1"
+    local -n env_ref="$env_name"
     local current_port=""
     local new_port=""
 
-    current_port="$(resolve_master_port_from_script "$temp_script")"
+    current_port="$(resolve_master_port_from_env "$env_name")"
     [[ -z "$current_port" ]] && return 0
 
     if is_local_tcp_port_free "$current_port"; then
@@ -197,7 +214,7 @@ ensure_available_master_port() {
     }
 
     if [[ "$new_port" != "$current_port" ]]; then
-        sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
+        env_ref[MASTER_PORT]="$new_port"
         print_warning "启动前检测到 MASTER_PORT=${current_port} 已占用，切换为 MASTER_PORT=${new_port}"
     fi
 
@@ -206,32 +223,33 @@ ensure_available_master_port() {
 
 apply_auto_fix_for_train_failure() {
     local log_file="$1"
-    local temp_script="$2"
+    local env_name="$2"
+    local -n env_ref="$env_name"
     local fixed=false
     local actions=()
 
     if grep -qi "dataloader_prefetch_factor can only be set.*dataloader_num_workers > 1" "$log_file"; then
-        sed -i "s/^DATALOADER_NUM_WORKERS=.*/DATALOADER_NUM_WORKERS=2/" "$temp_script" || true
-        sed -i "s/^DATALOADER_PREFETCH_FACTOR=.*/DATALOADER_PREFETCH_FACTOR=2/" "$temp_script" || true
+        env_ref[DATALOADER_NUM_WORKERS]="2"
+        env_ref[DATALOADER_PREFETCH_FACTOR]="2"
         fixed=true
         actions+=("set DATALOADER_NUM_WORKERS=2, DATALOADER_PREFETCH_FACTOR=2")
         print_warning "自动修复: 调整 dataloader workers/prefetch"
     fi
 
     if grep -qi "Your setup doesn't support bf16/gpu" "$log_file"; then
-        sed -i "s/--torch_dtype bfloat16/--torch_dtype float16/g" "$temp_script" || true
+        env_ref[TORCH_DTYPE]="float16"
         fixed=true
-        actions+=("replace --torch_dtype bfloat16 -> float16")
+        actions+=("set TORCH_DTYPE=float16")
         print_warning "自动修复: bf16 -> float16"
     fi
 
     if grep -qiE "address already in use|Address already in use" "$log_file"; then
         local current_port=""
         local new_port=""
-        current_port="$(resolve_master_port_from_script "$temp_script")"
+        current_port="$(resolve_master_port_from_env "$env_name")"
         new_port="$(find_available_master_port "${current_port:-29500}")" || new_port=""
         if [[ -n "$new_port" ]]; then
-            sed -i "s/^MASTER_PORT=.*/MASTER_PORT=${new_port}/" "$temp_script" || true
+            env_ref[MASTER_PORT]="$new_port"
             fixed=true
             actions+=("set MASTER_PORT=${new_port}")
             print_warning "自动修复: 更换 MASTER_PORT=${new_port}"
@@ -241,19 +259,17 @@ apply_auto_fix_for_train_failure() {
     fi
 
     if grep -qiE "out of memory|CUDA out of memory" "$log_file"; then
-        sed -i "s/^BATCH_SIZE=.*/BATCH_SIZE=1/" "$temp_script" || true
-        sed -i "s/^GRAD_ACCUM_STEPS=.*/GRAD_ACCUM_STEPS=1/" "$temp_script" || true
+        env_ref[BATCH_SIZE]="1"
+        env_ref[GRAD_ACCUM_STEPS]="1"
         fixed=true
         actions+=("set BATCH_SIZE=1, GRAD_ACCUM_STEPS=1")
         print_warning "自动修复: 降低 batch 配置"
     fi
 
     if grep -qi "weights trying to be saved contained shared tensors" "$log_file"; then
-        if ! grep -q -- "--save_safetensors false" "$temp_script"; then
-            sed -i "/\\\$MAX_STEPS_ARG/i\\    --save_safetensors false \\\\" "$temp_script" || true
-        fi
+        env_ref[SAVE_SAFETENSORS]="false"
         fixed=true
-        actions+=("append --save_safetensors false")
+        actions+=("set SAVE_SAFETENSORS=false")
         print_warning "自动修复: 设置 --save_safetensors false"
     fi
 
@@ -759,91 +775,57 @@ run_experiment() {
         return 1
     fi
 
-    # 创建临时脚本（注入配置）
-    local temp_script=$(mktemp --suffix=.sh)
+    # Build per-run environment overrides and call the original train script.
+    # Keep this data-driven instead of rewriting a temporary shell script.
+    declare -A train_env=()
+    set_train_env train_env "VLN_ENV_TYPE" "$ENV_TYPE"
+    set_train_env train_env "VLN_DATA_PATH" "$ds_paths"
+    set_train_env train_env "USE_SWANLAB" "$USE_SWANLAB"
+    set_train_env train_env "SWANLAB_PROJECT" "$SWANLAB_PROJECT"
+    set_train_env train_env "SWANLAB_DIRECT_NETWORK" "$SWANLAB_DIRECT_NETWORK"
+    set_train_env train_env "MEMORY_METHOD" "$MEMORY_METHOD"
+    set_train_env train_env "MAP_GLOBAL_SIDE_M" "$MAP_GLOBAL_SIDE_M"
+    set_train_env train_env "MAP_LOCAL_SIDE_M" "$MAP_LOCAL_SIDE_M"
+    set_train_env train_env "MAP_RENDER_PX" "$MAP_RENDER_PX"
+    set_train_env train_env "MAP_MASK_METHOD" "$MAP_MASK_METHOD"
+    set_train_env train_env "TRAIN_CUDA_DEVICES" "$TRAIN_CUDA_DEVICES"
+    set_train_env train_env "TRAIN_NUM_GPUS" "$TRAIN_NUM_GPUS"
+    set_train_env train_env "TRAIN_DRY_RUN" "$TRAIN_DRY_RUN"
 
-    # 读取原始脚本并修改
-    cat "$train_script" > "$temp_script"
+    if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
+        set_train_env train_env "RESUME_FROM_CHECKPOINT" "$RESUME_FROM_CHECKPOINT"
+        set_train_env train_env "RESUME_ONLY_MODEL" "$RESUME_ONLY_MODEL"
+        print_info "恢复训练: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
+    fi
 
-    # 注入自定义配置 - 直接替换变量值
+    if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
+        set_train_env train_env "OUTPUT_DIR_OVERRIDE" "$OUTPUT_DIR_OVERRIDE"
+        print_info "输出目录覆盖: $OUTPUT_DIR_OVERRIDE"
+    fi
+
+    # 注入自定义配置
     if [[ "$config" != "default" ]]; then
         IFS=',' read -ra config_items <<< "$config"
         for item in "${config_items[@]}"; do
             if [[ -n "$item" && "$item" == *"="* ]]; then
                 local var_name="${item%%=*}"
                 local var_value="${item#*=}"
-                # 转义 sed 特殊字符 (/, &, \) 避免替换失败
-                local var_value_escaped=$(printf '%s\n' "$var_value" | sed 's/[&/\]/\\&/g')
-                # 替换脚本中的变量赋值
-                # 匹配: VAR_NAME=value 或 VAR_NAME="value" 或 VAR_NAME='value'
-                sed -i "s/^${var_name}=.*/${var_name}=${var_value_escaped}/" "$temp_script"
+                set_train_env train_env "$var_name" "$var_value"
                 case "$var_name" in
-                    MEMORY_METHOD) MEMORY_METHOD="$var_value" ;;
-                    MAP_GLOBAL_SIDE_M) MAP_GLOBAL_SIDE_M="$var_value" ;;
-                    MAP_LOCAL_SIDE_M) MAP_LOCAL_SIDE_M="$var_value" ;;
-                    MAP_RENDER_PX) MAP_RENDER_PX="$var_value" ;;
-                    MAP_MASK_METHOD) MAP_MASK_METHOD="$var_value" ;;
+                    MEMORY_METHOD) set_train_env train_env "MEMORY_METHOD" "$var_value" ;;
+                    MAP_GLOBAL_SIDE_M) set_train_env train_env "MAP_GLOBAL_SIDE_M" "$var_value" ;;
+                    MAP_LOCAL_SIDE_M) set_train_env train_env "MAP_LOCAL_SIDE_M" "$var_value" ;;
+                    MAP_RENDER_PX) set_train_env train_env "MAP_RENDER_PX" "$var_value" ;;
+                    MAP_MASK_METHOD) set_train_env train_env "MAP_MASK_METHOD" "$var_value" ;;
                 esac
                 print_info "配置覆盖: ${var_name}=${var_value}"
             fi
         done
     fi
 
-    # 修改环境类型
-    sed -i "s/^VLN_ENV_TYPE=.*/VLN_ENV_TYPE=\"$ENV_TYPE\"/" "$temp_script"
     print_info "环境类型: $ENV_TYPE"
-
-    # 修改 SwanLab 配置
-    if [[ "$USE_SWANLAB" == true ]]; then
-        sed -i "s/^SWANLAB_PROJECT=.*/SWANLAB_PROJECT=\"$SWANLAB_PROJECT\"/" "$temp_script"
-        sed -i "s/^SWANLAB_DIRECT_NETWORK=.*/SWANLAB_DIRECT_NETWORK=\"$SWANLAB_DIRECT_NETWORK\"/" "$temp_script"
-        sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=true/" "$temp_script"
-    else
-        sed -i "s/^USE_SWANLAB=.*/USE_SWANLAB=false/" "$temp_script"
-    fi
-
-    if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
-        sed -i "s|^RESUME_FROM_CHECKPOINT=.*|RESUME_FROM_CHECKPOINT=\"$RESUME_FROM_CHECKPOINT\"|" "$temp_script"
-        sed -i "s|^RESUME_ONLY_MODEL=.*|RESUME_ONLY_MODEL=\"$RESUME_ONLY_MODEL\"|" "$temp_script"
-        print_info "恢复训练: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
-    fi
-
-    if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
-        sed -i "s|^OUTPUT_DIR_OVERRIDE=.*|OUTPUT_DIR_OVERRIDE=\"$OUTPUT_DIR_OVERRIDE\"|" "$temp_script"
-        print_info "输出目录覆盖: $OUTPUT_DIR_OVERRIDE"
-    fi
-
-    sed -i "s|^MEMORY_METHOD=.*|MEMORY_METHOD=\"$MEMORY_METHOD\"|" "$temp_script"
-    sed -i "s|^MAP_GLOBAL_SIDE_M=.*|MAP_GLOBAL_SIDE_M=\"$MAP_GLOBAL_SIDE_M\"|" "$temp_script"
-    sed -i "s|^MAP_LOCAL_SIDE_M=.*|MAP_LOCAL_SIDE_M=\"$MAP_LOCAL_SIDE_M\"|" "$temp_script"
-    sed -i "s|^MAP_RENDER_PX=.*|MAP_RENDER_PX=\"$MAP_RENDER_PX\"|" "$temp_script"
-    sed -i "s|^MAP_MASK_METHOD=.*|MAP_MASK_METHOD=\"$MAP_MASK_METHOD\"|" "$temp_script"
-    print_info "Memory 配置: method=$MEMORY_METHOD, global=$MAP_GLOBAL_SIDE_M, local=$MAP_LOCAL_SIDE_M, render=$MAP_RENDER_PX, mask=$MAP_MASK_METHOD"
-
-    # 修改数据路径 - 根据环境类型替换对应的数组
-    local data_array_name="HABITAT_DATA_PATHS"
-    [[ "$ENV_TYPE" == "satnav" ]] && data_array_name="SATNAV_DATA_PATHS"
-
-    local data_paths_content="${data_array_name}=(\n"
-    IFS=',' read -ra path_arr <<< "$ds_paths"
-    for path in "${path_arr[@]}"; do
-        data_paths_content+="    \"$path\"\n"
-    done
-    data_paths_content+=")"
-
-    # 使用 awk 替换对应的数据路径数组
-    awk -v new_content="$data_paths_content" -v array_name="$data_array_name" '
-        $0 ~ "^"array_name"=\\(" {
-            print new_content
-            in_array=1
-            next
-        }
-        in_array && /^\)/ {
-            in_array=0
-            next
-        }
-        !in_array { print }
-    ' "$temp_script" > "${temp_script}.tmp" && mv "${temp_script}.tmp" "$temp_script"
+    print_info "Memory 配置: method=${train_env[MEMORY_METHOD]}, global=${train_env[MAP_GLOBAL_SIDE_M]}, local=${train_env[MAP_LOCAL_SIDE_M]}, render=${train_env[MAP_RENDER_PX]}, mask=${train_env[MAP_MASK_METHOD]}"
+    print_info "数据路径: $ds_paths"
 
     # 运行训练
     local start_time=$(date +%s)
@@ -852,21 +834,12 @@ run_experiment() {
 
     print_info "日志文件: $log_file"
     print_info "开始训练..."
-    export TRAIN_CUDA_DEVICES TRAIN_NUM_GPUS TRAIN_DRY_RUN
-
-    # 修复 SWIFTVLN_ROOT 路径问题
-    # 原始脚本使用 BASH_SOURCE 计算 SWIFTVLN_ROOT，但复制到临时文件后路径会错误
-    # 直接硬编码 SWIFTVLN_ROOT 为正确的绝对路径
-    sed -i "s|^SWIFTVLN_ROOT=.*|SWIFTVLN_ROOT=\"${SWIFTVLN_ROOT}\"|g" "$temp_script"
-
-    # 将相对路径改为绝对路径
-    sed -i "s|src/swiftvln/model/trainer.py|${SWIFTVLN_ROOT}/src/swiftvln/model/trainer.py|g" "$temp_script"
-    sed -i "s|--custom_register_path src/swiftvln/model|--custom_register_path ${SWIFTVLN_ROOT}/src/swiftvln/model|g" "$temp_script"
 
     local attempt=1
     local max_attempts=$((MAX_AUTO_FIX_RETRIES + 1))
     local run_log_file="$log_file"
     local attempted_fixes=""
+    local -a train_env_args=()
 
     # 执行训练脚本（带自动修复重试）
     while true; do
@@ -877,9 +850,11 @@ run_experiment() {
             print_warning "开始第 ${attempt} 次尝试..."
         fi
 
-        ensure_available_master_port "$temp_script" || true
+        ensure_available_master_port train_env || true
+        set_train_env train_env "TRAIN_LOG_FILE" "$run_log_file"
+        train_env_to_args train_env train_env_args
 
-        bash "$temp_script" 2>&1 | tee "$run_log_file"
+        env "${train_env_args[@]}" bash "$train_script" 2>&1 | tee "$run_log_file"
         local train_exit_code=${PIPESTATUS[0]}
 
         if [[ $train_exit_code -eq 0 ]]; then
@@ -888,7 +863,7 @@ run_experiment() {
 
         print_warning "训练脚本退出码: ${train_exit_code}"
 
-        if [[ $attempt -lt $max_attempts ]] && apply_auto_fix_for_train_failure "$run_log_file" "$temp_script"; then
+        if [[ $attempt -lt $max_attempts ]] && apply_auto_fix_for_train_failure "$run_log_file" train_env; then
             attempted_fixes="${attempted_fixes}\n- attempt ${attempt}: ${LAST_AUTO_FIX_ACTIONS}"
             ((attempt++))
             continue
@@ -939,7 +914,6 @@ run_experiment() {
             _emit_train_event "EXPERIMENT_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${output_path:-N/A}|$(date -Iseconds)"
         fi
 
-        rm -f "$temp_script"
         return 0
     else
         local error_msg=$(tail -50 "$run_log_file" | grep -iE "(error|oom|cuda|exception)" | head -5)
@@ -950,7 +924,6 @@ run_experiment() {
         print_error "实验 $exp_idx 失败!"
         _emit_train_event "EXPERIMENT_FAILED|${exp_idx}|${total:-0}|${model}|unknown|${error_msg:0:200}|${run_log_file}|$(date -Iseconds)"
 
-        rm -f "$temp_script"
         return 1
     fi
 }
