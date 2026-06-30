@@ -139,6 +139,11 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     - StreamVLN train smoke 在 98 机通过：
       `logs/baseline_satnav_v01_smoke/train_streamvln_local98_20260629_150840.status`
     - smoke 输出模型目录均已清理，只保留日志、CSV/status 与 evaluation summary 副本
+- Baseline model placeholder convention（Updated: 2026-06-30）：
+  - `baseline/{navila,streamvln,uninavid,openfly}/model/` 统一只保留根目录 `.gitkeep`
+  - 不在 git 中预建各 HF 模型子目录，也不跟踪模型 `config.json`、tokenizer、权重或 LFS 指针
+  - 配置引用的外部模型目录由下载脚本、本地准备流程或用户手动放置生成
+  - 下载脚本需把 scratch/continue 起训资产直接落到训练脚本默认读取的 `baseline/<name>/model/*` 路径
 - OpenFly scratch native checkpoint 本地 HF cache（Updated: 2026-04-20）：
   - 核心实现：`baseline/openfly/src/native_core/checkpoint_conversion.py`
   - 当前 `scratch` backend 不再让 8 个 rank 各自重复读取 `openvlaopenvla-7b-prismatic/checkpoints/*.pt`

@@ -8,6 +8,10 @@ MODEL_DIR="${MODEL_DIR:-${BASELINE_DIR}/model}"
 BACKEND="${BACKEND:-${OPENFLY_BACKEND:-continue}}"
 CONTINUE_MODEL_ID="${CONTINUE_MODEL_ID:-IPEC-COMMUNITY/openfly-agent-7b}"
 SCRATCH_MODEL_ID="${SCRATCH_MODEL_ID:-openvla/openvla-7b-prismatic}"
+# ModelScope availability checked via ModelScope API (2026-06-30):
+#   - IPEC-COMMUNITY/openfly-agent-7b: not found
+#   - openvla/openvla-7b-prismatic: not found
+# Keep OpenFly default downloads on HF/hf-mirror unless mirrors are added later.
 MODEL_ID="${MODEL_ID:-}"
 TARGET_DIR="${TARGET_DIR:-}"
 HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
