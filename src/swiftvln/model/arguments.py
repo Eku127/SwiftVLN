@@ -105,7 +105,7 @@ class SwiftVLNTrainArguments(BaseVLNTrainArguments):
     # Overlap parameters for sliding window training
     # ==========================================================================
     num_overlap: int = field(
-        default=16,
+        default=0,
         metadata={
             "help": "Number of overlapping actions between consecutive windows. "
                     "When num_overlap > 0, the sliding window stride = num_frames - num_overlap. "

@@ -41,7 +41,7 @@ class BaseVLNTrainArguments(TrainArguments):
     )
     # Environment type: determines forward distance in prompts
     vln_env_type: str = field(
-        default="habitat",
+        default="satnav",
         metadata={
             "help": "VLN environment type: 'habitat' (forward=0.25m) or 'satnav' (forward=10m). "
                     "This affects the action description in prompts."

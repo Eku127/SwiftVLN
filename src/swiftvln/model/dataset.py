@@ -78,8 +78,8 @@ class SwiftVLNDataset(Dataset):
         num_future_steps: int = 4,
         use_random: bool = False,
         max_samples: Optional[int] = None,
-        num_overlap: int = 16,  # New parameter for overlap
-        env_type: str = "habitat",  # New parameter for environment type
+        num_overlap: int = 0,
+        env_type: str = "satnav",
         history_processor_type: str = "per_frame",  # History sampling strategy
         log_base: float = 1.0,  # Sampling distribution (1.0=uniform, >1.0=logarithmic)
         system_prompt_setting: str = "vanilla",  # System prompt strategy: "vanilla" or "initial"

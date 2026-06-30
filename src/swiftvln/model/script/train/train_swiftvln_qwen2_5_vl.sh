@@ -447,7 +447,7 @@ fi
 # SwanLab Configuration
 # ============================================================================
 USE_SWANLAB="${USE_SWANLAB:-false}"
-SWANLAB_PROJECT="${SWANLAB_PROJECT:-StreamVLN}"
+SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
 SWANLAB_EXP_NAME="${EXP_NAME}"
 SWANLAB_MODE="${SWANLAB_MODE:-cloud}"
 
