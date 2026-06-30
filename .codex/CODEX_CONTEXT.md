@@ -115,6 +115,30 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     `streamvln-satnav-continue-1ep-f32h8s4-lr2e-5`、
     `streamvln-satnav-scratch-1ep-f32h8s4-lr2e-5`；二者与对应
     `streamvln-baseline-*` 权重一致，但只保留 eval/inference 所需文件
+- SwiftVLN model zoo HF upload-ready 副本（Updated: 2026-06-30）：
+  - 目录：`output/model_zoo/swiftvln/HF_model/`；`output/model_zoo/swiftvln/`
+    顶层当前只保留该 `HF_model` 目录，旧长名模型目录已清理
+  - 已创建 11 个短名 HF 模型：
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-gtc-k512-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-map-g1000-l400-r448-d20-s2-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h0-nomem-pool-s2-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b2.0-pool-s2-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-initial-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-posefilm`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-pool-s2-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap0-sgtc-k512-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-pool-s2-noembed`、
+    `swiftvln-satnav-3b-1ep-f32s4-overlap4-pf-h8-pool-s2-noembed`
+  - HF 目录只保留推理/上传所需文件：`config.json`、tokenizer /
+    preprocessor 配置、`model-*.safetensors`、`model.safetensors.index.json`、
+    `.gitattributes`、`README.md`；不包含 checkpoint wrapper、trainer state、
+    rng state、logs、TensorBoard runs 或训练曲线图
+  - 主线 `eval_by_name.sh <model_name>` 会优先直接使用
+    `output/model_zoo/swiftvln/HF_model/<model_name>`；若不存在，再回退到旧训练输出目录
+    `output/swiftvln/<model_name>/v*/checkpoint-*` 或 `checkpoint-*`
+  - `eval_by_name.sh` 的 embed slot 解析支持 `-posefilm` / `-pose` / `-noembed`
+    出现在模型名末尾，适配上述短名
 - Baseline eval by name with model root（Updated: 2026-06-29）：
   - 脚本：`baseline/streamvln/scripts/eval_satnav.sh`、`baseline/navila/scripts/eval_satnav.sh`、`baseline/uninavid/scripts/eval_satnav.sh`、`baseline/openfly/scripts/eval_satnav.sh`
   - StreamVLN / NaVILA / UniNaVid / OpenFly eval 均已收敛为命名参数主路径；公开入口使用

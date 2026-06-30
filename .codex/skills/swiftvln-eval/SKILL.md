@@ -73,6 +73,29 @@ For map experiments, confirm `MEMORY_METHOD=map` and the expected `MAP_*` values
 
 ---
 
+## Model Zoo Names
+
+- SwiftVLN HF upload-ready model directories live under
+  `output/model_zoo/swiftvln/HF_model/`; `output/model_zoo/swiftvln/` should not
+  contain old long-name model directories outside `HF_model`.
+- Mainline `eval_by_name.sh <model_name>` resolves
+  `output/model_zoo/swiftvln/HF_model/<model_name>` directly before falling
+  back to old training-output `checkpoint-*` discovery.
+- Current short-name SwiftVLN HF models:
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-gtc-k512-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-map-g1000-l400-r448-d20-s2-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h0-nomem-pool-s2-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b2.0-pool-s2-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-initial-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-posefilm`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-pool-s2-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap0-sgtc-k512-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-pool-s2-noembed`,
+  `swiftvln-satnav-3b-1ep-f32s4-overlap4-pf-h8-pool-s2-noembed`.
+
+---
+
 ## Step 1 → Check Servers & Pick Eval Host
 
 1. Eval hosts allowed: **98 and 73 only**. Never run eval on 17.

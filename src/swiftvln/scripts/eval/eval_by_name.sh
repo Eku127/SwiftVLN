@@ -2,7 +2,7 @@
 # ============================================================================
 # Unified VLN Model Evaluation Script
 # ============================================================================
-# 
+#
 # 支持的模型架构: swiftvln
 #
 # 使用方法:
@@ -14,10 +14,10 @@
 #
 #   # SwiftVLN 评估 (per_frame with random history sampling)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456
-#   
+#
 #   # SwiftVLN 评估 (per_frame with tome, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-noembed-bs64-lr2e-5-123456
-#   
+#
 #   # SwiftVLN 评估 (GTC, no embedding)
 #   bash src/swiftvln/scripts/eval/eval_by_name.sh swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-123456
 #
@@ -94,7 +94,7 @@ fi
 # ============================================================================
 parse_model_arch() {
     local name="$1"
-    
+
     if [[ "$name" == swiftvln-* ]]; then
         echo "swiftvln"
     else
@@ -131,23 +131,23 @@ parse_swiftvln_params() {
     # 新格式 (segment_gtc): swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
     # embed_slot: noembed | pose | posefilm | uav | pose+uav | posefilm+uav
     # 注: -initial 是可选的，vanilla 模式下不显示（默认）
-    
+
     local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
     local model_family="qwen2_5_vl"
     if [[ "$name" == *"-qwen3vl-"* ]]; then
         model_family="qwen3_vl"
     fi
     local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
-    
+
     # 新格式: f{num_frames}s{num_future_steps} (不含 h)
     local frames_steps=$(echo "$name" | grep -oP 'f\d+s\d+' | head -1)
     local num_frames=$(echo "$frames_steps" | sed -n 's/f\([0-9]*\)s.*/\1/p')
     local num_future_steps=$(echo "$frames_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
-    
+
     local num_overlap=$(echo "$name" | sed -n 's/.*-overlap\([0-9]*\)-.*$/\1/p')
     local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
     local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
-    
+
     # 解析 system_prompt_setting: 检查 -initial 后缀
     local system_prompt_setting="vanilla"
     if [[ "$name" == *"-initial-"* ]]; then
@@ -158,7 +158,7 @@ parse_swiftvln_params() {
     local map_local_side_m=""
     local map_render_px=""
     local map_mask_method=""
-    
+
     # 解析历史处理器类型和相关参数
     local history_processor_type="per_frame"
     local num_history="8"
@@ -169,7 +169,7 @@ parse_swiftvln_params() {
     local gtc_output_tokens=""
     local use_pose_embed="false"
     local pose_fusion_method="additive"
-    
+
     if [[ "$name" == *"-map-g"* ]]; then
         local map_block
         map_block=$(echo "$name" | grep -oP 'map-g[^-]+-l[^-]+-r\d+-[^-]+-s\d+' | head -1)
@@ -214,16 +214,16 @@ parse_swiftvln_params() {
 
     # 解析 embedding enhancement slot
     # 匹配顺序: posefilm > pose > noembed
-    if [[ "$name" == *"-posefilm-"* ]]; then
+    if [[ "$name" == *"-posefilm-"* ]] || [[ "$name" == *"-posefilm" ]]; then
         use_pose_embed="true"
         pose_fusion_method="film"
-    elif [[ "$name" == *"-pose-"* ]]; then
+    elif [[ "$name" == *"-pose-"* ]] || [[ "$name" == *"-pose" ]]; then
         use_pose_embed="true"
         pose_fusion_method="additive"
-    elif [[ "$name" == *"-noembed-"* ]]; then
+    elif [[ "$name" == *"-noembed-"* ]] || [[ "$name" == *"-noembed" ]]; then
         use_pose_embed="false"
     fi
-    
+
     echo "MODEL_FAMILY=$model_family"
     echo "MODEL_SIZE=$model_size"
     echo "NUM_EPOCHS=$epochs"
@@ -367,10 +367,76 @@ echo ""
 # 检查模型目录和checkpoint
 # ============================================================================
 MODEL_DIR="${OUTPUT_ROOT}/${MODEL_ARCH}/${MODEL_NAME}"
+HF_MODEL_DIR="${SWIFTVLN_ROOT}/output/model_zoo/${MODEL_ARCH}/HF_model/${MODEL_NAME}"
+
+is_hf_model_dir() {
+    local model_dir="$1"
+    [ -d "$model_dir" ] || return 1
+    [ -f "$model_dir/config.json" ] || return 1
+    if [ -f "$model_dir/model.safetensors.index.json" ] || \
+       ls "$model_dir"/model-*.safetensors >/dev/null 2>&1 || \
+       [ -f "$model_dir/pytorch_model.bin.index.json" ] || \
+       ls "$model_dir"/pytorch_model-*.bin >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+# 查找最新的checkpoint (按 checkpoint 编号数字排序)
+find_latest_checkpoint() {
+    local model_dir="$1"
+    local latest_checkpoint=""
+
+    # 首先在 v*-* 子目录中查找
+    for version_dir in "$model_dir"/v*; do
+        if [ -d "$version_dir" ]; then
+            # 查找 checkpoint-* 目录，按数字排序取最大
+            local ckpt
+            ckpt=$(ls -d "$version_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+            if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+                latest_checkpoint="$ckpt"
+            fi
+        fi
+    done
+
+    # 如果没有找到，直接在模型目录下查找
+    if [ -z "$latest_checkpoint" ]; then
+        local ckpt
+        ckpt=$(ls -d "$model_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
+        if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+            latest_checkpoint="$ckpt"
+        fi
+    fi
+
+    echo "$latest_checkpoint"
+}
+
+resolve_model_path() {
+    # Prefer upload-ready HF model zoo directories. They are already complete
+    # model directories and do not need a checkpoint-* wrapper.
+    if is_hf_model_dir "$HF_MODEL_DIR"; then
+        echo "$HF_MODEL_DIR"
+        return 0
+    fi
+
+    if [ ! -d "$MODEL_DIR" ]; then
+        return 1
+    fi
+
+    local ckpt
+    ckpt=$(find_latest_checkpoint "$MODEL_DIR")
+    if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
+        echo "$ckpt"
+        return 0
+    fi
+
+    return 1
+}
 
 # DRY-RUN 模式下跳过目录检查
 if [ "$DRY_RUN" == "true" ]; then
     print_info "预期模型目录: $MODEL_DIR"
+    print_info "预期HF模型目录: $HF_MODEL_DIR"
     print_success "DRY-RUN 模式完成，参数解析成功!"
     exit 0
 fi
@@ -378,7 +444,18 @@ fi
 # CHECK-ONLY 模式: 跳过模型检查，但验证eval脚本存在
 if [ "$CHECK_ONLY" == "true" ]; then
     print_info "预期模型目录: $MODEL_DIR"
-    
+    print_info "预期HF模型目录: $HF_MODEL_DIR"
+    RESOLVED_MODEL_PATH="$(resolve_model_path || true)"
+    if [ -n "$RESOLVED_MODEL_PATH" ]; then
+        if [ "$RESOLVED_MODEL_PATH" = "$HF_MODEL_DIR" ]; then
+            print_success "将直接使用HF模型目录: $RESOLVED_MODEL_PATH"
+        else
+            print_success "将使用checkpoint目录: $RESOLVED_MODEL_PATH"
+        fi
+    else
+        print_warning "未找到可用模型路径；CHECK_ONLY 仍继续检查参数和eval脚本"
+    fi
+
     # 检查eval脚本是否存在
     EVAL_SCRIPT="${VLN_ROOT}/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh"
     if [ ! -f "$EVAL_SCRIPT" ]; then
@@ -386,13 +463,14 @@ if [ "$CHECK_ONLY" == "true" ]; then
         exit 1
     fi
     print_success "找到eval脚本: $EVAL_SCRIPT"
-    
+
     # 显示将要传递的环境变量
     echo ""
     echo "=============================================="
     echo "将传递给eval脚本的环境变量"
     echo "=============================================="
-    echo "MODEL_PATH=<checkpoint_path>"
+    echo "MODEL_NAME=${MODEL_NAME}"
+    echo "MODEL_PATH=${RESOLVED_MODEL_PATH:-<checkpoint_or_hf_model_path>}"
     echo "MODEL_FAMILY=${MODEL_FAMILY:-qwen2_5_vl}"
     echo "ENV_TYPE=${ENV_TYPE}"
     echo "EVAL_SPLIT=${EVAL_SPLIT:-val_unseen}"
@@ -416,45 +494,21 @@ fi
 
 print_info "模型目录: $MODEL_DIR"
 
-# 查找最新的checkpoint (按 checkpoint 编号数字排序)
-find_latest_checkpoint() {
-    local model_dir="$1"
-    local latest_checkpoint=""
-    
-    # 首先在 v*-* 子目录中查找
-    for version_dir in "$model_dir"/v*; do
-        if [ -d "$version_dir" ]; then
-            # 查找 checkpoint-* 目录，按数字排序取最大
-            local ckpt
-            ckpt=$(ls -d "$version_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
-            if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
-                latest_checkpoint="$ckpt"
-            fi
-        fi
-    done
-    
-    # 如果没有找到，直接在模型目录下查找
-    if [ -z "$latest_checkpoint" ]; then
-        local ckpt
-        ckpt=$(ls -d "$model_dir"/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1)
-        if [ -n "$ckpt" ] && [ -d "$ckpt" ]; then
-            latest_checkpoint="$ckpt"
-        fi
-    fi
-    
-    echo "$latest_checkpoint"
-}
-
-CHECKPOINT_PATH=$(find_latest_checkpoint "$MODEL_DIR")
+CHECKPOINT_PATH=$(resolve_model_path || true)
 
 if [ -z "$CHECKPOINT_PATH" ]; then
-    print_error "在模型目录下找不到checkpoint!"
-    print_error "模型目录: $MODEL_DIR"
-    print_error "请确保模型训练已完成并保存了checkpoint"
+    print_error "找不到可用模型路径!"
+    print_error "HF模型目录: $HF_MODEL_DIR"
+    print_error "训练输出目录: $MODEL_DIR"
+    print_error "请确保HF_model目录完整，或训练输出目录中存在checkpoint"
     exit 1
 fi
 
-print_success "找到checkpoint: $CHECKPOINT_PATH"
+if [ "$CHECKPOINT_PATH" = "$HF_MODEL_DIR" ]; then
+    print_success "找到HF模型目录: $CHECKPOINT_PATH"
+else
+    print_success "找到checkpoint: $CHECKPOINT_PATH"
+fi
 
 # ============================================================================
 # 验证checkpoint完整性 (检查必要文件)
@@ -463,19 +517,19 @@ check_checkpoint_integrity() {
     local ckpt_path="$1"
     local required_files=("config.json")
     local missing_files=()
-    
+
     for file in "${required_files[@]}"; do
         if [ ! -f "$ckpt_path/$file" ]; then
             missing_files+=("$file")
         fi
     done
-    
+
     # 检查是否有模型权重文件 (可能是 .safetensors 或 .bin)
     if ! ls "$ckpt_path"/*.safetensors >/dev/null 2>&1 && \
        ! ls "$ckpt_path"/*.bin >/dev/null 2>&1; then
         missing_files+=("model weights (.safetensors or .bin)")
     fi
-    
+
     if [ ${#missing_files[@]} -gt 0 ]; then
         print_error "Checkpoint不完整! 缺少以下文件:"
         for file in "${missing_files[@]}"; do
@@ -483,7 +537,7 @@ check_checkpoint_integrity() {
         done
         return 1
     fi
-    
+
     return 0
 }
 
@@ -525,7 +579,7 @@ find_available_port() {
     local start_port=${1:-29600}
     local max_attempts=100
     local port=$start_port
-    
+
     for ((i=0; i<max_attempts; i++)); do
         if check_port_available $port; then
             echo $port
@@ -533,7 +587,7 @@ find_available_port() {
         fi
         port=$((port + 1))
     done
-    
+
     # 如果找不到可用端口，返回原始端口（让后续程序报错）
     echo $start_port
     return 1
@@ -562,6 +616,7 @@ fi
 # 准备环境变量
 # ============================================================================
 export MODEL_PATH="$CHECKPOINT_PATH"
+export MODEL_NAME
 export ENV_TYPE="$ENV_TYPE"  # 已在前面从模型名解析或使用用户指定值
 export MODEL_FAMILY="${MODEL_FAMILY:-qwen2_5_vl}"
 

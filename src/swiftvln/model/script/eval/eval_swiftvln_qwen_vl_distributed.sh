@@ -153,7 +153,7 @@ SATNAV_DEBUG_RANK="${SATNAV_DEBUG_RANK:--1}"
 # ============================================================================
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 # Extract model name from MODEL_PATH
-MODEL_NAME=$(echo "$MODEL_PATH" | sed -n 's|.*/output/swiftvln/\([^/]*\)/.*|\1|p')
+MODEL_NAME="${MODEL_NAME:-$(echo "$MODEL_PATH" | sed -n 's|.*/output/swiftvln/\([^/]*\)/.*|\1|p')}"
 MODEL_NAME="${MODEL_NAME:-unknown_model}"
 AUTO_RESUME_EVAL="${AUTO_RESUME_EVAL:-true}"
 OUTPUT_DIR_WAS_SET=false
