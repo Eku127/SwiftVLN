@@ -5,7 +5,6 @@ SwiftVLN models based on Qwen VL families.
 This module provides SwiftVLN model wrappers for Qwen2.5-VL and Qwen3-VL.
 The key additions are registering custom special tokens for differentiated
 image compression and attaching optional embedding enhancements:
-- <history_image>: For history frames (will be compressed)
 - <history_memory>: Unified history memory block
 - <current_image>: For current frames (no compression)
 """
@@ -22,8 +21,7 @@ from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
 
 # Special tokens (must match dataset.py and template.py)
-HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
-SWIFTVLN_SPECIAL_TOKENS = [HISTORY_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
+SWIFTVLN_SPECIAL_TOKENS = [HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
 
 
 class SwiftVLNStreamingMixin:

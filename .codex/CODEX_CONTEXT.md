@@ -1419,7 +1419,7 @@ Stage-A 当前验证状态（2026-04-03）：
 - SwiftVLN 模型注册：
   - 直接使用 `SwiftVLNQwen25VLLoader`
   - `ModelMeta` 使用 `loader=SwiftVLNQwen25VLLoader`
-  - 特殊 token 仍为 `<history_image>` / `<history_memory>` / `<current_image>`
+  - 特殊 token 为 `<history_memory>` / `<current_image>`
 - 默认脚本环境：
   - train 脚本默认激活 `swift-vln-train-update`
   - eval distributed 脚本默认激活 `swift-vln-eval-update`
@@ -1431,7 +1431,7 @@ Stage-A 当前验证状态（2026-04-03）：
   - 当前主线已保留 `swiftvln_qwen2_5_vl` 并新增 `swiftvln_qwen3_vl`
   - 共享逻辑：
     - streaming KV-cache 状态管理
-    - `<history_image>` / `<history_memory>` / `<current_image>` 注入
+    - `<history_memory>` / `<current_image>` 注入
     - `embed_enhance` pipeline 创建、迁移到目标 device/dtype、checkpoint 权重恢复
   - 模板实现：
     - Qwen2.5 继续基于 ms-swift `Qwen2_5VLTemplate`

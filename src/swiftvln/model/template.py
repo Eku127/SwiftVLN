@@ -35,9 +35,6 @@ from swiftvln.common.history_processors import (
     GlobalTokenClustering,
 )
 
-# Special tokens (must match dataset.py and model.py)
-HISTORY_IMAGE_TOKEN = "<history_image>"  # Legacy: per-frame token (deprecated)
-
 # Debug flag - set to True to see detailed GTC/SGTC processing info
 DEBUG_COMPRESSION = False
 # Debug flag - set to True to verify processor type in _encode
@@ -107,7 +104,6 @@ class SwiftVLNTemplateMixin:
     """
     
     # Token IDs (set in init_processor)
-    history_image_token_id: Optional[int] = None
     history_memory_token_id: Optional[int] = None
     current_image_token_id: Optional[int] = None
     
@@ -164,7 +160,6 @@ class SwiftVLNTemplateMixin:
             return
         
         # Get token IDs (tokens are added in model.py's get_model_tokenizer function)
-        self.history_image_token_id = processor.tokenizer.convert_tokens_to_ids(HISTORY_IMAGE_TOKEN)
         self.history_memory_token_id = processor.tokenizer.convert_tokens_to_ids(HISTORY_MEMORY_TOKEN)
         self.current_image_token_id = processor.tokenizer.convert_tokens_to_ids(CURRENT_IMAGE_TOKEN)
         
@@ -172,7 +167,6 @@ class SwiftVLNTemplateMixin:
         if self.history_memory_token_id != processor.tokenizer.unk_token_id:
             print(f"[SwiftVLNTemplate] Using special tokens (unified memory mode):")
             print(f"  - {HISTORY_MEMORY_TOKEN}: {self.history_memory_token_id} (unified)")
-            print(f"  - {HISTORY_IMAGE_TOKEN}: {self.history_image_token_id} (legacy)")
             print(f"  - {CURRENT_IMAGE_TOKEN}: {self.current_image_token_id}")
             print(f"  - Standard image_token_id (<|image_pad|>): {self.image_token_id}")
             print(f"  - History Processor: {self.history_processor.name}")
@@ -201,7 +195,7 @@ class SwiftVLNTemplateMixin:
         raise RuntimeError(
             "\n" + "="*70 + "\n"
             "[SwiftVLNTemplate] ERROR: padding_free=true is NOT supported!\n\n"
-            "SwiftVLN uses custom tokens (<history_image>, <current_image>) which are\n"
+            "SwiftVLN uses custom tokens (<history_memory>, <current_image>) which are\n"
             "incompatible with Qwen2.5-VL's get_rope_index function.\n\n"
             "Solution: Set padding_free=false in your training script.\n"
             "  - In shell script: PADDING_FREE=false\n"
