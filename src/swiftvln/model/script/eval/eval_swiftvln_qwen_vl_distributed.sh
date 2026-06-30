@@ -3,10 +3,10 @@
 # 
 # Usage:
 #   # Habitat evaluation (default)
-#   ENV_TYPE=habitat MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh
+#   ENV_TYPE=habitat MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh
 #
 #   # SatNav evaluation
-#   ENV_TYPE=satnav MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh
+#   ENV_TYPE=satnav MODEL_PATH=/path/to/checkpoint bash src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh
 #
 # This script runs distributed SwiftVLN evaluation with history frame compression.
 
@@ -155,7 +155,64 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 # Extract model name from MODEL_PATH
 MODEL_NAME=$(echo "$MODEL_PATH" | sed -n 's|.*/output/swiftvln/\([^/]*\)/.*|\1|p')
 MODEL_NAME="${MODEL_NAME:-unknown_model}"
-OUTPUT_DIR="${OUTPUT_DIR:-./results/eval/swiftvln/${MODEL_NAME}/${EVAL_SPLIT}/${TIMESTAMP}}"
+AUTO_RESUME_EVAL="${AUTO_RESUME_EVAL:-true}"
+OUTPUT_DIR_WAS_SET=false
+if [ -n "${OUTPUT_DIR:-}" ]; then
+    OUTPUT_DIR_WAS_SET=true
+fi
+DEFAULT_OUTPUT_PARENT="./results/eval/swiftvln/${MODEL_NAME}/${EVAL_SPLIT}"
+
+is_truthy() {
+    case "$1" in
+        1|true|TRUE|True|yes|YES|Yes|y|Y|on|ON|On)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+find_latest_incomplete_output_dir() {
+    local output_parent="$1"
+    local candidate
+
+    [ -d "$output_parent" ] || return 1
+
+    while IFS= read -r candidate; do
+        [ -d "$candidate" ] || continue
+
+        # evaluation_summary.json is written only after rank0 completes the
+        # offline merge, so treat such directories as completed runs.
+        [ -f "${candidate}/evaluation_summary.json" ] && continue
+
+        # Only reuse directories with resume evidence. Empty setup-only
+        # directories should not steal a fresh run.
+        if [ -s "${candidate}/result.jsonl" ] || [ -d "${candidate}/.dist_sync" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < <(
+        find "$output_parent" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | \
+            sort -rn | cut -d' ' -f2-
+    )
+
+    return 1
+}
+
+AUTO_RESUME_EVAL_USED=false
+if [ "$OUTPUT_DIR_WAS_SET" = false ] && is_truthy "$AUTO_RESUME_EVAL"; then
+    RESUME_OUTPUT_DIR="$(find_latest_incomplete_output_dir "$DEFAULT_OUTPUT_PARENT" || true)"
+    if [ -n "$RESUME_OUTPUT_DIR" ]; then
+        OUTPUT_DIR="$RESUME_OUTPUT_DIR"
+        AUTO_RESUME_EVAL_USED=true
+        echo "[INFO] AUTO_RESUME_EVAL=true: reusing incomplete output dir: ${OUTPUT_DIR}"
+    else
+        OUTPUT_DIR="${DEFAULT_OUTPUT_PARENT}/${TIMESTAMP}"
+    fi
+else
+    OUTPUT_DIR="${OUTPUT_DIR:-${DEFAULT_OUTPUT_PARENT}/${TIMESTAMP}}"
+fi
 
 # ============================================================================
 # Video Options
@@ -214,6 +271,7 @@ echo "Config Path:     ${CONFIG_PATH}"
 echo "Model Path:      ${MODEL_PATH}"
 echo "Eval Split:      ${EVAL_SPLIT}"
 echo "Output Dir:      ${OUTPUT_DIR}"
+echo "Auto Resume:     ${AUTO_RESUME_EVAL} (used=${AUTO_RESUME_EVAL_USED}, explicit_output_dir=${OUTPUT_DIR_WAS_SET})"
 echo "Num GPUs:        ${NUM_GPUS}"
 echo "CUDA Devices:    ${CUDA_DEVICES}"
 echo "Num Overlap:     ${NUM_OVERLAP}"

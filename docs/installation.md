@@ -543,5 +543,5 @@ bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_habitat_exp_name>
 底层 eval 脚本默认激活 `swift-vln-eval-update`。如需临时使用其他环境，可以覆盖：
 
 ```bash
-SWIFTVLN_EVAL_CONDA_ENV=<env_name> bash src/swiftvln/model/script/eval/eval_swiftvln_qwen2_5_vl_distributed.sh
+SWIFTVLN_EVAL_CONDA_ENV=<env_name> bash src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh
 ```
