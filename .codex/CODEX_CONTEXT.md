@@ -454,6 +454,15 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - `collect_eval_results.py` 的 `ALL_*` 列直接读顶层指标
   - 同等清理已同步至所有 baseline：
     `baseline/{streamvln,navila,uninavid,openfly}/src/eval_satnav.py`
+- 主线评测结果写入与 resume（Updated: 2026-06-30）：
+  - `src/swiftvln/common/eval/runner.py`
+  - 每个 rank 在 episode 完成后立即 append 到结果目录下 `result.jsonl`
+  - 启动时读取既有 `result.jsonl`，按 `scene_id::episode_id` 联合键跳过已完成 episode；
+    重复行按最后写入覆盖，用于断点续跑与重跑去重
+  - 分布式收尾不再使用 `gather_metrics` / `dist.all_gather` / `dist.gather_object`
+  - 每个 rank 完成后写 `.dist_sync/rank_<rank>.done.json`，rank0 轮询 marker 后从
+    `result.jsonl` 离线去重汇总并写 `evaluation_summary.json`
+  - 为兼容旧收集脚本，rank0 仍会写清理后的 `all_results.jsonl`
 - StreamVLN baseline 默认训练口径（Updated: 2026-06-29）：
   - 训练脚本：`baseline/streamvln/scripts/train_satnav.sh`
   - 当前默认 SatNav 正式训练配置：
