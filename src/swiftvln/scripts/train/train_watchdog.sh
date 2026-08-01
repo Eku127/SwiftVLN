@@ -185,13 +185,22 @@ read_latest_event() {
 
 count_events() {
     local event_type="$1"
-    grep -c "^${event_type}|" "$EVENTS_FILE" 2>/dev/null || echo 0
+    # grep -c already prints "0" when no line matches, even though it exits 1.
+    # Swallow that status without printing a second zero; callers use the
+    # result in arithmetic expressions.
+    grep -c "^${event_type}|" "$EVENTS_FILE" 2>/dev/null || true
 }
 
 write_watchdog_result() {
     local outcome="$1" elapsed="$2"
-    local success_n=$(count_events "EXPERIMENT_SUCCESS")
-    local fail_n=$(count_events "EXPERIMENT_FAILED")
+    local success_n fail_n
+    if [[ $# -ge 4 ]]; then
+        success_n="$3"
+        fail_n="$4"
+    else
+        success_n=$(count_events "EXPERIMENT_SUCCESS")
+        fail_n=$(count_events "EXPERIMENT_FAILED")
+    fi
     local total=$((success_n + fail_n))
 
     cat > "$WATCHDOG_RESULT" <<EOF
@@ -398,6 +407,22 @@ while true; do
         fail_n=$(count_events "EXPERIMENT_FAILED")
         has_queue_done=$(count_events "QUEUE_DONE")
 
+        # The watchdog is intentionally registered after tmux launch, so the
+        # already-running train_queue process cannot inherit TRAIN_EVENTS_FILE.
+        # Recover the authoritative per-host completion status in that case.
+        completion_status=""
+        if [[ $has_queue_done -eq 0 ]] \
+            && completion_status=$(read_completion_status); then
+            recovered_success=$(sed -n 's/.*"success_count":[[:space:]]*\([0-9][0-9]*\).*/\1/p' <<< "$completion_status" | head -1)
+            recovered_fail=$(sed -n 's/.*"fail_count":[[:space:]]*\([0-9][0-9]*\).*/\1/p' <<< "$completion_status" | head -1)
+            if [[ -n "$recovered_success" && -n "$recovered_fail" ]]; then
+                success_n="$recovered_success"
+                fail_n="$recovered_fail"
+                has_queue_done=1
+                log "Recovered completion status: success=${success_n}, failed=${fail_n}"
+            fi
+        fi
+
         # Determine outcome
         outcome="completed"
         if [[ $has_queue_done -eq 0 && $success_n -eq 0 && $fail_n -eq 0 ]]; then
@@ -408,7 +433,7 @@ while true; do
             log "No QUEUE_DONE event — process likely crashed mid-queue"
         fi
 
-        write_watchdog_result "$outcome" "$ELAPSED"
+        write_watchdog_result "$outcome" "$ELAPSED" "$success_n" "$fail_n"
 
         if [[ "$outcome" == "crash" ]]; then
             # ── Crash ──
