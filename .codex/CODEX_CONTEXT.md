@@ -6,9 +6,13 @@
 ## Repository Scope
 
 - Repo: `SwiftVLN`
-- Root: `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor`
+- Root: `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN`
 - 主要代码域：`src/swiftvln/*`
 - 当前主线模型：`swiftvln`（未明确指定时默认按 swiftvln 处理）
+- Workspace path status（Updated: 2026-08-01）：
+  - 当前唯一 active 仓库根目录为 `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN`
+  - `SwiftVLN-refactor` 已于 2026-08-01 删除；训练、评测、S2R、Docker 和
+    Codex skills 均不再依赖该路径
 - Rename status（Updated: 2026-05-11）：
   - 主线 active 标识已切到 `swiftvln` / `SwiftVLN` / `SWIFTVLN`
   - 新训练输出默认写入 `output/swiftvln/<swiftvln-exp-name>`
@@ -158,6 +162,29 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     3) HF model zoo 目录 `output/model_zoo/swiftvln/HF_model/<model_name>`
   - `eval_by_name.sh` 的 embed slot 解析支持 `-posefilm` / `-pose` / `-noembed`
     出现在模型名末尾，适配上述短名
+- SwiftVLN backbone model zoo（Updated: 2026-08-01）：
+  - HF 模型目录：`output/model_zoo/backbones/HF_model/`
+  - 配套结果目录：`output/model_zoo/backbones/Results/`
+  - 当前集中保留 3 个 backbone checkpoint：
+    - `swiftvln-satnav-7b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`：
+      来源 `20260503-131840/checkpoint-2814`。这是当前可用且完整评测的 7B；
+      不是旧 backbone 表使用但权重已缺失的 `20260430-023600`。
+    - `swiftvln-satnav-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`：
+      来源 `20260502-090210/checkpoint-3518`。
+    - `swiftvln-satnav-qwen3vl-8b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`：
+      来源 `20260502-210950/checkpoint-28146`。
+  - 3 个目录均为 HF eval/inference 精简格式，只保留 config、tokenizer / processor、
+    safetensors 权重与 index（若为分片权重）、`.gitattributes` 和 model card；训练用
+    args、trainer/scheduler/rng state 与 `zero_to_fp32.py` 不进入 model zoo。
+  - `Results/<short-model-name>/{val_seen,val_unseen}/` 与 HF 模型一一对应，已移除
+    评测时间戳中间层，每个 split 直接保存 4 个标准结果文件。
+  - 汇总工作簿：`output/model_zoo/backbones/Results/backbone_results.xlsx`。
+  - 当前 `eval_by_name.sh` 不自动搜索 `model_zoo/backbones`；评测这些模型时应显式设置
+    `MODEL_PATH=output/model_zoo/backbones/HF_model/<short-model-name>`。
+  - 旧工作区 `/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor` 已于
+    2026-08-01 永久删除。迁入上述 model zoo 的 7B `131840`、Qwen3-VL 2B
+    `090210`、Qwen3-VL 8B `210950` 及其配套结果继续保留；未迁出的旧权重与
+    训练产物不再存在，不应再引用 `SwiftVLN-refactor` 路径。
 - SwiftVLN 自定义数据评测支持（Updated: 2026-07-26）：
   - `src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh`
     支持用 `EVAL_CONFIG_PATH=<relative-or-absolute-yaml>` 覆盖默认环境配置；
@@ -1187,7 +1214,7 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 | **73** | `10.246.152.73` | `ssh 10.246.152.73` | 8× | 远程 SSH |
 | **17** | `10.246.132.17` | `ssh 10.246.132.17` 后进入 Docker 容器 | 8× | 远程 SSH + Docker |
 
-- 共享工作区挂载点：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor`
+- 共享工作区挂载点：`/mnt/data1/home/jiangjiajun/workspace/SwiftVLN`
 - **SSH 仅用于**：远端 GPU/进程状态检查、远程 tmux 启动/停止。
 - **文件操作**（脚本、队列写入、输出读写）：始终是本地操作，无需 SSH。
 - server 17 Docker 容器名查询：`ssh 10.246.132.17 "docker ps"`
@@ -1196,11 +1223,14 @@ nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
 
 | Env | Purpose |
 |---|---|
-| `swift-vln-train` | SwiftVLN 主线训练（SwiftVLN / StreamVLN / CompressVLN） |
-| `swift-vln-eval` | SwiftVLN 主线评测 |
+| `swift-vln-train-update` | SwiftVLN 主线训练（SwiftVLN / StreamVLN / CompressVLN） |
+| `swift-vln-eval-update` | SwiftVLN 主线评测 |
 | `streamvln-baseline` | baseline/streamvln 训练与评测（独立环境） |
 | `uninavid-baseline` | baseline/uninavid 训练与评测（独立环境） |
 | `navila-baseline` | baseline/navila 训练与评测（VILA + LLaMA-3-8B，torch 2.3.0+cu121，flash-attn 2.5.8） |
+
+旧 `swift-vln`、`swift-vln-base`、`swift-vln-train`、`swift-vln-eval`
+已于 2026-08-01 删除；不得作为当前脚本或人工运行的环境目标。
 
 Conda 初始化命令（所有服务器统一）：
 ```bash
@@ -1462,14 +1492,14 @@ Stage-A 当前验证状态（2026-04-03）：
   - 若动作队列在这张反馈图上耗尽，则立刻用该图再次推理
   - 若模型输出无法解析动作，fallback 为 `[STOP]`
 
-## ms-swift 4.x Adaptation (Updated: 2026-05-12)
+## ms-swift 4.x Adaptation (Updated: 2026-08-01)
 
-- 本仓库当前 `ms-swift-refactor` 分支正在适配最新 ms-swift。
+- 此前适配分支的内容已合并到当前 `master`。
 - 保护约定：
-  - 不修改旧环境 `swift-vln-train` / `swift-vln-eval`
-  - 不修改旧仓库 `/mnt/data1/home/jiangjiajun/workspace/ms-swift`
-  - 仅使用 update 环境：`swift-vln-train-update` / `swift-vln-eval-update`
-- `README.md` 现在是 train/eval 两套 from-scratch 安装文档，不再要求从旧环境 clone：
+  - 主线仅使用 update 环境：`swift-vln-train-update` / `swift-vln-eval-update`
+  - ms-swift 3.x 历史环境已删除，仅保留冻结 wheel 供必要时重建
+  - 当前未加后缀的 `ms-swift` 是固定 commit 的 4.x 主线源码；旧 3.x 源码目录已删除
+- `docs/installation.md` 是 train/eval 两套 from-scratch 安装文档，不再要求从旧环境 clone：
   - conda 基础层：`environment-train.yml`
   - pip 训练依赖：`requirements-train.txt`
   - PyTorch CUDA 12.8 与 `flash-attn` 在 README 中单独按顺序安装
@@ -1480,13 +1510,25 @@ Stage-A 当前验证状态（2026-04-03）：
   - eval pip 依赖：`requirements-eval.txt`
     - 包含 `qwen-vl-utils==0.0.14`，与 README 的 Qwen-VL 验证口径一致
   - 当前目标 eval 环境仍是 `swift-vln-eval-update`
-  - eval 从零安装 `SwiftVLN` / `ms-swift-lateset` / `SatNav` / `habitat-lab-0.2.4`
+  - eval 从零安装 `SwiftVLN` / `ms-swift` / `SatNav` / `habitat-lab-0.2.4`
   - eval 使用 Python `3.9` + Habitat `0.2.4` stack；不能直接复用 train 的 Python `3.10` 环境
   - `pyproject.toml` 的 `requires-python` 已放宽到 `>=3.9`，以支持 eval 环境 `pip install -e .`
 - update 环境当前使用：
-  - `/mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset`
+  - `/mnt/data1/home/jiangjiajun/workspace/ms-swift`
   - 版本：`ms-swift 4.2.0.dev0`
   - commit：`ad7d5c515 [docs] fix docs (#9244)`
+- ms-swift 3.x 历史 wheel 归档与旧环境删除（Updated: 2026-08-01）：
+  - 冻结 wheel 的源码来自 `dev-vln@fbd22e9b5dcc4b3ddef4645cc98ec2f4a2adc35e`
+  - wheel：`/mnt/data1/home/jiangjiajun/workspace/ms-swift/dist/legacy/ms_swift-3.12.0.dev0-py3-none-any.whl`
+  - wheel SHA256：`d0c0a0c6294f390cd06afd10ad595056d1e7cef613fd087e6fd9394607ebc17c`
+  - `swift-vln`、`swift-vln-base`、`swift-vln-train`、`swift-vln-eval`
+    四个 Conda 环境已按用户确认永久删除
+  - 当前脚本、deployment 文档和 Codex 主线 workflow 均统一使用 update 环境；
+    历史复现需从冻结 wheel 重新创建独立环境
+  - 误建的中间目录已移入回收站，不再存在于 workspace
+  - 2026-08-01：旧 3.x 源码目录及其中历史 checkpoint、结果和本地 Git
+    历史已按用户确认永久删除；4.x 源码目录已重命名为当前规范路径
+    `/mnt/data1/home/jiangjiajun/workspace/ms-swift`
 - SwiftVLN 当前直接使用 ms-swift 4.x API：
   - `swift.arguments.SftArguments`
   - `swift.dataset.*`

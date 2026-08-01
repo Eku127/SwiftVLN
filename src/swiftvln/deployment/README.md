@@ -10,7 +10,7 @@ the deployment server uses the existing visible device set.
 Recommended environment:
 
 ```bash
-conda activate swift-vln-eval
+conda activate swift-vln-eval-update
 ```
 
 ## Default Model
@@ -28,14 +28,14 @@ This is the current baseline deploy default.
 Long-running server:
 
 ```bash
-conda activate swift-vln-eval
+conda activate swift-vln-eval-update
 bash src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh
 ```
 
 One-shot session:
 
 ```bash
-conda activate swift-vln-eval
+conda activate swift-vln-eval-update
 bash src/swiftvln/scripts/deploy/run_deploy_session.sh /abs/path/to/requests.jsonl
 ```
 
@@ -119,7 +119,7 @@ python -m swiftvln deploy \
 
 The practical flow is:
 
-1. Activate `swift-vln-eval`.
+1. Activate `swift-vln-eval-update`.
 2. Start the server with `start_swiftvln_deploy.sh`, or run a one-shot session with `run_deploy_session.sh`.
 3. Send `start` once with the task instruction.
 4. Send the first `image`; the model returns one action sequence.
