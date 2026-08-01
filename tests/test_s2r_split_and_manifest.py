@@ -48,6 +48,7 @@ def _prepare_gta(root: Path):
             "sample_id": "g1",
             "split": "train",
             "area_mode": "same_area",
+            "drone_img_name": "g1.png",
             "satellite_img_name": "tile_a.png",
             "export_drone_path": "drone/g1.jpg",
             "export_satellite_path": "satellite/g1.jpg",
@@ -60,6 +61,7 @@ def _prepare_gta(root: Path):
             "sample_id": "g2",
             "split": "test",
             "area_mode": "same_area",
+            "drone_img_name": "g2.png",
             "satellite_img_name": "tile_a.png",
             "export_drone_path": "drone/g2.jpg",
             "export_satellite_path": "satellite/g2.jpg",
@@ -72,6 +74,7 @@ def _prepare_gta(root: Path):
             "sample_id": "g3",
             "split": "train",
             "area_mode": "cross_area",
+            "drone_img_name": "g3.png",
             "satellite_img_name": "tile_b.png",
             "export_drone_path": "drone/g3.jpg",
             "export_satellite_path": "satellite/g3.jpg",
@@ -81,6 +84,19 @@ def _prepare_gta(root: Path):
             "iou": "0.6",
         },
     ]
+    protocol_duplicates = []
+    for row in rows:
+        duplicate = dict(row)
+        duplicate["sample_id"] = f"{row['sample_id']}_other_protocol"
+        duplicate["split"] = "test" if row["split"] == "train" else "train"
+        duplicate["area_mode"] = (
+            "cross_area" if row["area_mode"] == "same_area" else "same_area"
+        )
+        duplicate["export_drone_path"] = f"drone/{duplicate['sample_id']}.jpg"
+        duplicate["export_satellite_path"] = f"satellite/{duplicate['sample_id']}.jpg"
+        protocol_duplicates.append(duplicate)
+    rows.extend(protocol_duplicates)
+
     for row in rows:
         _write_image(root / "gta" / row["export_drone_path"])
         _write_image(root / "gta" / row["export_satellite_path"])
@@ -192,6 +208,14 @@ class S2RSplitManifestTest(unittest.TestCase):
             self.assertEqual(by_pair["sues:s1"]["split"], by_pair["sues:s2"]["split"])
             self.assertEqual(by_pair["uavvisloc:u1"]["split"], by_pair["uavvisloc:u2"]["split"])
             self.assertEqual({record["split"] for record in records}, {"train", "val"})
+
+            gta_records = [record for record in records if record["dataset"] == "gta"]
+            self.assertEqual(len(gta_records), 3)
+            self.assertEqual(
+                {tuple(record["meta"]["source_area_modes"]) for record in gta_records},
+                {("cross_area", "same_area")},
+            )
+            self.assertTrue(all(len(record["meta"]["source_pair_ids"]) == 2 for record in gta_records))
 
     def test_write_manifest_jsonl(self):
         with tempfile.TemporaryDirectory() as tmp:

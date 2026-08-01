@@ -13,8 +13,13 @@ def denseuav_group_id(sample_id: str) -> str:
 
 
 def gta_group_id(row: Dict[str, str]) -> str:
-    """Group GTA rows by area mode + satellite tile."""
-    area_mode = (row.get("area_mode") or "unknown").strip() or "unknown"
+    """Group GTA rows by satellite tile, independent of benchmark protocol.
+
+    GTA-UAV exports the same physical pair once for ``same_area`` and once for
+    ``cross_area``.  Including ``area_mode`` in the group id allowed identical
+    images to land in different Stage-A splits.  The satellite tile is the
+    shared geographic identity and therefore the correct split boundary.
+    """
     sat_name = (
         row.get("satellite_img_name")
         or row.get("satellite_img_path")
@@ -22,7 +27,7 @@ def gta_group_id(row: Dict[str, str]) -> str:
         or row.get("satellite_file")
         or "unknown"
     )
-    return f"{area_mode}:{os.path.basename(sat_name)}"
+    return os.path.basename(sat_name)
 
 
 def sues_group_id(row: Dict[str, str]) -> str:

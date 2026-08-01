@@ -8,6 +8,7 @@ import os
 import random
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple
 
@@ -128,8 +129,21 @@ def _prepare_output_dir(output_dir: str) -> None:
 
 
 def _save_json(path: Path, payload: Dict[str, object]) -> None:
-    with path.open("w", encoding="utf-8") as handle:
+    temporary_path = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    with temporary_path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
+    os.replace(temporary_path, path)
+
+
+def _format_duration(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
 
 
 def _save_checkpoint(
@@ -208,6 +222,14 @@ def train_main(argv=None):
     if is_main:
         _prepare_output_dir(args.output_dir)
         _save_json(Path(args.output_dir) / "train_args.json", args.to_dict())
+        _save_json(
+            Path(args.output_dir) / "progress.json",
+            {
+                "status": "initializing",
+                "step": 0,
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            },
+        )
 
     train_loader, train_sampler = _build_dataloader(
         args.manifest_path,
@@ -281,14 +303,37 @@ def train_main(argv=None):
             projection_head=_unwrap(projection_head),
         )
 
+    initial_global_step = global_step
+    training_started_at = time.monotonic()
+    progress_path = Path(args.output_dir) / "progress.json"
     metrics_log_path = Path(args.output_dir) / "metrics.jsonl"
     if is_main and not metrics_log_path.exists():
         metrics_log_path.write_text("", encoding="utf-8")
+    if is_main:
+        _save_json(
+            progress_path,
+            {
+                "status": "running",
+                "step": global_step,
+                "total_steps": total_steps,
+                "remaining_steps": max(0, total_steps - global_step),
+                "world_size": world_size,
+                "per_device_batch_size": args.batch_size,
+                "train_samples": len(train_loader.dataset),
+                "val_samples": len(val_loader.dataset) if val_loader is not None else 0,
+                "teacher_model_path": args.teacher_model_path,
+                "manifest_path": args.manifest_path,
+                "output_dir": args.output_dir,
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            },
+        )
 
     running = {"loss": 0.0, "contrast": 0.0, "cosine": 0.0, "steps": 0}
     optimizer.zero_grad(set_to_none=True)
 
     stop_training = False
+    last_eval_step = -1
+    last_eval_metrics: Optional[Dict[str, object]] = None
     for epoch in range(args.epochs):
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
@@ -341,21 +386,54 @@ def train_main(argv=None):
                 scheduler.step()
                 global_step += 1
 
-                if is_main and global_step % 10 == 0:
+                should_log = (
+                    global_step == initial_global_step + 1
+                    or global_step % 10 == 0
+                    or global_step == total_steps
+                )
+                if is_main and should_log:
+                    elapsed_seconds = time.monotonic() - training_started_at
+                    completed_since_start = max(1, global_step - initial_global_step)
+                    seconds_per_step = elapsed_seconds / completed_since_start
+                    remaining_steps = max(0, total_steps - global_step)
+                    eta_seconds = seconds_per_step * remaining_steps
                     log_payload = {
+                        "event": "train_progress",
                         "step": global_step,
+                        "total_steps": total_steps,
+                        "progress_percent": round(100.0 * global_step / total_steps, 2),
                         "train_loss": running["loss"] / max(1, running["steps"]),
                         "contrast_loss": running["contrast"] / max(1, running["steps"]),
                         "cosine_loss": running["cosine"] / max(1, running["steps"]),
                         "lr": scheduler.get_last_lr()[0],
+                        "seconds_per_step": seconds_per_step,
+                        "elapsed_seconds": elapsed_seconds,
+                        "elapsed": _format_duration(elapsed_seconds),
+                        "eta_seconds": eta_seconds,
+                        "eta": _format_duration(eta_seconds),
+                        "remaining_steps": remaining_steps,
+                        "epoch": epoch + 1,
+                        "world_size": world_size,
+                        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                     }
-                    print(json.dumps(log_payload, ensure_ascii=False))
+                    print(json.dumps(log_payload, ensure_ascii=False), flush=True)
+                    _save_json(progress_path, {"status": "running", **log_payload})
 
                 should_eval = is_main and val_loader is not None and (
                     (args.eval_every_steps > 0 and global_step % args.eval_every_steps == 0)
                     or (args.eval_every_steps <= 0 and global_step == total_steps)
                 )
                 if should_eval:
+                    _save_json(
+                        progress_path,
+                        {
+                            "status": "evaluating",
+                            "step": global_step,
+                            "total_steps": total_steps,
+                            "remaining_steps": max(0, total_steps - global_step),
+                            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                        },
+                    )
                     eval_metrics = evaluate_model(
                         teacher,
                         _unwrap(adapter),
@@ -364,6 +442,8 @@ def train_main(argv=None):
                         device=device,
                     )
                     eval_metrics["step"] = global_step
+                    last_eval_step = global_step
+                    last_eval_metrics = eval_metrics
                     with metrics_log_path.open("a", encoding="utf-8") as handle:
                         handle.write(json.dumps(eval_metrics, ensure_ascii=False))
                         handle.write("\n")
@@ -382,9 +462,14 @@ def train_main(argv=None):
                         keep_last=args.num_keep_checkpoints,
                         mark_best=mark_best,
                     )
-                    print(json.dumps({"event": "eval", **eval_metrics}, ensure_ascii=False))
+                    print(json.dumps({"event": "eval", **eval_metrics}, ensure_ascii=False), flush=True)
 
-                if is_main and args.save_every_steps > 0 and global_step % args.save_every_steps == 0:
+                if (
+                    is_main
+                    and not should_eval
+                    and args.save_every_steps > 0
+                    and global_step % args.save_every_steps == 0
+                ):
                     _save_checkpoint(
                         Path(args.output_dir),
                         global_step,
@@ -402,7 +487,7 @@ def train_main(argv=None):
         if stop_training:
             break
 
-    if is_main and val_loader is not None:
+    if is_main and val_loader is not None and last_eval_step != global_step:
         final_metrics = evaluate_model(
             teacher,
             _unwrap(adapter),
@@ -411,6 +496,8 @@ def train_main(argv=None):
             device=device,
         )
         final_metrics["step"] = global_step
+        last_eval_step = global_step
+        last_eval_metrics = final_metrics
         with metrics_log_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(final_metrics, ensure_ascii=False))
             handle.write("\n")
@@ -429,6 +516,27 @@ def train_main(argv=None):
             keep_last=args.num_keep_checkpoints,
             mark_best=mark_best,
         )
+
+    if is_main:
+        elapsed_seconds = time.monotonic() - training_started_at
+        completion_payload = {
+            "status": "completed",
+            "event": "train_complete",
+            "step": global_step,
+            "total_steps": total_steps,
+            "progress_percent": 100.0 if global_step >= total_steps else round(
+                100.0 * global_step / total_steps,
+                2,
+            ),
+            "elapsed_seconds": elapsed_seconds,
+            "elapsed": _format_duration(elapsed_seconds),
+            "best_u2s_r@1": best_recall,
+            "final_metrics": last_eval_metrics or {},
+            "output_dir": args.output_dir,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        }
+        _save_json(progress_path, completion_payload)
+        print(json.dumps(completion_payload, ensure_ascii=False), flush=True)
 
     if dist.is_available() and dist.is_initialized():
         dist.barrier()

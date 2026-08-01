@@ -1,10 +1,13 @@
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 
 CURRENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = CURRENT_DIR.parent
@@ -21,6 +24,38 @@ from swiftvln.s2r.model import (
     pad_token_sequences,
     split_visual_embeddings,
 )
+
+
+def _distributed_contrastive_gradient_worker(rank, world_size, init_file, output_dir):
+    dist.init_process_group(
+        backend="gloo",
+        init_method=f"file://{init_file}",
+        rank=rank,
+        world_size=world_size,
+    )
+    try:
+        torch.manual_seed(123)
+        all_uav = torch.randn(world_size * 2, 4)
+        all_sat = torch.randn(world_size * 2, 4)
+        start = rank * 2
+        local_uav = all_uav[start:start + 2].clone().requires_grad_(True)
+        local_sat = all_sat[start:start + 2].clone().requires_grad_(True)
+        loss = bidirectional_contrastive_loss(
+            local_uav,
+            local_sat,
+            temperature=0.2,
+            gather_distributed=True,
+        )
+        loss.backward()
+        torch.save(
+            {
+                "uav_grad": local_uav.grad,
+                "sat_grad": local_sat.grad,
+            },
+            Path(output_dir) / f"rank_{rank}.pt",
+        )
+    finally:
+        dist.destroy_process_group()
 
 
 class S2RModelLossTest(unittest.TestCase):
@@ -67,6 +102,51 @@ class S2RModelLossTest(unittest.TestCase):
         self.assertEqual(metrics["s2u_r@1"], 1.0)
         self.assertEqual(metrics["u2s_r@2"], 1.0)
         self.assertGreater(metrics["paired_cosine_mean"], 0.99)
+
+    @unittest.skipUnless(dist.is_available() and dist.is_gloo_available(), "gloo unavailable")
+    def test_distributed_gather_preserves_remote_key_gradients(self):
+        world_size = 2
+        with tempfile.TemporaryDirectory() as tmp:
+            init_file = str(Path(tmp) / "dist_init")
+            mp.spawn(
+                _distributed_contrastive_gradient_worker,
+                args=(world_size, init_file, tmp),
+                nprocs=world_size,
+                join=True,
+            )
+
+            actual = [
+                torch.load(Path(tmp) / f"rank_{rank}.pt", weights_only=True)
+                for rank in range(world_size)
+            ]
+
+        torch.manual_seed(123)
+        all_uav = torch.randn(world_size * 2, 4, requires_grad=True)
+        all_sat = torch.randn(world_size * 2, 4, requires_grad=True)
+        reference_loss = 0.0
+        for rank in range(world_size):
+            start = rank * 2
+            local_uav = all_uav[start:start + 2]
+            local_sat = all_sat[start:start + 2]
+            labels = torch.arange(2) + start
+            logits_u2s = local_uav @ all_sat.t() / 0.2
+            logits_s2u = local_sat @ all_uav.t() / 0.2
+            reference_loss = reference_loss + 0.5 * (
+                torch.nn.functional.cross_entropy(logits_u2s, labels)
+                + torch.nn.functional.cross_entropy(logits_s2u, labels)
+            )
+        reference_loss.backward()
+
+        for rank in range(world_size):
+            start = rank * 2
+            torch.testing.assert_close(
+                actual[rank]["uav_grad"],
+                all_uav.grad[start:start + 2],
+            )
+            torch.testing.assert_close(
+                actual[rank]["sat_grad"],
+                all_sat.grad[start:start + 2],
+            )
 
     def test_teacher_vision_tower_uses_qwen25_loader(self):
         class DummyVisual(torch.nn.Module):

@@ -1279,7 +1279,7 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_overlap_smoke_150200
 - SwiftVLN 已独立，但运行时仍可能依赖外部安装的 `swift` 包。
 - 未经用户明确要求，不修改外部仓库；优先在 SwiftVLN 内完成适配。
 
-## S2R Stage-A (Updated: 2026-04-03)
+## S2R Stage-A (Updated: 2026-08-01)
 
 新增 Stage-A sim-to-real 对齐包：
 
@@ -1313,6 +1313,13 @@ Stage-A 当前设计约定：
   `/mnt/data4/jiangjiajun/archive/swiftvln/data0317/train/swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-202149/v0-20260318-202212/checkpoint-3957`
 - `SatDronePairDataset(max_samples=...)` 现在采用跨数据源 round-robin 限样
   （不是 manifest 头部截断），用于保证 smoke train/eval 在小样本下仍覆盖多数据源
+- GTA manifest 构建会先按物理 UAV/卫星图像对去重，将
+  `same_area` / `cross_area` 重复导出合并为一条记录，并在 metadata 中保留
+  原始协议、pair ID 与 row split，便于审计
+- 分布式对比学习的 autograd gather 会汇总所有 rank 对远端 key 的梯度，
+  保持与真实 global-batch objective 一致
+- Stage-A trainer 会原子更新 `progress.json`，记录 step、总步数、
+  seconds/step、elapsed 和 ETA；训练结束写入 `completed` 状态
 
 Stage-A 数据约定：
 
@@ -1325,7 +1332,8 @@ Stage-A split 约定：
 - 四个数据源全部先视为候选训练池，不直接沿用原始 `train/test`
 - 统一重建 `train/val`
 - `denseuav`：按基础位置 ID 分组（同位置不同高度同 split）
-- `gta`：按 `area_mode + satellite_img_name` 分组
+- `gta`：去重后仅按 `satellite_img_name` 分组，避免同一物理图像对因
+  benchmark protocol 不同而落入不同 split
 - `sues`：按 `scene_id` 分组
 - `uavvisloc`：按 `seq_id` 分组
 
