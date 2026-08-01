@@ -113,6 +113,9 @@ def _gta_record(dataset_dir: Path, row: Dict[str, str]) -> PairRecord:
         north_up_rot=_safe_float(row.get("north_up_rot")),
         meta={
             "area_mode": row.get("area_mode", ""),
+            "source_area_modes": row.get("_source_area_modes", []),
+            "source_pair_ids": row.get("_source_pair_ids", []),
+            "source_row_splits": row.get("_source_row_splits", []),
             "satellite_img_name": row.get("satellite_img_name", ""),
             "cam_yaw": _safe_float(row.get("cam_yaw")),
             "iou": _safe_float(row.get("iou")),
@@ -184,6 +187,71 @@ def _load_rows(csv_path: Path) -> List[Dict[str, str]]:
         return list(reader)
 
 
+def _gta_pair_identity(row: Dict[str, str]) -> tuple[str, str]:
+    """Return the protocol-independent identity of one GTA image pair."""
+    drone_identity = (
+        row.get("drone_img_name")
+        or row.get("drone_img_path")
+        or row.get("source_drone_path")
+        or row.get("export_drone_path")
+        or row.get("sample_id")
+        or "unknown"
+    )
+    satellite_identity = (
+        row.get("satellite_img_name")
+        or row.get("satellite_img_path")
+        or row.get("source_satellite_path")
+        or row.get("export_satellite_path")
+        or "unknown"
+    )
+    return str(drone_identity), str(satellite_identity)
+
+
+def deduplicate_gta_rows(rows: Sequence[Dict[str, str]]) -> List[Dict[str, Any]]:
+    """Collapse duplicated same-area/cross-area exports into physical pairs.
+
+    The released GTA ``pairs.csv`` contains two byte-identical exports for
+    every physical UAV/satellite pair.  We retain one deterministic row
+    (preferring ``same_area`` only as a stable path choice) and preserve all
+    source protocol metadata for auditability.
+    """
+    by_identity: Dict[tuple[str, str], List[Dict[str, str]]] = {}
+    for row in rows:
+        by_identity.setdefault(_gta_pair_identity(row), []).append(row)
+
+    canonical_rows: List[Dict[str, Any]] = []
+    for identity in sorted(by_identity):
+        duplicates = by_identity[identity]
+        canonical = min(
+            duplicates,
+            key=lambda item: (
+                0 if str(item.get("area_mode", "")).strip() == "same_area" else 1,
+                str(item.get("sample_id", "")),
+            ),
+        ).copy()
+
+        canonical_sample_id = Path(identity[0]).stem
+        if canonical_sample_id and canonical_sample_id != "unknown":
+            canonical["sample_id"] = canonical_sample_id
+        canonical["_source_area_modes"] = sorted({
+            str(item.get("area_mode", "")).strip()
+            for item in duplicates
+            if str(item.get("area_mode", "")).strip()
+        })
+        canonical["_source_pair_ids"] = sorted({
+            str(item.get("sample_id", "")).strip()
+            for item in duplicates
+            if str(item.get("sample_id", "")).strip()
+        })
+        canonical["_source_row_splits"] = sorted({
+            str(item.get("split", "")).strip()
+            for item in duplicates
+            if str(item.get("split", "")).strip()
+        })
+        canonical_rows.append(canonical)
+    return canonical_rows
+
+
 def build_manifest_records(
     data_root: str,
     *,
@@ -204,7 +272,10 @@ def build_manifest_records(
             raise FileNotFoundError(f"pairs.csv missing for {dataset}: {csv_path}")
 
         builder = SOURCE_BUILDERS[dataset]
-        for row in _load_rows(csv_path):
+        rows: Sequence[Dict[str, str]] = _load_rows(csv_path)
+        if dataset == "gta":
+            rows = deduplicate_gta_rows(rows)
+        for row in rows:
             record = builder(dataset_dir, row).to_dict()
             if skip_missing:
                 if not os.path.exists(record["uav_image"]) or not os.path.exists(record["sat_image"]):

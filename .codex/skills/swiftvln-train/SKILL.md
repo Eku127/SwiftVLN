@@ -86,7 +86,7 @@ Related skills:
 Servers `98`, `73`, and `17` all mount:
 
 ```
-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+/mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 ```
 
 Queue files, outputs, logs are all local file operations. SSH only for GPU checks and remote tmux launch.
@@ -163,7 +163,7 @@ mkdir -p logs/train_launch
 
 tmux new-session -d -s "${session_name}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-   conda activate swift-vln-train && \
+   conda activate swift-vln-train-update && \
    TRAIN_NUM_GPUS=${TRAIN_NUM_GPUS:-} \
    TRAIN_CUDA_DEVICES=${TRAIN_CUDA_DEVICES:-} \
    bash src/swiftvln/scripts/train/train_queue.sh 2>&1 | tee ${run_log}"
@@ -174,11 +174,11 @@ tmux new-session -d -s "${session_name}" \
 ```bash
 ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
   'source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-   conda activate swift-vln-train && \
+   conda activate swift-vln-train-update && \
    TRAIN_NUM_GPUS=${TRAIN_NUM_GPUS:-} \
    TRAIN_CUDA_DEVICES=${TRAIN_CUDA_DEVICES:-} \
-   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
-   tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/${run_log}'"
+   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
+   tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}'"
 ```
 
 ### Launch pattern (remote server 17 with Docker)
@@ -187,11 +187,11 @@ ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
 ssh 10.246.132.17 "docker exec -d streamvln-container bash -c \
   'tmux new-session -d -s ${session_name} \
     \"source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-     conda activate swift-vln-train && \
+     conda activate swift-vln-train-update && \
      TRAIN_NUM_GPUS=${TRAIN_NUM_GPUS:-} \
      TRAIN_CUDA_DEVICES=${TRAIN_CUDA_DEVICES:-} \
-     bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
-     tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/${run_log}\"'"
+     bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/train/train_queue.sh 2>&1 | \
+     tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}\"'"
 ```
 
 **Record**: tmux session name, host, log path, start time for each server.
@@ -208,7 +208,7 @@ Watchdog 必须运行在**与 tmux session 相同的服务器上**。
 **训练在 98 上（本地启动）：**
 
 ```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
+SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
 nohup bash "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/train_watchdog.sh" \
   --tmux-session "${session_name}" \
   --train-log "${run_log}" \
@@ -222,7 +222,7 @@ echo "Watchdog PID=${WATCHDOG_PID}"
 **训练在 73 或 17 上（SSH 到对应服务器启动）：**
 
 ```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
+SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
 ssh 10.246.152.73 "cd ${SWIFTVLN_ROOT} && \
   nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
     --tmux-session '${session_name}' \

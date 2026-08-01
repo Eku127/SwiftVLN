@@ -3,9 +3,10 @@
 set -euo pipefail
 
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate swift-vln-train
+conda activate swift-vln-train-update
 
-REPO_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 cd "${REPO_ROOT}"
 
 MANIFEST_PATH="${MANIFEST_PATH:-runtime/s2r/manifests/manifest_v1.jsonl}"

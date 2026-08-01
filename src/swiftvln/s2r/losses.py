@@ -26,7 +26,21 @@ class _GatherWithGrad(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grad_outputs):
-        return grad_outputs[ctx.rank]
+        if not dist.is_available() or not dist.is_initialized():
+            return grad_outputs[0]
+
+        # Every rank computes a loss for its local queries against all gathered
+        # keys.  The gradient for rank r's input therefore contains the
+        # contributions from output slot r on *all* ranks.  Selecting only
+        # grad_outputs[rank] drops the remote key-side gradients.  Summing the
+        # complete slot stack first preserves the true global-batch objective;
+        # DDP will subsequently average parameter gradients as usual.
+        stacked_grads = torch.stack(
+            [gradient.contiguous() for gradient in grad_outputs],
+            dim=0,
+        )
+        dist.all_reduce(stacked_grads, op=dist.ReduceOp.SUM)
+        return stacked_grads[ctx.rank]
 
 
 def gather_features(tensor: torch.Tensor) -> torch.Tensor:

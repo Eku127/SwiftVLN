@@ -486,6 +486,7 @@ if [ "$CHECK_ONLY" == "true" ]; then
     echo "MODEL_FAMILY=${MODEL_FAMILY:-qwen2_5_vl}"
     echo "ENV_TYPE=${ENV_TYPE}"
     echo "EVAL_SPLIT=${EVAL_SPLIT:-val_unseen}"
+    echo "EVAL_CONFIG_PATH=${EVAL_CONFIG_PATH:-<default_for_env>}"
     echo "CUDA_DEVICES=${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
     echo "MASTER_PORT=${MASTER_PORT:-29600} (实际运行时会自动检测端口占用)"
     print_swiftvln_env_assignments
@@ -499,13 +500,6 @@ if [ "$CHECK_ONLY" == "true" ]; then
     exit 0
 fi
 
-if [ ! -d "$MODEL_DIR" ]; then
-    print_error "模型目录不存在: $MODEL_DIR"
-    exit 1
-fi
-
-print_info "模型目录: $MODEL_DIR"
-
 CHECKPOINT_PATH=$(resolve_model_path || true)
 
 if [ -z "$CHECKPOINT_PATH" ]; then
@@ -516,7 +510,9 @@ if [ -z "$CHECKPOINT_PATH" ]; then
     exit 1
 fi
 
-if [ "$CHECKPOINT_PATH" = "$HF_MODEL_DIR" ]; then
+if [ -n "$USER_MODEL_PATH" ]; then
+    print_success "使用用户指定模型目录: $CHECKPOINT_PATH"
+elif [ "$CHECKPOINT_PATH" = "$HF_MODEL_DIR" ]; then
     print_success "找到HF模型目录: $CHECKPOINT_PATH"
 else
     print_success "找到checkpoint: $CHECKPOINT_PATH"

@@ -2,7 +2,15 @@
 
 本文档用于从零创建当前主线训练环境 `swift-vln-train-update` 和评测环境
 `swift-vln-eval-update`，并安装 SwiftVLN 与对应的 ms-swift 4.x 代码版本。
-不要再通过 `swift-vln-train` / `swift-vln-eval` 克隆旧环境来搭建当前环境。
+旧 `swift-vln`、`swift-vln-base`、`swift-vln-train`、`swift-vln-eval`
+环境均已删除；当前环境必须按本文档从零创建。
+
+仓库目录职责：
+
+- `ms-swift`：当前 SwiftVLN 主线使用的 ms-swift 4.x，固定在下述验证 commit。
+- `ms-swift/dist/legacy/` 保留冻结的 3.x wheel，仅用于必要时重建历史环境；
+  当前不再保留任何 ms-swift 3.x Conda 环境。
+- 旧 3.x 源码目录已经删除；当前未加后缀的 `ms-swift` 即 4.x 主线源码目录。
 
 ## Train Environment (`swift-vln-train-update`)
 
@@ -11,8 +19,8 @@
 当前验证版本：
 
 - SwiftVLN repo: `git@github.com:Eku127/SwiftVLN.git`
-- SwiftVLN branch: `ms-swift-refactor`
-- SwiftVLN commit: 当前 `ms-swift-refactor` 分支 HEAD
+- SwiftVLN branch: `master`
+- SwiftVLN commit: 当前 `master` 分支 HEAD
 - ms-swift repo: `https://github.com/modelscope/ms-swift.git`
 - ms-swift commit: `ad7d5c5157b59afa1faceb04266274392f145745`
 - conda env: `swift-vln-train-update`
@@ -34,15 +42,15 @@ cd /mnt/data1/home/jiangjiajun/workspace
 git clone git@github.com:Eku127/SwiftVLN.git
 cd SwiftVLN
 git fetch origin
-git checkout ms-swift-refactor
+git checkout master
 
 cd /mnt/data1/home/jiangjiajun/workspace
-git clone https://github.com/modelscope/ms-swift.git ms-swift-lateset
-cd ms-swift-lateset
+git clone https://github.com/modelscope/ms-swift.git ms-swift
+cd ms-swift
 git checkout ad7d5c5157b59afa1faceb04266274392f145745
 ```
 
-如需完全复现某次已验证安装，请在安装前记录并固定当前 `ms-swift-refactor`
+如需完全复现某次已验证安装，请在安装前记录并固定当前 `master`
 的 `git rev-parse HEAD` 输出。
 
 ### Train 2. 创建 conda 环境
@@ -83,7 +91,7 @@ pip install \
 conda activate swift-vln-train-update
 export PYTHONNOUSERSITE=1
 
-cd /mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset
+cd /mnt/data1/home/jiangjiajun/workspace/ms-swift
 pip install -e .
 
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
@@ -175,7 +183,7 @@ SwiftVLN root:
 /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
 ms-swift root:
-/mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset
+/mnt/data1/home/jiangjiajun/workspace/ms-swift
 
 Qwen2.5-VL 3B base model:
 /mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct
@@ -248,8 +256,8 @@ eval 使用 Python `3.9` 和 Habitat `0.2.4` 栈；训练环境使用 Python `3.
 当前验证版本：
 
 - SwiftVLN repo: `git@github.com:Eku127/SwiftVLN.git`
-- SwiftVLN branch: `ms-swift-refactor`
-- SwiftVLN commit: 当前 `ms-swift-refactor` 分支 HEAD
+- SwiftVLN branch: `master`
+- SwiftVLN commit: 当前 `master` 分支 HEAD
 - ms-swift repo: `https://github.com/modelscope/ms-swift.git`
 - ms-swift commit: `ad7d5c5157b59afa1faceb04266274392f145745`
 - SatNav repo: `git@github.com:Eku127/SatNav.git`
@@ -280,11 +288,11 @@ cd /mnt/data1/home/jiangjiajun/workspace
 git clone git@github.com:Eku127/SwiftVLN.git
 cd SwiftVLN
 git fetch origin
-git checkout ms-swift-refactor
+git checkout master
 
 cd /mnt/data1/home/jiangjiajun/workspace
-git clone https://github.com/modelscope/ms-swift.git ms-swift-lateset
-cd ms-swift-lateset
+git clone https://github.com/modelscope/ms-swift.git ms-swift
+cd ms-swift
 git checkout ad7d5c5157b59afa1faceb04266274392f145745
 
 cd /mnt/data1/home/jiangjiajun/workspace
@@ -376,7 +384,7 @@ pip install -e .
 cd /mnt/data1/home/jiangjiajun/workspace/SatNav
 pip install -e .
 
-cd /mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset
+cd /mnt/data1/home/jiangjiajun/workspace/ms-swift
 pip install -e .
 
 cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
@@ -464,7 +472,7 @@ SwiftVLN root:
 /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
 ms-swift root:
-/mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset
+/mnt/data1/home/jiangjiajun/workspace/ms-swift
 
 SatNav root:
 /mnt/data1/home/jiangjiajun/workspace/SatNav

@@ -13,7 +13,7 @@ set -e  # Exit on error
 # Conda Environment
 # ============================================================================
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate swift-vln-train
+conda activate swift-vln-train-update
 
 # ============================================================================
 # GPU Configuration

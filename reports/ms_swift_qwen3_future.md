@@ -5,8 +5,8 @@
 ## 当前适配基线
 
 - PyPI 最新稳定版核对为 `ms-swift 4.1.1`（2026-04-13 发布）。
-- 本次按用户指定的本地源码 `/mnt/data1/home/jiangjiajun/workspace/ms-swift-lateset` 适73配；该仓库当前为 `main`，commit `ad7d5c515 [docs] fix docs (#9244)`，版本号 `4.2.0.dev0`。
-- 原有 `/mnt/data1/home/jiangjiajun/workspace/ms-swift` 是 `3.12.0.dev0`，主要旧入口 `swift.llm.*` 在 4.x 已拆分到 `swift.arguments`、`swift.dataset`、`swift.model`、`swift.template`、`swift.pipelines.train.sft`。
+- 本次按用户指定的本地源码 `/mnt/data1/home/jiangjiajun/workspace/ms-swift` 适配；该仓库当前固定在 commit `ad7d5c515 [docs] fix docs (#9244)`，版本号 `4.2.0.dev0`。
+- 原有 3.x 代码版本是 `3.12.0.dev0`，主要旧入口 `swift.llm.*` 在 4.x 已拆分到 `swift.arguments`、`swift.dataset`、`swift.model`、`swift.template`、`swift.pipelines.train.sft`。
 
 参考来源：
 - PyPI: https://pypi.org/project/ms-swift/
