@@ -22,7 +22,7 @@ Related skills:
 | CUDA devices | `0,1,2,3,4,5,6,7` | GPU device list |
 | Save video | `false` | Whether to save evaluation videos |
 | Auto resume | `AUTO_RESUME_EVAL=true` | Reuse the latest incomplete result dir for the same model/split unless `OUTPUT_DIR` is set |
-| Conda env | `swift-vln-eval` | Must be activated before running eval scripts |
+| Conda env | `swift-vln-eval-update` | Must be activated before running eval scripts |
 
 ---
 
@@ -121,7 +121,7 @@ mkdir -p logs/train_launch
 
 tmux new-session -d -s "${session_name}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-   conda activate swift-vln-eval && \
+   conda activate swift-vln-eval-update && \
    bash src/swiftvln/scripts/eval/eval_by_name.sh ${MODEL_NAME} 2>&1 | tee ${run_log}"
 ```
 
@@ -134,7 +134,7 @@ mkdir -p logs/train_launch
 
 tmux new-session -d -s "${session_name}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-   conda activate swift-vln-eval && \
+   conda activate swift-vln-eval-update && \
    AUTO_TODO=true DYNAMIC_TODO=true \
    bash src/swiftvln/scripts/eval/eval_queue.sh 2>&1 | tee ${run_log}"
 ```
@@ -148,7 +148,7 @@ mkdir -p logs/train_launch
 
 tmux new-session -d -s "${session_name}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-   conda activate swift-vln-eval && \
+   conda activate swift-vln-eval-update && \
    bash src/swiftvln/scripts/eval/start_eval_worker.sh 2>&1 | tee ${run_log}"
 ```
 
@@ -157,9 +157,9 @@ tmux new-session -d -s "${session_name}" \
 ```bash
 ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
   'source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-   conda activate swift-vln-eval && \
-   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/src/swiftvln/scripts/eval/eval_queue.sh 2>&1 | \
-   tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/${run_log}'"
+   conda activate swift-vln-eval-update && \
+   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/eval/eval_queue.sh 2>&1 | \
+   tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}'"
 ```
 
 Record tmux session name, host, log path, and start time.
@@ -260,7 +260,7 @@ Stop an existing worker only if it is not intended for the current run.
 3. Prefer existing project scripts over ad-hoc commands.
 4. Use `eval_by_name.sh` for a single model, `eval_queue.sh` or `start_eval_worker.sh` for queue consumption.
 5. Eval enqueue is always a local file operation. Prefer `enqueue_eval.sh`.
-6. Activate `swift-vln-eval` before running eval scripts.
+6. Activate `swift-vln-eval-update` before running eval scripts.
 7. Do not auto-fallback to single-GPU on OOM unless the user explicitly requests.
 8. Keep train and eval in separate tmux sessions.
 9. Do not commit unless the user explicitly asks.

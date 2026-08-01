@@ -31,9 +31,9 @@ Use this skill when the user asks for主线 SwiftVLN 的 smoke test / 冒烟测�
 
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate swift-vln-train
-conda activate swift-vln-eval
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+conda activate swift-vln-train-update
+conda activate swift-vln-eval-update
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 ```
 
 ## Preflight
@@ -42,7 +42,7 @@ Before touching anything, verify:
 
 - repo root exists
 - fixed script paths above exist
-- `swift-vln-train` and `swift-vln-eval` can activate
+- `swift-vln-train-update` and `swift-vln-eval-update` can activate
 - target SatNav dataset path exists
 - `nvidia-smi` sees the planned GPUs
 
@@ -66,8 +66,8 @@ If any item fails, stop and report the exact missing path / dependency.
 
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate swift-vln-train
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+conda activate swift-vln-train-update
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
 MAX_SAMPLES=16 SAVE_STEPS=1 SAVE_TOTAL_LIMIT=1 \
 USE_SWANLAB=false \
@@ -89,8 +89,8 @@ TRAIN_NUM_GPUS=2 \
 
 ```bash
 source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate swift-vln-eval
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+conda activate swift-vln-eval-update
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 
 MAX_EPISODES=10 ENV_TYPE=satnav CUDA_DEVICES=0,1 \
   bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_exp_name> \

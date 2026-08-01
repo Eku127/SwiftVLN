@@ -202,7 +202,7 @@ mkdir -p logs/train_launch
 
 tmux new-session -d -s "${session_name}" \
   "source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-   conda activate swift-vln-train && \
+   conda activate swift-vln-train-update && \
    TRAIN_EXPERIMENTS_FILE='/tmp/train_experiments_98_HHMMSS.sh' \
    bash src/swiftvln/scripts/train/train_queue.sh 2>&1 | tee ${run_log}"
 ```
@@ -211,10 +211,10 @@ tmux new-session -d -s "${session_name}" \
 ```bash
 ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
   'source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh && \
-   conda activate swift-vln-train && \
+   conda activate swift-vln-train-update && \
    TRAIN_EXPERIMENTS_FILE=\"/tmp/train_experiments_73_HHMMSS.sh\" \
-   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/src/swiftvln/scripts/train/train_queue.sh \
-   2>&1 | tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor/${run_log}'"
+   bash /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/src/swiftvln/scripts/train/train_queue.sh \
+   2>&1 | tee /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/${run_log}'"
 ```
 
 ---
@@ -224,7 +224,7 @@ ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
 For each server, register a watchdog **immediately** after tmux launch. Must run on the same server as the tmux session.
 
 ```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor"
+SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
 nohup bash "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/train_watchdog.sh" \
   --tmux-session "${session_name}" \
   --train-log "${run_log}" \
@@ -270,9 +270,9 @@ To report final results, manually inspect queue state and result files after the
 2. Check `runtime/eval_queue/eval_failed_todo.txt` for any failures.
 3. Run CSV collection:
    ```bash
-   cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+   cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
    source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-   conda activate swift-vln-eval
+   conda activate swift-vln-eval-update
    python src/swiftvln/scripts/eval/collect_eval_results.py
    ```
 4. Read the output CSV at `results/eval_collected/<split>/eval_results.csv`.

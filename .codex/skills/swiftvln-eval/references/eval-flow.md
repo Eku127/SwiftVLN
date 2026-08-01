@@ -5,7 +5,7 @@
 All three servers (`98`, `73`, `17`) share the same NFS-mounted workspace at:
 
 ```
-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN-refactor
+/mnt/data1/home/jiangjiajun/workspace/SwiftVLN
 ```
 
 Queue files, eval outputs, and scripts are locally accessible from every host.
