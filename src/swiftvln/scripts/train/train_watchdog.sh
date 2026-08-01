@@ -551,7 +551,7 @@ ${models}
 4. 确认评测已启动或 worker 已启动后，报告状态
 
 关键信息：
-- 评测 conda env: swift-vln-eval
+- 评测 conda env: swift-vln-eval-update
 - eval_todo.txt: runtime/eval_queue/eval_todo.txt
 - 不要在 GPU 被占用时直接运行 eval 脚本
 PROMPT
