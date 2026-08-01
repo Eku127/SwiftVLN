@@ -115,9 +115,11 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     `streamvln-satnav-continue-1ep-f32h8s4-lr2e-5`、
     `streamvln-satnav-scratch-1ep-f32h8s4-lr2e-5`；二者与对应
     `streamvln-baseline-*` 权重一致，但只保留 eval/inference 所需文件
-- SwiftVLN model zoo HF upload-ready 副本（Updated: 2026-06-30）：
-  - 目录：`output/model_zoo/swiftvln/HF_model/`；`output/model_zoo/swiftvln/`
-    顶层当前只保留该 `HF_model` 目录，旧长名模型目录已清理
+- SwiftVLN model zoo HF upload-ready 副本与配套结果（Updated: 2026-07-25）：
+  - 模型目录：`output/model_zoo/swiftvln/HF_model/`
+  - 配套结果目录：`output/model_zoo/swiftvln/Results/`
+  - `output/model_zoo/swiftvln/` 顶层当前保留 `HF_model` 与 `Results`；
+    旧长名模型目录已清理
   - 已创建 11 个短名 HF 模型：
     `swiftvln-satnav-3b-1ep-f32s4-overlap0-gtc-k512-noembed`、
     `swiftvln-satnav-3b-1ep-f32s4-overlap0-map-g1000-l400-r448-d20-s2-noembed`、
@@ -134,12 +136,35 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     preprocessor 配置、`model-*.safetensors`、`model.safetensors.index.json`、
     `.gitattributes`、`README.md`；不包含 checkpoint wrapper、trainer state、
     rng state、logs、TensorBoard runs 或训练曲线图
+  - `Results` 包含上述 11 个 HF 模型一一对应、人工最终选定的 SatNav
+    评测结果，子目录名与 HF 短模型名完全一致；结果源自
+    `results/eval/overlapvln/<legacy-long-name>`，源目录仍保留
+  - 每个模型的 `val_seen/` 与 `val_unseen/` 已移除评测时间戳中间层，
+    目录下直接保存 `evaluation_summary.json`、`timing_summary.json`、
+    `results_partial.json` 与 `all_results.jsonl`
+  - `Results` 当前共 11 个模型目录、22 个 `evaluation_summary.json`、
+    88 个模型结果文件，约 88M；未选中的 18 个旧评测子集已从 `Results`
+    移入系统回收站
+  - 汇总工作簿：`output/model_zoo/swiftvln/Results/swiftvln_version_results.xlsx`
+    按 `Seen Test` / `Unseen Test` 两段记录 11 个模型的最终
+    `ALL_SR`、`ALL_SPL`、`ALL_OS`、`ALL_NE`、`ALL_Steps`，布局与最终选型表一致；
+    `HuggingFace` 列提供 11 个 `Eku127/<HF-short-model-name>` 仓库的可点击链接
+  - `overlap0-pf-h8-pool-s2-noembed` 使用 `20260421-125912` 的原始 0418
+    results 中最终选定的 `val_seen/20260427_042116` 与
+    `val_unseen/20260427_051037`，不混入 2026-06-29 的后续重评结果
   - 主线 `eval_by_name.sh <model_name>` 的模型路径优先级：
     1) 显式环境变量 `MODEL_PATH=<hf-or-checkpoint-dir>`；
     2) 训练输出目录 `output/swiftvln/<model_name>/v*/checkpoint-*` 或 `checkpoint-*`；
     3) HF model zoo 目录 `output/model_zoo/swiftvln/HF_model/<model_name>`
   - `eval_by_name.sh` 的 embed slot 解析支持 `-posefilm` / `-pose` / `-noembed`
     出现在模型名末尾，适配上述短名
+- SwiftVLN 自定义数据评测支持（Updated: 2026-07-26）：
+  - `src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh`
+    支持用 `EVAL_CONFIG_PATH=<relative-or-absolute-yaml>` 覆盖默认环境配置；
+    相对路径仍按 `src/swiftvln/` 解析，启动前会检查最终文件存在。
+  - `src/swiftvln/scripts/eval/eval_by_name.sh` 已移除“必须存在同名
+    `output/swiftvln/<model_name>` 训练目录”的旧前置条件；显式 `MODEL_PATH`
+    或完整 HF model-zoo 目录可直接正式评测，不再只在 `CHECK_ONLY` 下通过。
 - Baseline eval by name with model root（Updated: 2026-06-29）：
   - 脚本：`baseline/streamvln/scripts/eval_satnav.sh`、`baseline/navila/scripts/eval_satnav.sh`、`baseline/uninavid/scripts/eval_satnav.sh`、`baseline/openfly/scripts/eval_satnav.sh`
   - StreamVLN / NaVILA / UniNaVid / OpenFly eval 均已收敛为命名参数主路径；公开入口使用

@@ -66,13 +66,14 @@ ENV_TYPE="${ENV_TYPE:-habitat}"  # habitat or satnav
 # Environment-specific Configuration
 # ============================================================================
 if [ "$ENV_TYPE" == "habitat" ]; then
-    CONFIG_PATH="configs/vln_r2r.yaml"
+    DEFAULT_CONFIG_PATH="configs/vln_r2r.yaml"
 elif [ "$ENV_TYPE" == "satnav" ]; then
-    CONFIG_PATH="configs/satnav_task.yaml"
+    DEFAULT_CONFIG_PATH="configs/satnav_task.yaml"
 else
     echo "[ERROR] Unknown ENV_TYPE: $ENV_TYPE. Must be 'habitat' or 'satnav'."
     exit 1
 fi
+CONFIG_PATH="${EVAL_CONFIG_PATH:-$DEFAULT_CONFIG_PATH}"
 
 # SatNav 默认 val_seen；Habitat 或未指定 ENV_TYPE 时默认 val_unseen
 if [ -z "$EVAL_SPLIT" ]; then
@@ -256,6 +257,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 VLN_DIR="${SWIFTVLN_ROOT}/src/swiftvln"
+if [[ "$CONFIG_PATH" = /* ]]; then
+    RESOLVED_CONFIG_PATH="$CONFIG_PATH"
+else
+    RESOLVED_CONFIG_PATH="${VLN_DIR}/${CONFIG_PATH}"
+fi
+if [ ! -f "$RESOLVED_CONFIG_PATH" ]; then
+    echo "[ERROR] Eval config not found: $RESOLVED_CONFIG_PATH"
+    exit 1
+fi
 
 # ============================================================================
 # Print Configuration
@@ -267,7 +277,7 @@ echo "Environment:     ${ENV_TYPE}"
 echo "Model Family:    ${MODEL_FAMILY}"
 echo "Model Type:      ${MODEL_TYPE}"
 echo "Template Type:   ${TEMPLATE_TYPE}"
-echo "Config Path:     ${CONFIG_PATH}"
+echo "Config Path:     ${RESOLVED_CONFIG_PATH}"
 echo "Model Path:      ${MODEL_PATH}"
 echo "Eval Split:      ${EVAL_SPLIT}"
 echo "Output Dir:      ${OUTPUT_DIR}"
@@ -406,8 +416,8 @@ EVAL_CMD=(
     --model_type "${MODEL_TYPE}"
     --template_type "${TEMPLATE_TYPE}"
     --env-type "${ENV_TYPE}"
-    --habitat_config_path "${VLN_DIR}/${CONFIG_PATH}"
-    --satnav-config "${VLN_DIR}/${CONFIG_PATH}"
+    --habitat_config_path "${RESOLVED_CONFIG_PATH}"
+    --satnav-config "${RESOLVED_CONFIG_PATH}"
     --eval_split "${EVAL_SPLIT}"
     --num_frames "${NUM_FRAMES}"
     --num_history "${NUM_HISTORY}"
