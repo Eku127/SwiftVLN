@@ -107,22 +107,34 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - 为保持旧路径兼容，data3 保留 symlink：
     `/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260404 -> /mnt/data4/jiangjiajun/dataset/satnav_datasets/ver_260404`
   - 0404 数据 dry-run 校验差异为 0，关键文件大小与 `trajectory_data/images` episode 目录数一致
-- Baseline 0418 model zoo（Updated: 2026-05-26）：
-  - `baseline_0418_seen_unseen_all.csv` 中本仓库内可定位的收口 baseline 模型已集中移动到：
-    `output/model_zoo/baseline/`
-  - 已移动模型包括：StreamVLN scratch/continue、OpenFly scratch/continue、NaVILA scratch/continue、UniNaVid scratch/continue
-  - Seq2Seq、CMA、OverlapVLN/SwiftVLN 对应模型目录本次未在本仓库输出路径下定位到；仅结果目录或 raw data 仍保留在报告中
-  - StreamVLN model zoo 目录名已精简为 eval 所需窗口参数加训练摘要：
-    `streamvln-baseline-continue-1ep-f32h8s4-lr2e-5`、
-    `streamvln-baseline-scratch-1ep-f32h8s4-lr2e-5`
-  - StreamVLN 另有 Hugging Face upload-ready 精简副本：
-    `streamvln-satnav-continue-1ep-f32h8s4-lr2e-5`、
-    `streamvln-satnav-scratch-1ep-f32h8s4-lr2e-5`；二者与对应
-    `streamvln-baseline-*` 权重一致，但只保留 eval/inference 所需文件
-- SwiftVLN model zoo HF upload-ready 副本与配套结果（Updated: 2026-07-25）：
+- Baseline 0418 model zoo、配套结果与训练记录（Updated: 2026-08-02）：
+  - `output/model_zoo/baseline/` 顶层统一保留 `HF_model/`、`Results/` 与
+    `Training_Log/`。
+  - `HF_model/` 包含 8 个 Hugging Face upload-ready 精简模型：StreamVLN、OpenFly、
+    NaVILA、UniNaVid 各自的 scratch/continue；目录名统一为 `*-satnav-*` 短名。
+  - `Results/` 包含上述 8 个模型一一对应的最终精选 0418 评测结果，模型子目录名与
+    `HF_model/` 完全一致；原始结果目录仍保留在 `results/{navila,openfly,streamvln,uninavid}-baseline/`。
+  - 每个模型直接包含 `val_seen/` 与 `val_unseen/`，每个 split 保留
+    `evaluation_summary.json` 和 `all_results.jsonl`；后者由各 baseline 原始
+    `result.jsonl` 原样复制并统一命名。baseline evaluator 没有生成 SwiftVLN 特有的
+    `results_partial.json` / `timing_summary.json`，因此未创建占位文件。
+  - `Results/` 当前共 8 个模型目录、16 个 `evaluation_summary.json`、16 个
+    `all_results.jsonl`，合计 32 个文件、约 195M；评测日志和分布式同步 marker 未复制进 model zoo。
+  - 汇总指标仍以
+    `reports/baseline_reports/baseline_0418_raw_data/baseline_0418_seen_unseen_all.csv`
+    和 `reports/baseline_reports/baseline_0418.md` 为准。
+  - `Training_Log/` 的 8 个模型子目录同样与 `HF_model/` 短名一一对应；已收口
+    11 个原始 terminal/GPU `.log` 和 8 个 `trainer_state.json`，约 69M。
+    StreamVLN、OpenFly、UniNaVid 的终端日志源自 `logs/train_launch/`；NaVILA
+    日志源自 `/mnt/data4/jiangjiajun/final_model/baseline/`。UniNaVid scratch/continue
+    原本共用一个串行训练日志，两个目录各保留一份未修改副本；原始日志均继续保留。
+  - Seq2Seq、CMA、OverlapVLN/SwiftVLN 不属于这 8 个 baseline HF 精选模型，未纳入
+    `output/model_zoo/baseline/{HF_model,Results}`。
+- SwiftVLN model zoo HF upload-ready 副本、结果与训练记录（Updated: 2026-08-02）：
   - 模型目录：`output/model_zoo/swiftvln/HF_model/`
   - 配套结果目录：`output/model_zoo/swiftvln/Results/`
-  - `output/model_zoo/swiftvln/` 顶层当前保留 `HF_model` 与 `Results`；
+  - `output/model_zoo/swiftvln/` 顶层当前保留 `HF_model`、`Results` 与
+    `Training_Log`；
     旧长名模型目录已清理
   - 已创建 11 个短名 HF 模型：
     `swiftvln-satnav-3b-1ep-f32s4-overlap0-gtc-k512-noembed`、
@@ -153,6 +165,14 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     按 `Seen Test` / `Unseen Test` 两段记录 11 个模型的最终
     `ALL_SR`、`ALL_SPL`、`ALL_OS`、`ALL_NE`、`ALL_Steps`，布局与最终选型表一致；
     `HuggingFace` 列提供 11 个 `Eku127/<HF-short-model-name>` 仓库的可点击链接
+  - `Training_Log/` 包含 11 个与 HF 短名一一对应的模型目录：其中 10 个保存
+    data4 原始模型归档中的 `trainer_state.json`（完整逐步 loss 历史）与
+    `train_metadata.json`；MAP 和 SGTC 另保存精确匹配的本地 SwanLab 备份。
+    总计约 7.9M，原始 data4/SwanLab 文件继续保留。
+  - `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed` 的源实验尾号
+    `125912` 未在整个 data4 找到路径、精确实验元数据或归档包，当前也没有本地
+    `trainer_state.json` / raw train log；`Training_Log/<model>/NOT_FOUND.md` 已记录
+    缺失状态。该模型权重与评测结果不受影响。
   - `overlap0-pf-h8-pool-s2-noembed` 使用 `20260421-125912` 的原始 0418
     results 中最终选定的 `val_seen/20260427_042116` 与
     `val_unseen/20260427_051037`，不混入 2026-06-29 的后续重评结果
@@ -162,6 +182,26 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     3) HF model zoo 目录 `output/model_zoo/swiftvln/HF_model/<model_name>`
   - `eval_by_name.sh` 的 embed slot 解析支持 `-posefilm` / `-pose` / `-noembed`
     出现在模型名末尾，适配上述短名
+- Output DeepSpeed 续训状态清理（Updated: 2026-08-02）：
+  - 已永久删除 `output/` 下 20 个 `checkpoint-*/global_step*` 目录，以及随之失效的
+    `latest` 和 `zero_to_fp32.py`；覆盖 SwiftVLN、StreamVLN、OpenFly 与 NaVILA
+    历史训练输出
+  - 共释放 `1,396,413,862,286` bytes（约 1.27 TiB），`output/` 从
+    `2,137,466,117,924` bytes（约 1.94 TiB）降至 `741,051,639,395` bytes
+    （约 690 GiB）
+  - HF safetensors / config、训练日志、trainer state 和评测结果均保留，现有模型仍可
+    eval / inference；这些历史 checkpoint 已不再支持 DeepSpeed 断点续训
+- Data4 DeepSpeed 续训状态清理（Updated: 2026-08-02）：
+  - 已永久删除 `/mnt/data4` 下 77 个 `checkpoint-*/global_step*` 目录，以及
+    对应的 77 个 `latest` 和 77 个 `zero_to_fp32.py`。
+  - 范围包括：`archive/data0418/memory/model` 45 份、
+    `archive/data0404/baseline` 6 份、`archive/swiftvln/data0317` 16 份、
+    `archive/streamvln-baseline/data0317` 2 份、`final_model/baseline` 8 份。
+  - 共释放 `5,004,642,840,576` bytes（约 4.55 TiB）；data4 从 87% 使用、
+    约 909 GiB 可用降到 18% 使用、约 5.5 TiB 可用。
+  - 清理后复核通过：77/77 个 checkpoint 的独立模型权重、`config.json` 和
+    `trainer_state.json` 均保留；现有模型仍可 eval / inference，但不再支持
+    DeepSpeed optimizer 断点续训或依赖 ZeRO partition 的转换。
 - SwiftVLN backbone model zoo（Updated: 2026-08-01）：
   - HF 模型目录：`output/model_zoo/backbones/HF_model/`
   - 配套结果目录：`output/model_zoo/backbones/Results/`
