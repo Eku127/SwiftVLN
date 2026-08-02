@@ -48,6 +48,9 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
 ## Key Directories & Entry Scripts
 
 - 实验计划目录：`runtime/plans/` （自然语言实验计划文件，供 orchestrate-plan skill 读取）
+- 当前报告入口：`reports/README.md`
+  - `reports/` 只维护当前态报告，不保存按日期历史快照或原始实验导出
+  - 当前固定文档为 `current_state.md`、`model_zoo.md`、`s2r_rebuttal.md`
 - 实验计划 skill：`.codex/skills/orchestrate-plan/SKILL.md`
 - 训练队列：`src/swiftvln/scripts/train/train_queue.sh`
 - 单次训练主入口（Updated: 2026-06-30）：
@@ -113,21 +116,21 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - `HF_model/` 包含 8 个 Hugging Face upload-ready 精简模型：StreamVLN、OpenFly、
     NaVILA、UniNaVid 各自的 scratch/continue；目录名统一为 `*-satnav-*` 短名。
   - `Results/` 包含上述 8 个模型一一对应的最终精选 0418 评测结果，模型子目录名与
-    `HF_model/` 完全一致；原始结果目录仍保留在 `results/{navila,openfly,streamvln,uninavid}-baseline/`。
+    `HF_model/` 完全一致；工作区原始 `results/*-baseline/` 已清理，model zoo 是当前权威副本。
   - 每个模型直接包含 `val_seen/` 与 `val_unseen/`，每个 split 保留
     `evaluation_summary.json` 和 `all_results.jsonl`；后者由各 baseline 原始
     `result.jsonl` 原样复制并统一命名。baseline evaluator 没有生成 SwiftVLN 特有的
     `results_partial.json` / `timing_summary.json`，因此未创建占位文件。
   - `Results/` 当前共 8 个模型目录、16 个 `evaluation_summary.json`、16 个
     `all_results.jsonl`，合计 32 个文件、约 195M；评测日志和分布式同步 marker 未复制进 model zoo。
-  - 汇总指标仍以
-    `reports/baseline_reports/baseline_0418_raw_data/baseline_0418_seen_unseen_all.csv`
-    和 `reports/baseline_reports/baseline_0418.md` 为准。
+  - 当前汇总指标见 `reports/model_zoo.md`；精确数值以每个模型的
+    `Results/<model>/<split>/evaluation_summary.json` 为准。
   - `Training_Log/` 的 8 个模型子目录同样与 `HF_model/` 短名一一对应；已收口
     11 个原始 terminal/GPU `.log` 和 8 个 `trainer_state.json`，约 69M。
     StreamVLN、OpenFly、UniNaVid 的终端日志源自 `logs/train_launch/`；NaVILA
     日志源自 `/mnt/data4/jiangjiajun/final_model/baseline/`。UniNaVid scratch/continue
-    原本共用一个串行训练日志，两个目录各保留一份未修改副本；原始日志均继续保留。
+    原本共用一个串行训练日志，两个目录各保留一份未修改副本；工作区原始日志已清理，
+    只保证 model zoo 内副本长期存在。
   - Seq2Seq、CMA、OverlapVLN/SwiftVLN 不属于这 8 个 baseline HF 精选模型，未纳入
     `output/model_zoo/baseline/{HF_model,Results}`。
 - SwiftVLN model zoo HF upload-ready 副本、结果与训练记录（Updated: 2026-08-02）：
@@ -154,13 +157,12 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     rng state、logs、TensorBoard runs 或训练曲线图
   - `Results` 包含上述 11 个 HF 模型一一对应、人工最终选定的 SatNav
     评测结果，子目录名与 HF 短模型名完全一致；结果源自
-    `results/eval/overlapvln/<legacy-long-name>`，源目录仍保留
+    历史 `results/eval/overlapvln/<legacy-long-name>`，原始源目录已清理
   - 每个模型的 `val_seen/` 与 `val_unseen/` 已移除评测时间戳中间层，
     目录下直接保存 `evaluation_summary.json`、`timing_summary.json`、
     `results_partial.json` 与 `all_results.jsonl`
   - `Results` 当前共 11 个模型目录、22 个 `evaluation_summary.json`、
-    88 个模型结果文件，约 88M；未选中的 18 个旧评测子集已从 `Results`
-    移入系统回收站
+    88 个模型结果文件，约 88M；未选中的旧评测子集已永久删除
   - 汇总工作簿：`output/model_zoo/swiftvln/Results/swiftvln_version_results.xlsx`
     按 `Seen Test` / `Unseen Test` 两段记录 11 个模型的最终
     `ALL_SR`、`ALL_SPL`、`ALL_OS`、`ALL_NE`、`ALL_Steps`，布局与最终选型表一致；
@@ -168,7 +170,7 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - `Training_Log/` 包含 11 个与 HF 短名一一对应的模型目录：其中 10 个保存
     data4 原始模型归档中的 `trainer_state.json`（完整逐步 loss 历史）与
     `train_metadata.json`；MAP 和 SGTC 另保存精确匹配的本地 SwanLab 备份。
-    总计约 7.9M，原始 data4/SwanLab 文件继续保留。
+    总计约 7.9M；工作区 `swanlog/` 已清理，只保证 model zoo 内副本长期存在。
   - `swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed` 的源实验尾号
     `125912` 未在整个 data4 找到路径、精确实验元数据或归档包，当前也没有本地
     `trainer_state.json` / raw train log；`Training_Log/<model>/NOT_FOUND.md` 已记录
@@ -182,15 +184,15 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
     3) HF model zoo 目录 `output/model_zoo/swiftvln/HF_model/<model_name>`
   - `eval_by_name.sh` 的 embed slot 解析支持 `-posefilm` / `-pose` / `-noembed`
     出现在模型名末尾，适配上述短名
-- Output DeepSpeed 续训状态清理（Updated: 2026-08-02）：
-  - 已永久删除 `output/` 下 20 个 `checkpoint-*/global_step*` 目录，以及随之失效的
-    `latest` 和 `zero_to_fp32.py`；覆盖 SwiftVLN、StreamVLN、OpenFly 与 NaVILA
-    历史训练输出
-  - 共释放 `1,396,413,862,286` bytes（约 1.27 TiB），`output/` 从
-    `2,137,466,117,924` bytes（约 1.94 TiB）降至 `741,051,639,395` bytes
-    （约 690 GiB）
-  - HF safetensors / config、训练日志、trainer state 和评测结果均保留，现有模型仍可
-    eval / inference；这些历史 checkpoint 已不再支持 DeepSpeed 断点续训
+- 当前 output 保留约定（Updated: 2026-08-02）：
+  - 长期实验资产只以 `output/model_zoo/` 为准，当前 22 个模型与 22 套 seen/unseen
+    结果完整，汇总见 `reports/model_zoo.md`
+  - 历史 `output/swiftvln/`、四个 baseline 原始输出、`results/`、`logs/`、
+    `swanlog/` 与 smoke 产物已永久清理
+  - 额外保留 `output/s2r/` 正式 `best.pt`、`output/rebuttal/` episode 资料、
+    `output/PCD-data/` 和 `output/3DGS-data/`
+  - model zoo 权重可 eval / inference 或仅权重初始化；历史 DeepSpeed optimizer、
+    scheduler 与 ZeRO partition 已删除，不再支持原样断点续训
 - Data4 DeepSpeed 续训状态清理（Updated: 2026-08-02）：
   - 已永久删除 `/mnt/data4` 下 77 个 `checkpoint-*/global_step*` 目录，以及
     对应的 77 个 `latest` 和 77 个 `zero_to_fp32.py`。
@@ -256,16 +258,8 @@ SwiftVLN 已从 `ms-swift/examples/vln` 迁移为独立仓库，核心结构如�
   - OpenFly eval 会从模型名中的 `actcompact|actoriginal`、`hist<N>` 解析动作格式和 action history 长度；
     不再从模型名中的 `data<N>` 解析 eval 数据版本
   - `output/model_zoo/baseline/HF_model/` 已集中放置后续 Hugging Face upload-ready 模型目录
-  - 2026-06-29 已完成四个 baseline 在 `SatNav-v0.1` 上的 8 卡 train/eval smoke：
-    - eval smoke 在 98 机完成，HF upload-ready continue 模型，`--gpus 8 --max_episodes 2`
-    - eval 汇总：`logs/baseline_satnav_v01_smoke/local98_eval_smoke_20260629_142339.csv`
-    - UniNaVid 修复分布式 marker 后重跑通过：
-      `logs/baseline_satnav_v01_smoke/local98_uninavid_retry_20260629_143332.status`
-    - train smoke：NaVILA / UniNaVid / OpenFly 在 73 机通过：
-      `logs/baseline_satnav_v01_smoke/train_smoke_73_20260629_143641.csv`
-    - StreamVLN train smoke 在 98 机通过：
-      `logs/baseline_satnav_v01_smoke/train_streamvln_local98_20260629_150840.status`
-    - smoke 输出模型目录均已清理，只保留日志、CSV/status 与 evaluation summary 副本
+  - 历史 baseline smoke 输出与日志已清理；需要验证当前代码时，使用
+    `.codex/skills/baseline-smoke-test/SKILL.md` 重新执行，不引用旧 status/CSV
 - Baseline model placeholder convention（Updated: 2026-06-30）：
   - `baseline/{navila,streamvln,uninavid,openfly}/model/` 统一只保留根目录 `.gitkeep`
   - 不在 git 中预建各 HF 模型子目录，也不跟踪模型 `config.json`、tokenizer、权重或 LFS 指针
@@ -1378,6 +1372,14 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_overlap_smoke_150200
   `/mnt/data3/jiangjiajun/dataset/SatDronePair` 以 `skip_missing=false` 严格构建
   manifest 通过，共 `19365` 条（denseuav `5464`、GTA 去重后 `5102`、
   SUES `1497`、UAV-VisLoc `7302`；train `16731` / val `2634`）。
+- 当前唯一保留的正式产物（Updated: 2026-08-02）：
+  - `output/s2r/s2r-swiftvln-baseline-gta-dedup-10ep-bs64-lr1e-4-20260727-160227/best.pt`
+  - 训练与独立评测完成，Stage-B loader check 通过；总体 U2S/S2U R@1 为
+    `37.51%` / `38.27%`
+  - 该 run 的 `train_args.json` 引用已不存在的
+    `runtime/s2r/manifests/manifest_v2_gta_dedup.jsonl`；现存
+    `manifest_v1.jsonl` 不能视为同一输入，精确复训前必须重新生成并验证 v2
+  - 详细当前状态与分数据源指标见 `reports/s2r_rebuttal.md`
 
 当前已实现的 Stage-A 入口：
 
@@ -1403,7 +1405,7 @@ Stage-A 当前设计约定：
   加载 Qwen2.5-VL checkpoint；不要再走 `AutoModelForCausalLM`，否则会在
   `qwen2_5_vl` config 上报模型类型不识别
 - 当前推荐 teacher：
-  `/mnt/data4/jiangjiajun/archive/swiftvln/data0317/train/swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-202149/v0-20260318-202212/checkpoint-3957`
+  `output/model_zoo/swiftvln/HF_model/swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`
 - `SatDronePairDataset(max_samples=...)` 现在采用跨数据源 round-robin 限样
   （不是 manifest 头部截断），用于保证 smoke train/eval 在小样本下仍覆盖多数据源
 - GTA 新转换结果已是一物理图像对一条记录；manifest 仍兼容旧版双协议 CSV，
@@ -1606,9 +1608,10 @@ Stage-A 当前验证状态（2026-04-03）：
   - train 脚本默认激活 `swift-vln-train-update`
   - eval distributed 脚本默认激活 `swift-vln-eval-update`
   - 可分别通过 `SWIFTVLN_TRAIN_CONDA_ENV` / `SWIFTVLN_EVAL_CONDA_ENV` 覆盖回其他环境
-- Qwen3/Qwen3.5 可行性报告：
-  - `reports/ms_swift_qwen3_future.md`
-  - 结论：可适配，但需要模型族抽象，不能只替换 `model_type` / `model_path`
+- Qwen family 当前状态：
+  - Qwen2.5-VL 与 Qwen3-VL 已通过 `MODEL_FAMILY=qwen2_5_vl|qwen3_vl` 进入统一主线
+  - Qwen3.5 尚不是当前受支持模型族；不再保留旧 future 报告，当前入口见
+    `reports/current_state.md`
 - Qwen3-VL 适配重构（Updated: 2026-05-01）：
   - 当前主线已保留 `swiftvln_qwen2_5_vl` 并新增 `swiftvln_qwen3_vl`
   - 共享逻辑：
