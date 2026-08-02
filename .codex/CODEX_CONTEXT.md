@@ -1316,6 +1316,29 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_overlap_smoke_150200
 - 包目录：`src/swiftvln/s2r/`
 - 目标：基于真实 `UAV ↔ Satellite` 配对图做视觉对齐，产出后续可接入 SwiftVLN 的 adapter
 
+### Stage-A SatDronePair 数据生产（Updated: 2026-08-01）
+
+- 数据生成代码已从原独立目录迁入 `src/swiftvln/s2r/data_generation/`；旧目录已删除。
+- 统一入口为 `swiftvln s2r-data <dataset> <command> [args...]`，支持
+  `denseuav`、`gta_uav`、`sues`、`uavvisloc`；完整流程见该目录的 `README.md`。
+- 输入/输出路径必须通过 CLI 或 YAML 显式配置；示例为
+  `src/swiftvln/s2r/data_generation/config.example.yaml`。
+- SUES 正式数据保留 `orig/crop384/crop256`，UAV-VisLoc 保留 `orig/crop384`；这些
+  variant 是训练增强。preview 与中间工作目录不是训练输入，可在严格校验后删除。
+- GTA 转换器在导出前按物理图像对去重：正式数据为 `5102` 对、`10204` 张图，
+  `pairs.csv` 保留 same/cross-area 的协议、pair ID、原始 split 与 metadata 来源。
+- 正式 SatDronePair 根目录只保留四个数据源目录，CSV/JSON 不含机器绝对路径；
+  canonical manifest 只使用 `runtime/s2r/manifests/manifest_v1.jsonl`。
+- Python package extra：`pip install -e ".[s2r-data]"` 会安装生成链路所需
+  `numpy/Pillow/PyYAML/scipy`。
+- `src/swiftvln/s2r/__init__.py` 的历史顶层导出已改为 PEP 562 惰性加载；
+  导入 `swiftvln.s2r.data_generation` 不再提前加载 `torch/transformers`，但
+  `from swiftvln.s2r import PairRecord/Sim2RealAdapter/...` API 保持兼容。
+- 2026-08-01 验证：四个 S2R test modules 共 `22 tests` 通过；当前
+  `/mnt/data3/jiangjiajun/dataset/SatDronePair` 以 `skip_missing=false` 严格构建
+  manifest 通过，共 `19365` 条（denseuav `5464`、GTA 去重后 `5102`、
+  SUES `1497`、UAV-VisLoc `7302`；train `16731` / val `2634`）。
+
 当前已实现的 Stage-A 入口：
 
 - manifest 构建脚本：`src/swiftvln/s2r/scripts/build_manifest.py`
@@ -1343,9 +1366,8 @@ Stage-A 当前设计约定：
   `/mnt/data4/jiangjiajun/archive/swiftvln/data0317/train/swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-202149/v0-20260318-202212/checkpoint-3957`
 - `SatDronePairDataset(max_samples=...)` 现在采用跨数据源 round-robin 限样
   （不是 manifest 头部截断），用于保证 smoke train/eval 在小样本下仍覆盖多数据源
-- GTA manifest 构建会先按物理 UAV/卫星图像对去重，将
-  `same_area` / `cross_area` 重复导出合并为一条记录，并在 metadata 中保留
-  原始协议、pair ID 与 row split，便于审计
+- GTA 新转换结果已是一物理图像对一条记录；manifest 仍兼容旧版双协议 CSV，
+  会在读取时去重并保留来源 provenance
 - 分布式对比学习的 autograd gather 会汇总所有 rank 对远端 key 的梯度，
   保持与真实 global-batch objective 一致
 - Stage-A trainer 会原子更新 `progress.json`，记录 step、总步数、

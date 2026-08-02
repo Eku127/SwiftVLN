@@ -13,7 +13,11 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from swiftvln.s2r.dataset import build_manifest_records, write_manifest
+from swiftvln.s2r.dataset import (
+    build_manifest_records,
+    deduplicate_gta_rows,
+    write_manifest,
+)
 
 
 def _write_image(path: Path):
@@ -216,6 +220,44 @@ class S2RSplitManifestTest(unittest.TestCase):
                 {("cross_area", "same_area")},
             )
             self.assertTrue(all(len(record["meta"]["source_pair_ids"]) == 2 for record in gta_records))
+
+    def test_compact_gta_csv_preserves_protocol_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _prepare_denseuav(root)
+            _prepare_gta(root)
+            _prepare_sues(root)
+            _prepare_uavvisloc(root)
+
+            csv_path = root / "gta/pairs.csv"
+            with csv_path.open(encoding="utf-8") as handle:
+                legacy_rows = list(csv.DictReader(handle))
+            compact_rows = deduplicate_gta_rows(legacy_rows)
+            for row in compact_rows:
+                for public, internal in (
+                    ("source_area_modes", "_source_area_modes"),
+                    ("source_pair_ids", "_source_pair_ids"),
+                    ("source_row_splits", "_source_row_splits"),
+                    ("source_meta_files", "_source_meta_files"),
+                ):
+                    row[public] = "|".join(row.pop(internal))
+            _write_csv(csv_path, compact_rows[0].keys(), compact_rows)
+
+            records = build_manifest_records(
+                str(root), val_ratio=0.34, seed=7, skip_missing=False
+            )
+            gta_records = [record for record in records if record["dataset"] == "gta"]
+            self.assertEqual(len(gta_records), 3)
+            self.assertTrue(
+                all(
+                    record["meta"]["source_area_modes"]
+                    == ["cross_area", "same_area"]
+                    for record in gta_records
+                )
+            )
+            self.assertTrue(
+                all(len(record["meta"]["source_pair_ids"]) == 2 for record in gta_records)
+            )
 
     def test_write_manifest_jsonl(self):
         with tempfile.TemporaryDirectory() as tmp:

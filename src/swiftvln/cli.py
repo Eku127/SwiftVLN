@@ -39,6 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_queue = subparsers.add_parser("queue", help="Run queue orchestrations")
     p_queue.add_argument("target", choices=["train", "eval"], help="Queue type")
 
+    subparsers.add_parser(
+        "s2r-data",
+        help="Generate SatDronePair data for S2R alignment training",
+        add_help=False,
+    )
+
     return parser
 
 
@@ -56,6 +62,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.target == "train":
             return run_queue_train(extra)
         return run_queue_eval(extra)
+    if args.command == "s2r-data":
+        from swiftvln.s2r.data_generation import main as run_s2r_data
+
+        return run_s2r_data(extra)
 
     parser.error(f"Unknown command: {args.command}")
     return 2
