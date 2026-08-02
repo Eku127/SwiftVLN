@@ -6,7 +6,14 @@
 - 运行范围：当前集成面向 SatNav trajectory 数据训练和 SatNav 在线评测。
 - 训练/评测 skill：`.codex/skills/run-streamvln-baseline/SKILL.md`
 
-## 0. 上游源码 clone 与路径
+## 0. 代码来源、适配基准与上游路径
+
+> **代码来源声明：** 本目录的 SatNav dataset adapter、训练入口和评测 wrapper，
+> 以
+> [`Eku127/StreamVLN@60476e81f4c01b29f1a51a7469f1cb4addbc1d62`](https://github.com/Eku127/StreamVLN/commit/60476e81f4c01b29f1a51a7469f1cb4addbc1d62)
+> 为明确的上游适配与验证基准；StreamVLN 模型核心仍在运行时从该上游 clone 加载，
+> 并未完整复制到本目录。SatNav 接口开发与验证基于
+> [`Eku127/SatNav@c0c0e72ea4575b36d74a5e8f777942172978938e`](https://github.com/Eku127/SatNav/commit/c0c0e72ea4575b36d74a5e8f777942172978938e)。
 
 当前 StreamVLN baseline 不在本仓库内复制完整上游实现；训练和评测会把本地
 StreamVLN 上游源码加入 `PYTHONPATH`。SatNav 评测环境也需要本地 SatNav
@@ -258,3 +265,10 @@ streamvln-satnav-scratch-1ep-f32h8s4-lr2e-5
 - 脚本不会从模型名里的数据版本字段选择 eval 数据；eval 数据和 split 都由 `satnav_task.yaml` 控制。
 - 输出目录：`results/streamvln-baseline/<model_name>/<split>/`。
 - 评测日志：`results/streamvln-baseline/<model_name>/<split>/eval.log`。
+
+## 致谢
+
+感谢 [StreamVLN](https://github.com/OpenRobotLab/StreamVLN) 的作者和贡献者公开代码、
+模型与研究成果，也感谢 LLaVA-Video、SigLIP 和 SatNav 等相关工作的作者为本适配提供
+基础模型与评测环境。本目录是面向 SatNav 的非官方适配；使用相关成果时请遵循各上游
+项目的许可证并引用原始工作。

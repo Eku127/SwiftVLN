@@ -5,7 +5,14 @@
 - 论文：[NaVILA: Legged Robot Vision-Language-Action Model for Navigation (RSS'25)](https://arxiv.org/abs/2412.04453)
 - 上游仓库：[NaVILA GitHub](https://github.com/AnjieCheng/NaVILA)（按第 0 节的 `$NAVILA_REPO` 路径准备本地 clone）
 
-## 0. 上游源码 clone 与路径
+## 0. 代码来源、适配基准与上游路径
+
+> **代码来源声明：** 本目录的 SatNav dataset adapter、训练入口和评测 wrapper，
+> 以
+> [`AnjieCheng/NaVILA@76b98f233dd0fff05dfcd69435eec6740febff9d`](https://github.com/AnjieCheng/NaVILA/commit/76b98f233dd0fff05dfcd69435eec6740febff9d)
+> 为明确的上游适配与验证基准；VILA/NaVILA 模型和 trainer 核心仍在运行时从该
+> 上游 clone 加载，并未完整复制到本目录。SatNav 接口开发与验证基于
+> [`Eku127/SatNav@c0c0e72ea4575b36d74a5e8f777942172978938e`](https://github.com/Eku127/SatNav/commit/c0c0e72ea4575b36d74a5e8f777942172978938e)。
 
 当前 NaVILA baseline 只在本仓库维护 SatNav 数据接入、启动脚本和评测 wrapper；
 VILA/NaVILA 的模型、trainer、Transformers/DeepSpeed patch 仍来自本地上游
@@ -243,3 +250,10 @@ bash baseline/navila/scripts/eval_satnav.sh \
 - eval 不再从模型名中的 `data{ver}` 自动解析数据版本；数据选择只来自
   `baseline/navila/configs/satnav_task.yaml`。
 - 结果输出到 `results/navila-baseline/...`
+
+## 致谢
+
+感谢 [NaVILA](https://github.com/AnjieCheng/NaVILA) 与
+[VILA](https://github.com/NVlabs/VILA) 的作者和贡献者公开代码、模型与研究成果，
+也感谢 SatNav 的开发者提供统一的训练数据接口和在线评测环境。本目录是面向 SatNav
+的非官方适配；使用相关成果时请遵循各上游项目的许可证并引用原始工作。

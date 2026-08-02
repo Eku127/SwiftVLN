@@ -6,7 +6,16 @@
 - 运行范围：当前集成是 SatNav-only baseline，不依赖外部 `OpenFly-Platform` repo。
 - 配置历史：详见 `baseline/openfly/doc/config_history.md`
 
-## 0. 上游源码 clone 与路径
+## 0. 代码来源、改写基准与上游路径
+
+> **代码来源声明：** `baseline/openfly/src` 中的 OpenFly/Prismatic 模型与
+> processor 相关实现，以
+> [`SHAILAB-IPEC/OpenFly-Platform@c075075497a7122bad82f5b76b9be926ad5a81b3`](https://github.com/SHAILAB-IPEC/OpenFly-Platform/commit/c075075497a7122bad82f5b76b9be926ad5a81b3)
+> 为明确的上游代码改写基准，并在此基础上加入 SatNav 数据、训练和在线评测适配。
+> SatNav 接口开发与验证基于
+> [`Eku127/SatNav@c0c0e72ea4575b36d74a5e8f777942172978938e`](https://github.com/Eku127/SatNav/commit/c0c0e72ea4575b36d74a5e8f777942172978938e)。
+> 这些 commit 是代码溯源基准，不表示训练或评测运行时必须保留外部
+> `OpenFly-Platform` 目录。
 
 当前 OpenFly baseline 的运行代码已经在本仓库 `baseline/openfly/src` 内做了
 SatNav-only 适配，训练/评测脚本不会从 `OpenFly-Platform` 动态 import 代码。
@@ -280,3 +289,10 @@ bash baseline/openfly/scripts/eval_satnav.sh \
   `baseline/openfly/configs/satnav_task.yaml`。
 - eval 仍会从模型名中的 `actcompact` / `actoriginal` 解析动作格式，并从
   `hist{N}` 解析 action history 长度；这两个字段影响模型行为，应保留在公开模型名中。
+
+## 致谢
+
+感谢 [OpenFly-Platform](https://github.com/SHAILAB-IPEC/OpenFly-Platform) 与
+[OpenVLA](https://github.com/openvla/openvla) 的作者和贡献者公开模型、代码与研究成果，
+也感谢 SatNav 的开发者为本适配提供统一的训练数据接口和在线评测环境。本目录是面向
+SatNav 的非官方适配；使用相关成果时请遵循各上游项目的许可证并引用原始工作。

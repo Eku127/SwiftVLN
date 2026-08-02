@@ -6,7 +6,14 @@
 - 上游仓库：[Uni-NaVid GitHub](https://github.com/jzhzhang/Uni-NaVid)（按第 0 节的 `$UNINAVID_REPO` 路径准备本地 clone）
 - 训练与评测约定：详见 `baseline/uninavid/doc/train_eval_conventions.md`
 
-## 0. 上游源码 clone 与路径
+## 0. 代码来源、适配基准与上游路径
+
+> **代码来源声明：** 本目录的 SatNav dataset adapter、训练入口和评测 wrapper，
+> 以
+> [`jzhzhang/Uni-NaVid@79ef5ea3fea14c205342d1ab070563d84c7a966a`](https://github.com/jzhzhang/Uni-NaVid/commit/79ef5ea3fea14c205342d1ab070563d84c7a966a)
+> 为明确的上游适配与验证基准；Uni-NaVid 模型、trainer 和 image processor 核心仍在
+> 运行时从该上游 clone 加载，并未完整复制到本目录。SatNav 接口开发与验证基于
+> [`Eku127/SatNav@c0c0e72ea4575b36d74a5e8f777942172978938e`](https://github.com/Eku127/SatNav/commit/c0c0e72ea4575b36d74a5e8f777942172978938e)。
 
 当前 Uni-NaVid baseline 只在本仓库维护 SatNav 数据接入、启动脚本和评测 wrapper；
 模型定义、trainer 逻辑以及 `uninavid/processor/clip-patch14-224` image processor
@@ -273,3 +280,10 @@ bash baseline/uninavid/scripts/eval_satnav.sh \
 - `MODEL_BASE` 可用于 adapter-only checkpoint 的底座模型路径。
 - `LOCAL_CACHE_DIR` 可用于指定本地 checkpoint cache。
 - 评测默认使用确定性解码，prompt 语义是预测 next four actions，评测端按动作词正则提取并截断到最多 4 个动作。
+
+## 致谢
+
+感谢 [Uni-NaVid](https://github.com/jzhzhang/Uni-NaVid) 的作者和贡献者公开代码、
+模型与研究成果，也感谢 EVA-CLIP、Vicuna 和 SatNav 等相关工作的作者为本适配提供
+基础模型与评测环境。本目录是面向 SatNav 的非官方适配；使用相关成果时请遵循各上游
+项目的许可证并引用原始工作。
