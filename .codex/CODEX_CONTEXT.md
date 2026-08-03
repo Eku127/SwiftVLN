@@ -1322,6 +1322,13 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_overlap_smoke_150200
   - 全量长训练代替 smoke
   - 未经用户确认改动生产默认配置
 
+### Repository Test Layout (Updated: 2026-08-03)
+
+- 顶层 `tests/` 已删除，仓库当前不再提供统一的 unit/regression test suite。
+- 不要调用原 `tests.*` unittest modules；主线与 baseline 验证使用对应 smoke skill 和现有脚本。
+- 当前仅保留 Stage-B loader smoke：
+  `src/swiftvln/model/script/test/test_uav_adapter_strategy.py`。
+
 ### Uni-NaVid Baseline
 
 - 训练/评测约定、smoke 参数、正式训练默认值：详见 `baseline/uninavid/doc/train_eval_conventions.md`
@@ -1368,8 +1375,7 @@ eval_<short_desc>_<HHMMSS>    # 例: eval_overlap_smoke_150200
 - `src/swiftvln/s2r/__init__.py` 的历史顶层导出已改为 PEP 562 惰性加载；
   导入 `swiftvln.s2r.data_generation` 不再提前加载 `torch/transformers`，但
   `from swiftvln.s2r import PairRecord/Sim2RealAdapter/...` API 保持兼容。
-- 2026-08-01 验证：四个 S2R test modules 共 `22 tests` 通过；当前
-  `/mnt/data3/jiangjiajun/dataset/SatDronePair` 以 `skip_missing=false` 严格构建
+- 当前 `/mnt/data3/jiangjiajun/dataset/SatDronePair` 以 `skip_missing=false` 严格构建
   manifest 通过，共 `19365` 条（denseuav `5464`、GTA 去重后 `5102`、
   SUES `1497`、UAV-VisLoc `7302`；train `16731` / val `2634`）。
 - 当前唯一保留的正式产物（Updated: 2026-08-02）：
@@ -1431,12 +1437,6 @@ Stage-A split 约定：
 - `sues`：按 `scene_id` 分组
 - `uavvisloc`：按 `seq_id` 分组
 
-Stage-A 测试文件：
-
-- `tests/test_s2r_split_and_manifest.py`
-- `tests/test_s2r_dataset.py`
-- `tests/test_s2r_model_and_losses.py`
-
 ## SwiftVLN UAV Adapter Stage-B (Updated: 2026-04-07)
 
 SwiftVLN 已接入 `uav_adapter` 的 Stage-B 最小链路：
@@ -1473,9 +1473,8 @@ Stage-B 当前实现约定：
 - 分布式评测脚本现已支持同名环境变量：
   `USE_UAV_ADAPTER` / `UAV_ADAPTER_PATH` / `UAV_ADAPTER_TYPE` / `UAV_ADAPTER_APPLY_SCOPE`
 
-Stage-B smoke / regression 测试：
+Stage-B 当前验证入口：
 
-- Stage-B 单测：`tests/test_uav_adapter_enhancement.py`
 - Stage-B loader smoke：
   `src/swiftvln/model/script/test/test_uav_adapter_strategy.py`
 - 全模型导航 eval smoke 已通过（2026-04-07）：
@@ -1486,10 +1485,8 @@ Stage-B smoke / regression 测试：
     `output/s2r/smoke-large-multisrc-20260403-152012/best.pt`
   - 说明：验证了 `checkpoint 加载 -> 外部 UAV adapter 注入 -> SatNav 环境 rollout -> summary 写出`
 
-Stage-A 当前验证状态（2026-04-03）：
+Stage-A smoke 验证记录（2026-04-03）：
 
-- 单测：`python -m unittest tests.test_s2r_split_and_manifest tests.test_s2r_dataset tests.test_s2r_model_and_losses`
-  已通过（`8 tests`）
 - 最小 smoke train 已通过：
   - 单卡 `cuda:0`
   - `max_steps=2`
@@ -1535,7 +1532,6 @@ Stage-A 当前验证状态（2026-04-03）：
 - 启动 wrapper：`src/swiftvln/scripts/deploy/start_swiftvln_deploy.sh`
 - 单次 session wrapper：`src/swiftvln/scripts/deploy/run_deploy_session.sh`
 - smoke 脚本：`src/swiftvln/scripts/deploy/deploy_smoke.sh`
-- 单测：`tests/test_swiftvln_deployment.py`
 
 当前部署产品定义：
 

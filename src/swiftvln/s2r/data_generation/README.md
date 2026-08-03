@@ -153,7 +153,7 @@ TEACHER_MODEL_PATH=/path/to/qwen-vl-or-swiftvln-checkpoint \
 bash src/swiftvln/s2r/scripts/train_s2r.sh
 ```
 
-## 4. 质量检查与测试
+## 4. 质量检查
 
 预览图只用于人工 QA，不参与训练，也不需要保留在正式数据目录：
 
@@ -162,16 +162,6 @@ swiftvln s2r-data denseuav sample_preview --dataset-dir "$PAIR_ROOT/denseuav"
 swiftvln s2r-data gta_uav sample_preview --dataset-dir "$PAIR_ROOT/gta"
 swiftvln s2r-data sues sample_preview --dataset-dir "$PAIR_ROOT/sues"
 swiftvln s2r-data uavvisloc sample_preview --dataset-dir "$PAIR_ROOT/uavvisloc"
-```
-
-运行数据链路回归测试：
-
-```bash
-PYTHONPATH=src python -m unittest \
-  tests.test_s2r_data_generation \
-  tests.test_s2r_split_and_manifest \
-  tests.test_s2r_dataset \
-  tests.test_s2r_model_and_losses
 ```
 
 生产时使用新的空输出目录；`dataset_info.json` 与 `pairs.csv` 应保留，preview 和
