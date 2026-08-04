@@ -1,0 +1,16 @@
+# SatNav FastAPI backend — runtime + test dependencies
+# Install: pip install -r satnav/backend/requirements.txt
+# Python >= 3.10 (uses zoneinfo from stdlib)
+#
+# Note: use opencv-python-headless only (do not install opencv-python alongside).
+
+# Web API (starlette / typing-extensions pulled in by fastapi)
+fastapi[standard]==0.128.0
+uvicorn[standard]==0.39.0
+pydantic==2.10.6
+httpx==0.28.1
+
+# RTMP reader (cv2.VideoCapture) + frame preprocessing
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0

@@ -62,5 +62,13 @@ baseline/**/__pycache__/
 # Sidecar packages (installed by Codex, not part of the repo)
 .sidecar_pkgs/
 
-# Virtual environments
+# IDE / local tooling
+.idea/
+
+# Local-only notes (not for git / open-source docs)
+*.local.md
+
+# Virtual environments & pip cache
 .venvs/
+.venv/
+.pip-cache/

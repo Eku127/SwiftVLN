@@ -1,0 +1,85 @@
+:root {
+  color-scheme: dark;
+  --bg-app: #071018;
+  --bg-panel: #0d1a24;
+  --bg-panel-2: #122232;
+  --border: #1f3344;
+  --text: #e8f1f8;
+  --text-muted: #8fa6b8;
+  --accent: #1fd47a;
+  --accent-dim: #145c38;
+  --warn: #f0b429;
+  --danger: #ff4d5a;
+  --info: #35c2ff;
+  --radius: 12px;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  min-height: 100%;
+  background: radial-gradient(circle at top, #102033 0%, var(--bg-app) 45%);
+  color: var(--text);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: var(--info);
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-panel-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  border: 1px solid transparent;
+}
+
+.badge.ok {
+  color: #9ff3c8;
+  background: rgba(31, 212, 122, 0.12);
+  border-color: rgba(31, 212, 122, 0.35);
+}
+
+.badge.warn {
+  color: #ffe6a6;
+  background: rgba(240, 180, 41, 0.12);
+  border-color: rgba(240, 180, 41, 0.35);
+}
+
+.badge.err {
+  color: #ffb3b8;
+  background: rgba(255, 77, 90, 0.12);
+  border-color: rgba(255, 77, 90, 0.35);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

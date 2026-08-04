@@ -26,6 +26,10 @@ DEPLOY_ARGS=(
   --session-root "$SESSION_ROOT"
 )
 
+if [ -n "${DEPLOY_OUTPUT_ROOT:-}" ]; then
+  DEPLOY_ARGS+=(--output-root "$DEPLOY_OUTPUT_ROOT")
+fi
+
 if [ "$MODEL_NAME" != "$DEFAULT_MODEL_NAME" ]; then
   DEPLOY_ARGS+=(--model-name "$MODEL_NAME")
 fi
