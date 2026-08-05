@@ -107,7 +107,7 @@ def main(argv=None) -> None:
         "notes": [
             "This exporter uses the currently selected high-quality sequences only: 01, 02, 03, 04, 06.",
             "Sequence-specific satellite scale/rotation/vertical-shift parameters are applied.",
-            "For an additional tighter view, run center_recrop_pairs.py with --crop-size 384 after export.",
+            "For a tighter view, run `swiftvln s2r-data uavvisloc center_recrop_pairs --crop-size 384` after export.",
         ],
     }
     (args.output_dir / "dataset_info.json").write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")

@@ -128,6 +128,9 @@ swiftvln s2r-data uavvisloc merge_variants \
 最终保留 `orig/crop384` 两个训练 variant。卫星 crop 尺度由高度近似推导，正式使用前
 应抽样检查图像质量。
 
+SUES 与 UAV-VisLoc 的 `center_recrop_pairs` 命令共享根目录实现，并根据
+`pairs.csv` 的图像字段自动选择 schema；命令名与输出结构保持不变。
+
 ## 3. 构建 manifest 并训练
 
 严格模式会检查四个 `pairs.csv` 及其全部图像引用：

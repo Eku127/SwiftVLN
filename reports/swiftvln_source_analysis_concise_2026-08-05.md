@@ -183,7 +183,7 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 | 重复组 | 当前规模 | 合并方案 |
 | --- | ---: | --- |
 | 四个 `*/sample_preview.py` | **已完成**：合并为根目录 `sample_preview.py` 的 schema-aware renderer。 | DenseUAV/GTA-UAV/SUES/UAV-VisLoc adapter 只负责分组、字段、路径和 label；registry、launcher、SUES pipeline、README/config 已迁移，四个旧文件删除。四类合成 contract 与 `/mnt/data3/.../SatDronePair/{denseuav,gta,sues,uavvisloc}` 真实 schema 抽样均成功输出 JPEG。 |
-| SUES/UAV-VisLoc `center_recrop_pairs.py` | 159 行 | 抽取统一 crop/image/manifest 写入逻辑，以 schema adapter 处理字段差异，再删两个 wrapper。 |
+| SUES/UAV-VisLoc `center_recrop_pairs.py` | **已完成**：合并为根目录共享实现并删除两个旧 wrapper。 | `PairSchema` 自动适配 `satellite_file/drone_file` 与 `export_*_path`，统一 image recrop、CSV 复制和 metadata 写入；两个 registry 命令与 YAML/README 接口保持不变，3 项双 schema contract 通过。 |
 | `sues/merge_variants_dense_style.py` 与通用 `merge_variants.py` | 226 + 274 行 | 给通用命令增加 one-root/variant-map 模式；迁移现有 SUES 命令和文档后删专用实现。 |
 
 这些文件都被 registry、README 或 SUES pipeline 使用，不能先删再补。它们是“重复实现”，

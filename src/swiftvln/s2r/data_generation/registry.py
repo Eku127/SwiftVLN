@@ -19,7 +19,7 @@ DATASET_COMMANDS: Dict[str, Dict[str, str]] = {
     "sues": {
         "build_pairs": f"{_PACKAGE}.sues.build_pairs",
         "pipeline": f"{_PACKAGE}.sues.pipeline",
-        "center_recrop_pairs": f"{_PACKAGE}.sues.center_recrop_pairs",
+        "center_recrop_pairs": f"{_PACKAGE}.center_recrop_pairs",
         "sample_preview": f"{_PACKAGE}.sample_preview",
         "merge_variants_dense_style": (
             f"{_PACKAGE}.sues.merge_variants_dense_style"
@@ -29,7 +29,7 @@ DATASET_COMMANDS: Dict[str, Dict[str, str]] = {
     "uavvisloc": {
         "build_pairs": f"{_PACKAGE}.uavvisloc.build_pairs",
         "export_selected": f"{_PACKAGE}.uavvisloc.export_selected",
-        "center_recrop_pairs": f"{_PACKAGE}.uavvisloc.center_recrop_pairs",
+        "center_recrop_pairs": f"{_PACKAGE}.center_recrop_pairs",
         "sample_preview": f"{_PACKAGE}.sample_preview",
         "merge_variants": f"{_PACKAGE}.merge_variants",
     },

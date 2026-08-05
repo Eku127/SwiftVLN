@@ -7,6 +7,7 @@
 # Explicit command-line arguments always override values from this file.
 # All sample_preview sections route to one schema-aware renderer; keep them under
 # each dataset so dataset-specific defaults and filters remain explicit.
+# SUES/UAV-VisLoc center_recrop_pairs also share one schema-detecting command.
 
 DATASETS:
   denseuav:
