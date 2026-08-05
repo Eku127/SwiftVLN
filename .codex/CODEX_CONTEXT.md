@@ -268,7 +268,11 @@ TRAIN_EXPERIMENTS_FILE=/path/to/experiments.sh \
   bash src/swiftvln/scripts/train/train_queue.sh
 ```
 
-配置文件至少定义 `EXPERIMENTS` 数组和 `ENV_TYPE`。运行状态写入：
+训练队列只接受上述文件协议，不再提供交互式向导或单字母 shortcode。
+配置文件必须定义 `ENV_TYPE=satnav|habitat`，并提供至少一个五字段实验：
+`model|KEY=VALUE 覆盖（或 default）|描述|数据集名|数据路径`；当前 `model`
+只接受 `swiftvln`，覆盖键使用大写环境变量名。可用 `--check-config` 只校验配置而不启动训练。
+运行状态写入：
 
 - `runtime/train_queue/train_queue_last_run_<hostname>.json`
 - `runtime/train_queue/runs/<hostname>_<session>/`
