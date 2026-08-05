@@ -33,14 +33,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import torch
 from PIL import Image
 
-from swiftvln.common import (
+from swiftvln.common.constants import (
     CURRENT_IMAGE_TOKEN,
     DEFAULT_CONJUNCTIONS,
     HISTORY_MEMORY_TOKEN,
     PROMPT_TEMPLATE_HABITAT,
     PROMPT_TEMPLATE_SATNAV,
-    HistoryTokenCompressor,
 )
+from swiftvln.common.history_processors.compressor import HistoryTokenCompressor
 from swiftvln.common.history_processors import create_history_processor
 from swiftvln.common.history_processors.per_frame import (
     sample_per_frame_history_indices,

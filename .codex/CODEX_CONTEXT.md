@@ -46,6 +46,8 @@
 - `src/swiftvln/common/env/`：Habitat / SatNav 环境抽象
 - `src/swiftvln/common/history_processors/`：history 压缩实现
 - `src/swiftvln/common/embedding_enhancement/`：pose / UAV adapter 增强
+- `swiftvln.common` 顶层不提供跨子包 facade；内部代码直接从 `constants`、
+  `env`、`eval`、`history_processors`、`utils` 等具体模块导入
 - `src/swiftvln/configs/`：主线配置
 - `src/swiftvln/scripts/`：训练、评测、数据处理、同步和监控入口
 - `src/swiftvln/s2r/`：S2R Stage-A / Stage-B 相关实现

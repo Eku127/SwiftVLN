@@ -53,7 +53,14 @@ from .template import (
 # Model Registration
 # =============================================================================
 
-from swift.model import MODEL_MAPPING, Model, ModelArch, ModelGroup, ModelMeta, register_model
+from swift.model import (
+    MODEL_MAPPING,
+    Model,
+    ModelArch,
+    ModelGroup,
+    ModelMeta,
+    register_model,
+)
 
 from .model import (
     SwiftVLNQwen25VLLoader,
@@ -65,43 +72,47 @@ from .model import (
 )
 
 # Register SwiftVLN model based on Qwen2.5-VL (only if not already registered)
-if 'swiftvln_qwen2_5_vl' not in MODEL_MAPPING:
+if "swiftvln_qwen2_5_vl" not in MODEL_MAPPING:
     model_meta_kwargs = dict(
-        model_type='swiftvln_qwen2_5_vl',
+        model_type="swiftvln_qwen2_5_vl",
         model_groups=[
-            ModelGroup([
-                Model('swiftvln-qwen2.5-vl-3b', 'Qwen/Qwen2.5-VL-3B-Instruct'),
-                Model('swiftvln-qwen2.5-vl-7b', 'Qwen/Qwen2.5-VL-7B-Instruct'),
-            ])
+            ModelGroup(
+                [
+                    Model("swiftvln-qwen2.5-vl-3b", "Qwen/Qwen2.5-VL-3B-Instruct"),
+                    Model("swiftvln-qwen2.5-vl-7b", "Qwen/Qwen2.5-VL-7B-Instruct"),
+                ]
+            )
         ],
-        template='swiftvln_qwen2_5_vl',  # Use custom template with compression
+        template="swiftvln_qwen2_5_vl",  # Use custom template with compression
         model_arch=ModelArch.qwen2_vl,
-        architectures=['SwiftVLNQwen25VLForConditionalGeneration'],
-        requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6'],
-        tags=['vision', 'vln', 'navigation', 'compression'],
+        architectures=["SwiftVLNQwen25VLForConditionalGeneration"],
+        requires=["transformers>=4.49", "qwen_vl_utils>=0.0.6"],
+        tags=["vision", "vln", "navigation", "compression"],
         is_multimodal=True,
     )
-    model_meta_kwargs['loader'] = SwiftVLNQwen25VLLoader
+    model_meta_kwargs["loader"] = SwiftVLNQwen25VLLoader
     register_model(ModelMeta(**model_meta_kwargs))
 
-if 'swiftvln_qwen3_vl' not in MODEL_MAPPING:
+if "swiftvln_qwen3_vl" not in MODEL_MAPPING:
     model_meta_kwargs = dict(
-        model_type='swiftvln_qwen3_vl',
+        model_type="swiftvln_qwen3_vl",
         model_groups=[
-            ModelGroup([
-                Model('swiftvln-qwen3-vl-2b', 'Qwen/Qwen3-VL-2B-Instruct'),
-                Model('swiftvln-qwen3-vl-4b', 'Qwen/Qwen3-VL-4B-Instruct'),
-                Model('swiftvln-qwen3-vl-8b', 'Qwen/Qwen3-VL-8B-Instruct'),
-            ])
+            ModelGroup(
+                [
+                    Model("swiftvln-qwen3-vl-2b", "Qwen/Qwen3-VL-2B-Instruct"),
+                    Model("swiftvln-qwen3-vl-4b", "Qwen/Qwen3-VL-4B-Instruct"),
+                    Model("swiftvln-qwen3-vl-8b", "Qwen/Qwen3-VL-8B-Instruct"),
+                ]
+            )
         ],
-        template='swiftvln_qwen3_vl',
+        template="swiftvln_qwen3_vl",
         model_arch=ModelArch.qwen3_vl,
-        architectures=['SwiftVLNQwen3VLForConditionalGeneration'],
-        requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
-        tags=['vision', 'vln', 'navigation', 'compression', 'qwen3'],
+        architectures=["SwiftVLNQwen3VLForConditionalGeneration"],
+        requires=["transformers>=4.57", "qwen_vl_utils>=0.0.14", "decord"],
+        tags=["vision", "vln", "navigation", "compression", "qwen3"],
         is_multimodal=True,
     )
-    model_meta_kwargs['loader'] = SwiftVLNQwen3VLLoader
+    model_meta_kwargs["loader"] = SwiftVLNQwen3VLLoader
     register_model(ModelMeta(**model_meta_kwargs))
 
 
@@ -111,26 +122,26 @@ if 'swiftvln_qwen3_vl' not in MODEL_MAPPING:
 
 from .dataset import SwiftVLNDataset
 from .arguments import SwiftVLNTrainArguments
-from swiftvln.common import HistoryTokenCompressor
+from swiftvln.common.history_processors.compressor import HistoryTokenCompressor
 
 __all__ = [
     # Model
-    'SwiftVLNQwen25VLLoader',
-    'SwiftVLNQwen3VLLoader',
-    'SwiftVLNQwen25VLConfig',
-    'SwiftVLNQwen3VLConfig',
-    'SwiftVLNQwen25VLForConditionalGeneration',
-    'SwiftVLNQwen3VLForConditionalGeneration',
+    "SwiftVLNQwen25VLLoader",
+    "SwiftVLNQwen3VLLoader",
+    "SwiftVLNQwen25VLConfig",
+    "SwiftVLNQwen3VLConfig",
+    "SwiftVLNQwen25VLForConditionalGeneration",
+    "SwiftVLNQwen3VLForConditionalGeneration",
     # Template
-    'SwiftVLNQwen25VLTemplate',
-    'SwiftVLNQwen3VLTemplate',
-    'CURRENT_IMAGE_TOKEN',
+    "SwiftVLNQwen25VLTemplate",
+    "SwiftVLNQwen3VLTemplate",
+    "CURRENT_IMAGE_TOKEN",
     # Dataset
-    'SwiftVLNDataset',
+    "SwiftVLNDataset",
     # Compression
-    'HistoryTokenCompressor',
+    "HistoryTokenCompressor",
     # Training
-    'SwiftVLNTrainArguments',
+    "SwiftVLNTrainArguments",
 ]
 
 # Note: SwiftVLNSft and train_main are imported from trainer.py directly
