@@ -152,7 +152,7 @@ CLI 中的 `swiftvln train`、`swiftvln eval`、`swiftvln queue` 没有出现在
 | C09 | `s2r/__init__.py` 历史顶层导出 | C | 文件明确称为 historical top-level exports；内部代码主要直接 import 子模块 | 确认是否承诺 Python public API，再决定移除兼容层 |
 | D01 | GTC/SegmentGTC/map/initial/pose/overlap/no-memory | D | 现有 SwiftVLN model zoo 直接覆盖 | 保留并纳入回归矩阵 |
 | D02 | Qwen2.5/Qwen3 wrapper/config 注册 | D | HF checkpoint 配置和 Qwen3 inputs-embeds patch 依赖 | 类名、model_type、config type 必须保持兼容 |
-| D03 | 当前 SatNav 主线数据脚本 | D | `inspect_data.py`、`run_all.py`、`process_episodes.py`、`normalize_trajectory_types.py`、`merge_satnav_data.py` 被当前 skill/上下文采用 | 保留；只去重 helper 和 no-op 参数 |
+| D03 ✅ 已精简 | 当前 SatNav 主线数据脚本 | D | 公开流程只需要检查数据并由 canonical episodes 生成 split | 保留 `inspect_data.py`、`run_all.py`、`process_episodes.py`；删除历史类型迁移和内部版本合并工具 |
 | D04 | S2R Stage-A 训练、评测与数据生产 | D | 当前正式 pipeline，且近期新增 | 保留，避免按“非 VLN 主模型”误判为历史代码 |
 | D05 | JSONL 评测恢复、去重、汇总逻辑 | D | 当前全部模型结果使用 `all_results.jsonl` | 保留并补结果恢复测试 |
 
@@ -201,7 +201,6 @@ CLI 中的 `swiftvln train`、`swiftvln eval`、`swiftvln queue` 没有出现在
 4. `model/script/eval/*.sh`：另一套默认值和拼接；
 5. `scripts/eval/eval_by_name.sh`：用 sed/grep 解析名称；
 6. `deployment/model_resolver.py`：独立正则和能力白名单；
-7. `scripts/eval/collect_eval_results.py`：独立识别实验变体和排序。
 
 已经观察到的漂移包括：
 
@@ -332,7 +331,7 @@ SwiftVLNEvaluator
 实施更新（✅ 已完成）：
 
 - 按确认直接删除三个历史 SatNav split 脚本、ViT 预计算工具、trajectory frame 分析脚本/README/生成报告，以及旧 JSON 结果分析器，共 9 个文件、3,730 行。
-- 删除后检查当前 SatNav skill 依赖的 `inspect_data.py`、`run_all.py`、`process_episodes.py`、`normalize_trajectory_types.py`、`merge_satnav_data.py` 均仍存在；关键数据和 S2R 入口 `--help` 通过。
+- 删除后检查当前 SatNav skill 依赖的 `inspect_data.py`、`run_all.py`、`process_episodes.py` 均仍存在；关键数据和 S2R 入口 `--help` 通过。
 - 没有移动或修改正式数据集、模型库和 Stage-A 主线。
 - 对应提交：`da2df3c`。
 
@@ -342,7 +341,7 @@ SwiftVLNEvaluator
 
 - `TRAIN_EXPERIMENTS_FILE` 非交互训练；
 - `AUTO_TODO` / `DYNAMIC_TODO` 评测 worker；
-- 独立 watchdog 和 enqueue 脚本。
+- 独立 enqueue 脚本。
 
 剩余大量行用于交互式 wizard、shortcode 展开、彩色摘要和多种输入格式。若团队现在只通过计划编排或 todo 队列运行，建议保留单一非交互协议，shell 只负责环境与进程启动，解析和状态管理迁到 Python。
 
@@ -355,7 +354,7 @@ SwiftVLNEvaluator
 - 训练队列只接受 `TRAIN_EXPERIMENTS_FILE` 的严格五字段 pipe 配置；删除交互 wizard、shortcode 和宽松多格式解析，并新增 `--check-config` 无启动校验。
 - 评测队列只消费 todo 文件；删除位置参数模型列表和交互向导，保留 `DYNAMIC_TODO`/`WAIT_FOR_NEW_TASKS` worker 行为及 `AUTO_TODO` 兼容映射，并新增 `--check-queue`。
 - 新增 9 个队列协议测试，覆盖合法配置、非法名称、只读检查、动态等待约束、旧位置参数拒绝和“校验不触发真实任务”。
-- 稳定脚本路径、todo 文件路径和 watchdog/编排调用边界保持不变。
+- 后续开源精简进一步删除了内部训练 sidecar、事件协议和额外 CSV 汇总器；队列继续以 host 状态 JSON 与每次评测的 `evaluation_summary.json` 为结果边界。
 - 对应提交：`622c1bc`、`84b8e9c`。
 
 ## 6. 建议的目标结构
