@@ -30,6 +30,8 @@ Usage:
 import os
 os.environ.setdefault('__EGL_VENDOR_LIBRARY_FILENAMES', '/usr/share/glvnd/egl_vendor.d/10_nvidia.json')
 
+import importlib
+
 import torch
 
 from swiftvln.common import BaseVLNEval
@@ -161,10 +163,7 @@ class SwiftVLNEval(BaseVLNEval):
     
     def register_module(self):
         """Import SwiftVLN module to register model."""
-        try:
-            import swiftvln.model
-        except ImportError:
-            pass
+        importlib.import_module('swiftvln.model')
 
     def load_model(self):
         """Load model and processor with optional embedding enhancements."""

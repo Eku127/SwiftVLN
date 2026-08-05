@@ -15,8 +15,15 @@ from types import MethodType
 
 import torch
 from swift.model.models.qwen import Qwen2_5VLLoader, Qwen3VLLoader
-from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration
-from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration
+from transformers import (
+    AutoConfig,
+    AutoModel,
+    AutoModelForCausalLM,
+    Qwen2_5_VLConfig,
+    Qwen2_5_VLForConditionalGeneration,
+    Qwen3VLConfig,
+    Qwen3VLForConditionalGeneration,
+)
 
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
 
@@ -151,17 +158,32 @@ def _patch_qwen3_inputs_embeds_only_forward(qwen3_model) -> None:
     qwen3_model._swiftvln_inputs_embeds_only_patch = True
 
 
-# Register model for auto loading with transformers
-try:
-    from transformers import AutoModel, AutoModelForCausalLM, AutoConfig
-    AutoConfig.register("swiftvln_qwen2_5_vl", SwiftVLNQwen25VLConfig)
-    AutoModel.register(SwiftVLNQwen25VLConfig, SwiftVLNQwen25VLForConditionalGeneration)
-    AutoModelForCausalLM.register(SwiftVLNQwen25VLConfig, SwiftVLNQwen25VLForConditionalGeneration)
-    AutoConfig.register("swiftvln_qwen3_vl", SwiftVLNQwen3VLConfig)
-    AutoModel.register(SwiftVLNQwen3VLConfig, SwiftVLNQwen3VLForConditionalGeneration)
-    AutoModelForCausalLM.register(SwiftVLNQwen3VLConfig, SwiftVLNQwen3VLForConditionalGeneration)
-except Exception:
-    pass
+# Register model for auto loading with transformers. ``exist_ok`` makes module
+# reloads idempotent without hiding unrelated registration failures.
+AutoConfig.register(
+    "swiftvln_qwen2_5_vl", SwiftVLNQwen25VLConfig, exist_ok=True
+)
+AutoModel.register(
+    SwiftVLNQwen25VLConfig,
+    SwiftVLNQwen25VLForConditionalGeneration,
+    exist_ok=True,
+)
+AutoModelForCausalLM.register(
+    SwiftVLNQwen25VLConfig,
+    SwiftVLNQwen25VLForConditionalGeneration,
+    exist_ok=True,
+)
+AutoConfig.register("swiftvln_qwen3_vl", SwiftVLNQwen3VLConfig, exist_ok=True)
+AutoModel.register(
+    SwiftVLNQwen3VLConfig,
+    SwiftVLNQwen3VLForConditionalGeneration,
+    exist_ok=True,
+)
+AutoModelForCausalLM.register(
+    SwiftVLNQwen3VLConfig,
+    SwiftVLNQwen3VLForConditionalGeneration,
+    exist_ok=True,
+)
 
 
 def _pop_embedding_options(kwargs):
