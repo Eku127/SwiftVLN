@@ -10,12 +10,12 @@
 模型主线，而是重写失配的 Docker 初始化脚本、清理评测侧未使用的 template 链路、两个
 无内部消费者的导出 facade，以及合并 S2R 数据生产中的重复工具。
 
-- 可优先处理：把 `scripts/docker/docker_run.sh` 重写成 17 服务器 bootstrap、
-  清理 eval-time template 传递和两个 `__init__.py` facade；把包内 UAV 测试迁到顶层 `tests/`。
+- P0 已完成：17 服务器 Docker bootstrap、eval-time template 清理、两个
+  `__init__.py` facade 收缩、UAV 测试迁移和模型文档收口均已落地并验证。
 - 应先合并再删除：4 个 `sample_preview.py`、2 个 `center_recrop_pairs.py`、
   SUES 专用 variant merge。
-- 应重写而非保留原样：`model/doc/OVERVIEW.md` 和 `model/doc/pose_embed.md`；
-  前者仍写着旧数据版本、旧默认 overlap 和拆分前的 evaluator 职责。
+- 已完成文档收口：`model/doc/OVERVIEW.md` 已按当前架构重写，独立
+  `model/doc/pose_embed.md` 的有效内容并入后删除。
 - 不应作为“死代码”删除：history/map/pose/UAV、Habitat 支持、诊断、视频、
   error analysis、S2R Stage-A，以及当前 train/eval/data queue。它们都有入口、
   已保留模型、结果协议或仓库技能依赖。
@@ -175,8 +175,8 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 | `s2r/__init__.py` | **已完成**：缩成最小 package marker，删除历史 lazy re-export 表和 `__getattr__`。 | 仓库内部全部显式导入 `swiftvln.s2r.dataset/model/losses`，没有顶层导出消费者；contract test 固定要求显式子模块导入。 |
 | `scripts/data_process/__init__.py` | **已完成**：缩成最小 package marker。 | 删除 eager import、副作用和过期 `ver_260202` 示例；`run_all.py`、`process_episodes.py` 等 canonical 脚本及其直接入口保持不变。 |
 | `model/script/test/test_uav_adapter_strategy.py` | **已完成**：迁移并改造成可由 unittest discover 执行的 `tests/test_uav_adapter_strategy.py`。 | Stage-B synthetic checkpoint loader/forward smoke 保留，测试代码已从运行时 package 删除；context 已同步新路径。 |
-| `model/doc/OVERVIEW.md`（727 行） | 用当前架构短文替换，删除历史结果和伪代码。 | 仍写 `ver_260206`、默认 `num_overlap=16`；当前默认是 `SatNav-v0.1`、overlap 0；还把已拆出的 inference/runner 职责归给单体 evaluator。 |
-| `model/doc/pose_embed.md`（113 行） | 更新后并入新 overview，或只保留参数参考。 | 功能仍有效，但路径写成不存在的 `swiftvln/arguments.py`，推理职责描述也已过时。 |
+| `model/doc/OVERVIEW.md` | **已完成**：用当前架构、约束、入口与职责短文替换 727 行历史说明。 | 现在记录 `SatNav-v0.1`、默认 overlap 0、runner/evaluator/inference 分层、Habitat/视频保留边界及 embedding 四选一；历史实验表与失真的伪代码已删除，P0 完成后的完整 contract suite 为 63/63 通过。 |
+| `model/doc/pose_embed.md` | **已完成**：有效内容并入新 overview 后删除独立文件。 | pose 表示、归一化、additive/FiLM 公式、零初始化、checkpoint 恢复和真实实现路径只维护一份，避免再次漂移。 |
 
 ### P1：先合并，验证后删除旧实现
 
