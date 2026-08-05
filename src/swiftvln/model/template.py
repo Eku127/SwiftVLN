@@ -676,7 +676,7 @@ class SwiftVLNTemplateMixin:
             mask_true_count = (input_ids == self.history_memory_token_id).sum().item()
             embeds_count = history_embeds.shape[0]
             if mask_true_count != embeds_count:
-                print(f"[SwiftVLN] CRITICAL: History token count mismatch before masked_scatter!")
+                print("[SwiftVLN] CRITICAL: History token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
                 # Try to fix by padding or truncating
                 if embeds_count < mask_true_count:
@@ -700,7 +700,7 @@ class SwiftVLNTemplateMixin:
             mask_true_count = (input_ids == self.current_image_token_id).sum().item()
             embeds_count = current_embeds.shape[0]
             if mask_true_count != embeds_count:
-                print(f"[SwiftVLN] CRITICAL: Current token count mismatch before masked_scatter!")
+                print("[SwiftVLN] CRITICAL: Current token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
             
             inputs_embeds = inputs_embeds.masked_scatter(current_mask, current_embeds)

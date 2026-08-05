@@ -13,8 +13,8 @@ _SRC_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_CURRENT_DIR)))
 if _SRC_ROOT not in sys.path:
     sys.path.insert(0, _SRC_ROOT)
 
-from swiftvln.s2r.arguments import parse_manifest_args
-from swiftvln.s2r.dataset import build_manifest_records, write_manifest
+from swiftvln.s2r.arguments import parse_manifest_args  # noqa: E402
+from swiftvln.s2r.dataset import build_manifest_records, write_manifest  # noqa: E402
 
 
 def main(argv=None):

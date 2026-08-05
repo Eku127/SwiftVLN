@@ -17,8 +17,8 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from swiftvln.common.embedding_enhancement.uav_adapter import load_stagea_adapter_checkpoint
-from swiftvln.s2r.model import Sim2RealAdapter
+from swiftvln.common.embedding_enhancement.uav_adapter import load_stagea_adapter_checkpoint  # noqa: E402
+from swiftvln.s2r.model import Sim2RealAdapter  # noqa: E402
 
 
 def _load_overlap_model_module(repo_root: str):

@@ -321,7 +321,7 @@ def _restore_enhancement_weights(model, model_dir: str):
     if enhancement_sd:
         missing, unexpected = model.embed_enhance.load_state_dict(enhancement_sd, strict=False)
         if missing or unexpected:
-            print(f"[SwiftVLN] embed_enhance load_state_dict warnings:")
+            print("[SwiftVLN] embed_enhance load_state_dict warnings:")
             if missing:
                 print(f"  - missing_keys: {missing}")
             if unexpected:

@@ -17,7 +17,6 @@ from typing import List, Dict, Any
 try:
     from .config import (
         TRAIN_CITIES,
-        EVAL_CITIES,
         EPISODE_TYPES,
         EPISODE_FILES,
         get_data_dir,
@@ -28,7 +27,6 @@ try:
 except ImportError:
     from config import (
         TRAIN_CITIES,
-        EVAL_CITIES,
         EPISODE_TYPES,
         EPISODE_FILES,
         get_data_dir,

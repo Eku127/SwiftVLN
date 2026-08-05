@@ -30,7 +30,7 @@ def run_all(version: str):
     data_dir = get_data_dir(version)
     
     print("=" * 70)
-    print(f"SatNav Data Processing Pipeline")
+    print("SatNav Data Processing Pipeline")
     print("=" * 70)
     print(f"Version: {version}")
     print(f"Dataset path: {dataset_path}")

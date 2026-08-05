@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Sequence
+from typing import Dict, Sequence
 
 import torch
 import torch.distributed as dist

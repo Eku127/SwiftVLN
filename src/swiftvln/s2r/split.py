@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import random
-from typing import Dict, Iterable, List, Sequence, Set, Tuple
+from typing import Dict, List, Sequence, Set, Tuple
 
 
 def denseuav_group_id(sample_id: str) -> str:

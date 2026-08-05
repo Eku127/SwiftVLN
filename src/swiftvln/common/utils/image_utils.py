@@ -5,7 +5,6 @@ Image processing utilities for VLN evaluation.
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from typing import Optional
 
 
 def append_text_to_image(image: np.ndarray, text: str, position: str = 'bottom') -> np.ndarray:
@@ -38,7 +37,7 @@ def append_text_to_image(image: np.ndarray, text: str, position: str = 'bottom')
         try:
             font = ImageFont.truetype(font_path, font_size)
             break
-        except:
+        except (OSError, ValueError):
             continue
     
     if font is None:

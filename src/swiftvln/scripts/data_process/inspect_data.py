@@ -10,7 +10,7 @@ Usage:
 import json
 import argparse
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any, Dict
 from collections import Counter
 
 
@@ -92,7 +92,7 @@ def inspect_all(data_dir: Path):
             for ep_subtype, count in result['episodes_by_subtype'].items():
                 print(f"     - subtype/{ep_subtype}: {count}")
         else:
-            print(f"   Episodes: ❌ No VLN_episodes.json")
+            print("   Episodes: ❌ No VLN_episodes.json")
 
         # 显示子目录统计
         dirs_info = []
