@@ -21,6 +21,8 @@
   已保留模型、结果协议或仓库技能依赖。
 - 按产品范围决定，评测失败分类已从实现、结果 schema 和测试中删除；标准导航指标、
   真实运行异常的 `error` 字段、Habitat 路径和视频可视化均保持。
+- 推理部署包已有独立构建 profile，排除 S2R 数据生产目录，同时保留 Stage-B UAV、
+  Habitat、视频和正式环境配置；完整仓库仍保留数据复现工具。
 
 在不取消现有能力的前提下，P0 清理预计可从安装包移出或删除约 200–300 行代码，
 并压缩 600 行以上过时文档；完成 P1 合并后，预计还可净减约 500–700 行重复代码。
@@ -151,8 +153,8 @@ checkpoint 兼容或现有评测能力。
 | `s2r/data_generation/` | DenseUAV、GTA-UAV、SUES-200、UAV-VisLoc 转换；统一命令注册、配置启动、preview、recrop、variant merge 和 QA。 |
 
 Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B 加载，
-因此不能把整个 `s2r/` 当作离线脚本删除。若只制作推理镜像，可以不打包
-`s2r/data_generation/`，但仓库仍应保留它以保证数据可复现。
+因此不能把整个 `s2r/` 当作离线脚本删除。推理 wheel 已排除
+`s2r/data_generation/`，而仓库仍保留它以保证数据可复现。
 
 ### 7. 数据与运维脚本
 
@@ -199,7 +201,7 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 | 失败分类 | **已完成**：删除 `common/utils/error_analyzer.py` 及 Habitat 轨迹采样、分析和结果透传。 | 三个派生分类字段不再写入结果；真实 episode 异常仍以 `error` 持久化，标准指标不变。结构契约同时固定 Habitat wrapper/config/extensions 和两类视频入口必须保留；定向测试 9/9、完整 contract suite 73/73、Ruff 均通过。 |
 | 视频与可视化 | `video_utils.py`、部分 `image_utils.py`、evaluator/environment 分支 | 失去 `--save_video`、压缩和俯视图输出。 |
 | Habitat 支持 | `common/env/habitat.py`、`habitat_extensions/`、`vln_r2r*.yaml` | 项目变成 SatNav-only；需同步 experiment codec、CLI、tests 和文档。 |
-| S2R 数据生产 | `s2r/data_generation/` | 只能在数据/manifest 已冻结且接受不可从原始集复现时删除；更合理的是从推理部署包排除。 |
+| S2R 数据生产 | **已完成部署隔离**：新增 `packaging/inference/pyproject.toml` 与 `packaging/build_inference_wheel.py`，源码不删除。 | `swiftvln-inference` wheel 排除整个 `s2r/data_generation/`；保留 UAV 所需 `s2r/model.py`、Habitat、视频和正式 YAML。构建器自校验内容，解包 CLI 不展示 `s2r-data`，而开发安装保持该命令；定向测试 6/6、完整 contract suite 75/75 与 Ruff 均通过，临时 wheel 已自动清理。 |
 
 ## 明确保留
 
@@ -218,7 +220,8 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 3. 先为 preview/recrop/merge 写统一实现与等价性测试，再逐项切 registry 和 pipeline。
 4. 在正确项目环境运行全部 contract tests、train smoke、eval smoke；路径变化同步
    `.codex/CODEX_CONTEXT.md`。
-5. 失败分类已按产品决定删除；Habitat、视频和 S2R 数据重建能力仍按当前产品边界保留。
+5. 失败分类已按产品决定删除；Habitat、视频和仓库内 S2R 数据重建能力继续保留，
+   其中数据生产代码已从 inference wheel 隔离。
 
 判定原则：shell 入口、动态 registry 和可复现工具不能只靠 Python 静态引用计数判死；
 “无内部引用”也不代表没有仓库外 notebook/manual consumer。因此 P0 中涉及 public facade

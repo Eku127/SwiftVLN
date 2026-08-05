@@ -553,3 +553,20 @@ bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_habitat_exp_name>
 ```bash
 SWIFTVLN_EVAL_CONDA_ENV=<env_name> bash src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh
 ```
+
+## Inference wheel
+
+需要制作推理/评测部署包时，使用独立 profile：
+
+```bash
+source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+conda activate swift-vln-eval-update
+cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+
+python packaging/build_inference_wheel.py --output-dir dist/inference
+```
+
+输出分发名为 `swiftvln-inference`，命令入口为 `swiftvln-eval`。构建器在临时目录
+完成 staging 并校验 wheel 内容：保留 SatNav/Habitat 配置、视频模块、
+`s2r/model.py` 和 UAV adapter，排除仅用于离线原始数据转换与 QA 的
+`swiftvln/s2r/data_generation/`。常规源码/开发安装仍提供 `swiftvln s2r-data`。

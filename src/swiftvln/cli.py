@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 from pathlib import Path
 import subprocess
 import sys
@@ -8,6 +9,14 @@ from typing import Sequence
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _has_s2r_data_tools() -> bool:
+    """Return whether this installation includes offline S2R data tooling."""
+    try:
+        return importlib.util.find_spec("swiftvln.s2r.data_generation") is not None
+    except ModuleNotFoundError:
+        return False
 
 
 def _run_train(extra_args: Sequence[str]) -> int:
@@ -49,11 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_queue = subparsers.add_parser("queue", help="Run queue orchestrations")
     p_queue.add_argument("target", choices=["train", "eval"], help="Queue type")
 
-    subparsers.add_parser(
-        "s2r-data",
-        help="Generate SatDronePair data for S2R alignment training",
-        add_help=False,
-    )
+    if _has_s2r_data_tools():
+        subparsers.add_parser(
+            "s2r-data",
+            help="Generate SatDronePair data for S2R alignment training",
+            add_help=False,
+        )
 
     return parser
 

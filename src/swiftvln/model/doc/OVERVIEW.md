@@ -162,7 +162,8 @@ top-down 组合视频；`VIDEO_COMPRESSION=true` 控制压缩。视频能力与�
 Stage-A 位于 `swiftvln/s2r/`，负责 SatDronePair manifest、teacher/adapter 训练、
 checkpoint 与 retrieval eval。Stage-B 通过 `EMBEDDING_MODE=uav` 将 Stage-A adapter
 接入 SwiftVLN。`s2r/data_generation/` 是离线原始数据转换与 QA 工具，不属于训练或
-评测运行时依赖。
+评测运行时依赖。`packaging/build_inference_wheel.py` 生成的 inference wheel 会排除
+该目录，但保留 Stage-B 推理所需的 `s2r/model.py`。
 
 ## 入口与验证
 

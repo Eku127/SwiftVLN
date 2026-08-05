@@ -71,6 +71,7 @@
 | 实验计划 | `runtime/plans/` |
 | S2R 数据生产 | `swiftvln s2r-data ...` / `src/swiftvln/s2r/data_generation/` |
 | S2R Stage-A 训练/评测 | `src/swiftvln/s2r/trainer.py` / `src/swiftvln/s2r/eval.py` |
+| 推理 wheel | `python packaging/build_inference_wheel.py --output-dir <dir>` |
 | 安装说明 | `docs/installation.md` |
 
 优先使用上述入口和对应 repo skill，不拼装一次性替代流程。
@@ -313,6 +314,8 @@ TRAIN_EXPERIMENTS_FILE=/path/to/experiments.sh \
 - 当前唯一正式 Stage-A 权重：
   `output/s2r/s2r-swiftvln-baseline-gta-dedup-10ep-bs64-lr1e-4-20260727-160227/best.pt`
 - 该权重已通过独立评测和 Stage-B loader check，可评测、可接 Stage-B。
+- `swiftvln-inference` wheel 明确排除 `s2r/data_generation/`，但保留 UAV adapter
+  依赖的 `s2r/model.py`；完整源码和开发安装仍保留数据生产命令以支持复现。
 - 对应 `train_args.json` 引用的 `manifest_v2_gta_dedup.jsonl` 当前不存在；
   `manifest_v1.jsonl` 不能视为同一训练输入。精确复训前必须重新生成并验证 v2。
 - Rebuttal episodes：`output/rebuttal/`
