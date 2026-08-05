@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import torch
 
@@ -13,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
+from swiftvln.common.eval.results import ResultRecorder  # noqa: E402
 from swiftvln.common.eval.runner import BaseVLNEval  # noqa: E402
 from swiftvln.model.inference import (  # noqa: E402
     SwiftVLNInferenceSession,
@@ -31,20 +36,20 @@ def make_turn(index: int) -> TurnContext:
 class EvalJsonlContractTest(unittest.TestCase):
     def test_resume_deduplicates_by_scene_and_episode_and_keeps_latest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "result.jsonl"
+            recorder = ResultRecorder(tmpdir)
             rows = [
                 {"scene_id": "a", "episode_id": 1, "steps": 3},
                 {"scene_id": "b", "episode_id": 1, "steps": 4},
                 {"scene_id": "a", "episode_id": 1, "steps": 5},
             ]
             for row in rows:
-                BaseVLNEval.append_result_jsonl(str(path), row)
-            with path.open("a", encoding="utf-8") as handle:
+                recorder.append(row)
+            with Path(recorder.result_file).open("a", encoding="utf-8") as handle:
                 handle.write("{partial-json\n")
 
-            results = BaseVLNEval.load_dedup_results(str(path))
+            results = recorder.load_results()
             indexed = {
-                BaseVLNEval.build_episode_key(
+                recorder.episode_key(
                     result["episode_id"],
                     result["scene_id"],
                 ): result
@@ -54,6 +59,96 @@ class EvalJsonlContractTest(unittest.TestCase):
             self.assertEqual(set(indexed), {"a::1", "b::1"})
             self.assertEqual(indexed["a::1"]["steps"], 5)
             self.assertEqual(indexed["b::1"]["steps"], 4)
+
+    def test_rank_completion_marker_is_atomic_and_clearable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            recorder = ResultRecorder(tmpdir, rank=3, world_size=4)
+            recorder.mark_rank_complete(
+                processed_count=2,
+                resumed_count=1,
+                local_total=3,
+            )
+            recorder.wait_for_ranks([3], timeout_seconds=0)
+
+            marker_path = Path(recorder.rank_sync_dir) / "rank_3.done.json"
+            marker = json.loads(marker_path.read_text(encoding="utf-8"))
+            self.assertEqual(marker["rank"], 3)
+            self.assertEqual(marker["processed_count"], 2)
+            self.assertFalse(Path(f"{marker_path}.tmp").exists())
+
+            recorder.clear_rank_markers()
+            self.assertFalse(marker_path.exists())
+
+    @patch("swiftvln.common.eval.results.get_swanlab_url_from_train_metadata")
+    @patch("swiftvln.common.eval.results.get_swanlab_url")
+    def test_summary_metrics_and_public_jsonl_schema(
+        self,
+        get_swanlab_url,
+        get_swanlab_url_from_train_metadata,
+    ):
+        get_swanlab_url.return_value = None
+        get_swanlab_url_from_train_metadata.return_value = None
+        args = SimpleNamespace(
+            eval_split="val_unseen",
+            model_path="/model/checkpoint",
+            num_history=8,
+            env_type="habitat",
+            video_compression=False,
+            save_video=False,
+        )
+        results = [
+            {
+                "scene_id": "scene",
+                "episode_id": 1,
+                "success": 1.0,
+                "spl": 0.5,
+                "oracle_success": 1.0,
+                "distance_to_goal": 2.0,
+                "steps": 3,
+                "_timing_stats": {"model": 1.0},
+                "_total_time": 1.0,
+                "_step_count": 3,
+            },
+            {
+                "scene_id": "scene",
+                "episode_id": 2,
+                "success": 0.0,
+                "spl": 0.0,
+                "oracle_success": 0.0,
+                "distance_to_goal": float("inf"),
+                "steps": 5,
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir, redirect_stdout(StringIO()):
+            recorder = ResultRecorder(tmpdir, world_size=2)
+            recorder.save_summary(
+                results,
+                [],
+                args=args,
+                model_description="SwiftVLN",
+                summary_extras={"history_processor_type": "per_frame"},
+                uses_compression=True,
+            )
+
+            summary = json.loads(
+                (Path(tmpdir) / "evaluation_summary.json").read_text(encoding="utf-8")
+            )
+            public_results = [
+                json.loads(line)
+                for line in (Path(tmpdir) / "all_results.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(summary["success_rate"], 0.5)
+        self.assertEqual(summary["mean_spl"], 0.25)
+        self.assertEqual(summary["navigation_error"], 2.0)
+        self.assertEqual(summary["avg_steps"], 4.0)
+        self.assertEqual(summary["world_size"], 2)
+        self.assertEqual(summary["history_processor_type"], "per_frame")
+        self.assertEqual([row["episode_id"] for row in public_results], [2, 1])
+        self.assertNotIn("_timing_stats", public_results[1])
 
     def test_episode_exception_becomes_durable_error_result(self):
         runner = BaseVLNEval()
