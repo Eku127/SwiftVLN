@@ -27,15 +27,17 @@ from app.schemas import (
     FlightRcBackendDrcRequest,
     FlightTurnRequest,
     ModelInferenceRequest,
+    OperatorLogAppendRequest,
 )
 from app.services.model_inference_service import (
     ModelInferenceError,
     ModelInferenceService,
 )
+from app.services.operator_session_log import OperatorSessionLogWriter
 from app.time_utils import now_shanghai_iso
 
 SERVICE_NAME = "satnav-api"
-SERVICE_VERSION = "0.1.9"
+SERVICE_VERSION = "0.2.1"
 
 # This SatNav API process manages a single SwiftVLN model subprocess.
 model_client = SwiftVLNDeployClient.from_environment()
@@ -44,6 +46,7 @@ rtmp_checker: Optional[RtmpStreamChecker] = None
 backend_health_checker: Optional[BackendHealthChecker] = None
 flight_control_auth: Optional[FlightControlAuthClient] = None
 flight_control_device_registry = FlightControlDeviceRegistry()
+operator_session_log = OperatorSessionLogWriter.from_environment()
 
 
 def _require_rtmp_checker() -> RtmpStreamChecker:
@@ -61,6 +64,7 @@ async def lifespan(_: FastAPI):
     flight_control_auth = FlightControlAuthClient.from_environment()
     rtmp_checker.start()
     model_client.start_in_background()
+    operator_session_log.start()
     try:
         yield
     finally:
@@ -71,6 +75,7 @@ async def lifespan(_: FastAPI):
         model_input_cache.clear()
         rtmp_checker.close()
         model_client.close()
+        operator_session_log.close()
 
 
 app = FastAPI(
@@ -95,6 +100,49 @@ async def health() -> Dict[str, str]:
         "version": SERVICE_VERSION,
         "timestamp": now_shanghai_iso(),
     }
+
+
+@app.post(
+    "/api/satnav/operator/logs/start",
+    tags=["operator"],
+    summary="Start operator console log file; 开始写入操作复盘日志文件",
+)
+async def operator_logs_start() -> Dict[str, Any]:
+    """Return current log file (opened automatically at API startup)."""
+    return await asyncio.to_thread(operator_session_log.start)
+
+
+@app.post(
+    "/api/satnav/operator/logs/append",
+    tags=["operator"],
+    summary="Append lines to operator log file; 追加操作复盘日志行",
+)
+async def operator_logs_append(body: OperatorLogAppendRequest) -> Dict[str, Any]:
+    """Append pre-formatted console lines to the active operator log file."""
+    try:
+        return await asyncio.to_thread(operator_session_log.append, body.lines)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/satnav/operator/logs/close",
+    tags=["operator"],
+    summary="Close operator log file; 关闭操作复盘日志文件",
+)
+async def operator_logs_close() -> Dict[str, Any]:
+    """Flush and close the active log file (normally only on API process shutdown)."""
+    return await asyncio.to_thread(operator_session_log.close)
+
+
+@app.get(
+    "/api/satnav/operator/logs/status",
+    tags=["operator"],
+    summary="Get operator log file status; 查询操作复盘日志文件状态",
+)
+async def operator_logs_status() -> Dict[str, Any]:
+    """Return whether an operator log file is open and its path."""
+    return operator_session_log.status()
 
 
 @app.get(

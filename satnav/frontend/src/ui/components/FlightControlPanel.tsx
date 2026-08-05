@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { AircraftPose } from "../hooks/useConsoleController";
 import { LoginFlightModal, type LoginFlightForm } from "./LoginFlightModal";
 import { RegisterDeviceModal } from "./RegisterDeviceModal";
+import { RefreshIcon } from "./RefreshIcon";
 
 interface FlightControlPanelProps {
   busy: boolean;
@@ -17,6 +18,8 @@ interface FlightControlPanelProps {
   onRegisterDevice: (rcSn: string, deviceSn: string) => Promise<void>;
   onLogin: (form: LoginFlightForm) => Promise<void>;
   onAcquireControl: () => void;
+  osdRefreshBusy?: boolean;
+  onRefreshOsd?: () => void;
   className?: string;
 }
 
@@ -76,6 +79,8 @@ export function FlightControlPanel({
   onRegisterDevice,
   onLogin,
   onAcquireControl,
+  osdRefreshBusy = false,
+  onRefreshOsd,
   className,
 }: FlightControlPanelProps) {
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -135,7 +140,19 @@ export function FlightControlPanel({
 
         <div className="flight-control-panel__status">
           <div className="flight-control-panel__status-head">
-            <div className="flight-control-panel__status-title">飞行器当前状态</div>
+            <div className="flight-control-panel__status-title-row">
+              <div className="flight-control-panel__status-title">飞行器当前状态</div>
+              <button
+                type="button"
+                className="flight-control-panel__status-refresh"
+                aria-label="刷新飞行器 OSD"
+                title="刷新飞行器 OSD"
+                disabled={!drcReady || osdRefreshBusy || busy}
+                onClick={() => onRefreshOsd?.()}
+              >
+                <RefreshIcon />
+              </button>
+            </div>
             <div className="flight-control-panel__status-time mono">
               {formatReceivedAtMs(aircraftPose.receivedAtMs)}
             </div>
@@ -229,6 +246,33 @@ export function FlightControlPanel({
           .flight-control-panel__status-title {
             font-size: 0.78rem;
             color: var(--text-muted);
+          }
+          .flight-control-panel__status-title-row {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            min-width: 0;
+          }
+          .flight-control-panel__status-refresh {
+            width: 1.65rem;
+            height: 1.65rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #102030;
+            color: #9eb6c8;
+            display: grid;
+            place-items: center;
+            padding: 0;
+            flex-shrink: 0;
+          }
+          .flight-control-panel__status-refresh:hover:not(:disabled) {
+            color: var(--text);
+            border-color: #2d5068;
+            background: #152a3d;
+          }
+          .flight-control-panel__status-refresh:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
           }
           .flight-control-panel__status-head {
             display: flex;

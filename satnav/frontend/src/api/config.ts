@@ -4,9 +4,9 @@ export const apiBaseUrl =
 export const defaultPollIntervals = {
   statusMs: 4000,
   /** RTMP 原始帧预览 GET /api/satnav/media/raw_img 轮询间隔 */
-  rawImageMs: 1500,
-  /** OSD 快照 GET .../flight/osd/latest 轮询间隔 （尽量与rawImageMs一致）*/
-  osdMs: 1500,
+  rawImageMs: 30,
+  /** OSD snapshot GET .../flight/osd/latest poll interval */
+  osdMs: 500,
   modelLogsMs: 2500,
-  stickTaskMs: 800,
+  stickTaskMs: 250,
 } as const;

@@ -1,3 +1,4 @@
+import { defaultPollIntervals } from "../config";
 import { flightClient } from "../clients/flight";
 import type { StickTaskResponse } from "../types";
 
@@ -19,7 +20,7 @@ export async function pollStickTask(
   taskId: string,
   options: PollStickTaskOptions = {},
 ): Promise<StickTaskResponse> {
-  const intervalMs = options.intervalMs ?? 800;
+  const intervalMs = options.intervalMs ?? defaultPollIntervals.stickTaskMs;
   const timeoutMs = options.timeoutMs ?? 120_000;
   const deadline = Date.now() + timeoutMs;
   let latest: StickTaskResponse | null = null;

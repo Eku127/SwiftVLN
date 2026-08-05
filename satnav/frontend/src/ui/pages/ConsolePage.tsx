@@ -27,7 +27,7 @@ export function ConsolePage() {
         className="console-layout__instruction"
         instruction={controller.instruction}
         onInstructionChange={controller.setInstruction}
-        maxLength={500}
+        maxLength={1000}
         inferenceBusy={controller.inferenceBusy}
         inferenceEnabled={controller.inferenceEnabled}
         onInference={controller.onInference}
@@ -47,6 +47,8 @@ export function ConsolePage() {
         onRegisterDevice={controller.onRegisterDevice}
         onLogin={controller.onLoginFlightSystem}
         onAcquireControl={controller.onAcquireFlightControl}
+        osdRefreshBusy={controller.osdRefreshBusy}
+        onRefreshOsd={controller.onRefreshOsd}
       />
 
       <ImagePanel
@@ -72,6 +74,7 @@ export function ConsolePage() {
         className="console-layout__action"
         flightBusy={controller.flightBusy}
         executeEnabled={controller.executeEnabled}
+        skipEnabled={controller.skipEnabled}
         flightProgress={controller.flightProgress}
         latestStickTask={controller.latestStickTask}
         inferenceNextAction={controller.inferenceNextAction}
@@ -86,6 +89,7 @@ export function ConsolePage() {
         currentStickTaskId={controller.currentStickTaskId}
         stickRefreshBusy={controller.stickRefreshBusy}
         onRunOneStep={controller.onRunOneStep}
+        onSkipCurrentStep={controller.onSkipCurrentStep}
         onRefreshStickTask={controller.onRefreshStickTask}
         onEmergencyStop={controller.onEmergencyStop}
       />

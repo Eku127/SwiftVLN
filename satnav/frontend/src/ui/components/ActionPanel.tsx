@@ -15,6 +15,8 @@ interface ActionPanelProps {
   flightBusy: boolean;
   /** Whether Execute One Step is enabled (from canExecuteStep). */
   executeEnabled: boolean;
+  /** Whether Skip is enabled (current slot FAILED, flight idle). */
+  skipEnabled: boolean;
   flightProgress: number;
   latestStickTask: StickTaskResponse | null;
   /** Latest inference next_action for the stats row. */
@@ -39,6 +41,8 @@ interface ActionPanelProps {
   stickRefreshBusy: boolean;
   /** Calls forward/turn only; does not run inference. */
   onRunOneStep: () => void;
+  /** Treat current FAILED slot as COMPLETED and unlock inference. */
+  onSkipCurrentStep: () => void;
   onRefreshStickTask: () => void;
   /** Emergency STOP: defer if flight running, else immediate STOP. */
   onEmergencyStop: () => void;
@@ -76,6 +80,14 @@ export function ActionPanel(props: ActionPanelProps) {
           onClick={props.onRunOneStep}
         >
           执行一步
+        </button>
+        <button
+          type="button"
+          className="btn btn-skip"
+          disabled={!props.skipEnabled || props.flightBusy}
+          onClick={props.onSkipCurrentStep}
+        >
+          跳过
         </button>
         <button
           type="button"
@@ -180,9 +192,14 @@ export function ActionPanel(props: ActionPanelProps) {
           background: linear-gradient(180deg, #ff6b76, #e52f41);
           color: white;
         }
+        .btn-skip {
+          background: #1e3344;
+          color: #c8dce8;
+          border: 1px solid #3d5f78;
+        }
         .action-panel__controls {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: 1fr 1fr 1fr;
           gap: 0.5rem;
         }
         .action-panel__stats {

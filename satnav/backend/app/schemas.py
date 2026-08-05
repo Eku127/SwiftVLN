@@ -58,3 +58,9 @@ class FlightTurnRequest(BaseModel):
     )
     tolerance_deg: Optional[float] = Field(default=None, ge=0, le=10)
     timeout_ms: Optional[int] = Field(default=None, ge=1000, le=300000)
+
+
+class OperatorLogAppendRequest(BaseModel):
+    """Append formatted console lines to the active operator log file."""
+
+    lines: list[str] = Field(min_length=1, max_length=200)

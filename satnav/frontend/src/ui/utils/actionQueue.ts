@@ -59,6 +59,9 @@ export function normalizeStickStatus(
   status: string | null | undefined,
 ): StickTaskStatus | null {
   const normalized = (status ?? "").toUpperCase();
+  if (normalized === "TIMEOUT" || normalized === "CANCELLED") {
+    return "FAILED";
+  }
   if (
     normalized === "PENDING" ||
     normalized === "RUNNING" ||
@@ -224,6 +227,29 @@ export function canExecuteStep(params: {
   }
   if (!slot.flightTriggered) {
     return true;
+  }
+  return slot.stickStatus === "FAILED";
+}
+
+/**
+ * Whether the Skip button should be enabled.
+ * Allowed when the current slot finished with FAILED (e.g. TIMEOUT) and flight is idle.
+ */
+export function canSkipStep(params: {
+  flightBusy: boolean;
+  stopActive: boolean;
+  drcInvalidated: boolean;
+  queue: ActionQueueState;
+}): boolean {
+  if (params.flightBusy || params.stopActive || params.drcInvalidated) {
+    return false;
+  }
+  if (!params.queue.cycleActive) {
+    return false;
+  }
+  const slot = getCurrentSlot(params.queue);
+  if (!slot?.flightTriggered) {
+    return false;
   }
   return slot.stickStatus === "FAILED";
 }

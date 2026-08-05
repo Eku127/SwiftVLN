@@ -30,6 +30,7 @@ export function InstructionPanel({
         maxLength={maxLength}
         onChange={(event) => onInstructionChange(event.target.value)}
         rows={3}
+        spellCheck={false}
       />
       <div className="instruction-panel__footer">
         <span className="instruction-panel__count mono">
@@ -61,31 +62,39 @@ export function InstructionPanel({
           width: 100%;
           resize: none;
           flex: 1 1 auto;
-          min-height: 5.5rem;
+          min-height: 0;
+          overflow-y: auto;
           border-radius: 10px;
           border: 1px solid var(--border);
           background: #08131d;
           color: var(--text);
-          padding: 0.75rem 0.85rem;
-          line-height: 1.5;
+          padding: 0.6rem 0.75rem;
+          font-size: 0.78rem;
+          line-height: 1.4;
         }
         .instruction-panel__footer {
-          margin-top: 0.55rem;
+          margin-top: 0.45rem;
+          flex: 0 0 auto;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 0.75rem;
+          gap: 0.5rem;
         }
         .instruction-panel__count {
           color: var(--text-muted);
-          font-size: 0.8rem;
+          font-size: 0.72rem;
+          line-height: 1;
+          white-space: nowrap;
+          font-variant-numeric: tabular-nums;
         }
         .instruction-panel__infer-btn {
           border: none;
-          border-radius: 10px;
-          padding: 0.55rem 1.35rem;
+          border-radius: 8px;
+          padding: 0.38rem 0.95rem;
           font-weight: 600;
-          font-size: 0.9rem;
+          font-size: 0.8rem;
+          line-height: 1.2;
+          flex-shrink: 0;
           background: linear-gradient(180deg, #2be98f, #17b86a);
           color: #042414;
         }

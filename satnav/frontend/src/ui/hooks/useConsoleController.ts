@@ -16,11 +16,24 @@ import {
   applyInferenceToQueue,
   canExecuteStep,
   canRunInference,
+  canSkipStep,
   createInitialQueueState,
   normalizeStickStatus,
   updateSlotAtIndex,
   type ActionQueueState,
 } from "../utils/actionQueue";
+import {
+  formatOperatorEventMessage,
+  PANEL_LOG_MAX_LINES,
+  SESSION_LOG_MAX_LINES,
+  type OperatorEventName,
+} from "../utils/operatorEventLog";
+import {
+  appendSessionLogLine,
+  flushSessionLogLinesOnPageHide,
+  getSessionLogPath,
+  syncOperatorLogFromBackend,
+} from "../utils/operatorSessionFile";
 import {
   computeStickProgressPercent,
   extractStickBackendData,
@@ -147,6 +160,7 @@ export function useConsoleController() {
   const [latestStickTask, setLatestStickTask] = useState<StickTaskResponse | null>(null);
   const [currentStickTaskId, setCurrentStickTaskId] = useState<string | null>(null);
   const [stickRefreshBusy, setStickRefreshBusy] = useState(false);
+  const [osdRefreshBusy, setOsdRefreshBusy] = useState(false);
   const [rawMeta, setRawMeta] = useState("—");
   const [modelInputMeta, setModelInputMeta] = useState("—");
   const [rawImageTick, setRawImageTick] = useState(0);
@@ -156,20 +170,51 @@ export function useConsoleController() {
   const [settingsBusy, setSettingsBusy] = useState(false);
   const logSeq = useRef(0);
   const modelLogCursor = useRef(0);
+  /** True after first inference click; gates session-channel capture. */
+  const sessionLogActiveRef = useRef(false);
+  /** Full session log for export / file stream (step 2); not shown in panel. */
+  const sessionLogLinesRef = useRef<LogLine[]>([]);
+  /** Latest deploy session_id for EVT payloads (may lead React state). */
+  const sessionIdRef = useRef<string | null>(null);
+  /** Last stick status for EVT edge detection during Execute One Step. */
+  const lastStickStatusRef = useRef<string | null>(null);
+  /** Show operator log path banner only once per tab. */
+  const operatorLogBannerShownRef = useRef(false);
 
-  const appendLog = useCallback((tag: string, message: string, level: LogLine["level"] = "info") => {
-    logSeq.current += 1;
-    setLogLines((prev) => [
-      ...prev.slice(-400),
-      {
+  const appendToSessionLog = useCallback((line: LogLine) => {
+    if (!sessionLogActiveRef.current) {
+      return;
+    }
+    const buffer = sessionLogLinesRef.current;
+    buffer.push(line);
+    if (buffer.length > SESSION_LOG_MAX_LINES) {
+      buffer.splice(0, buffer.length - SESSION_LOG_MAX_LINES);
+    }
+    appendSessionLogLine(line);
+  }, []);
+
+  const appendLog = useCallback(
+    (tag: string, message: string, level: LogLine["level"] = "info") => {
+      logSeq.current += 1;
+      const line: LogLine = {
         id: String(logSeq.current),
         timestamp: nowStamp(),
         tag,
         message,
         level,
-      },
-    ]);
-  }, []);
+      };
+      setLogLines((prev) => [...prev.slice(-(PANEL_LOG_MAX_LINES - 1)), line]);
+      appendToSessionLog(line);
+    },
+    [appendToSessionLog],
+  );
+
+  const logOperatorEvent = useCallback(
+    (event: OperatorEventName, payload: Record<string, unknown> = {}) => {
+      appendLog("EVT", formatOperatorEventMessage(event, sessionIdRef.current, payload));
+    },
+    [appendLog],
+  );
 
   /**
    * Enter STOP state: next_action=0, invalidate DRC, show modal.
@@ -183,13 +228,14 @@ export function useConsoleController() {
       setFlightReady(false);
       setStopModalOpen(true);
       pendingManualStopRef.current = false;
+      logOperatorEvent("stop", { source });
       appendLog(
         "UI",
         source === "manual" ? "应急 STOP 已生效" : "模型返回 STOP",
         "warn",
       );
     },
-    [appendLog],
+    [appendLog, logOperatorEvent],
   );
 
   const refreshDeviceInfo = useCallback(async () => {
@@ -207,18 +253,20 @@ export function useConsoleController() {
     }
   }, []);
 
-  const refreshOsd = useCallback(async () => {
+  const refreshOsd = useCallback(async (): Promise<boolean> => {
     try {
       const osd = await flightClient.getOsdLatest();
       setAircraftPose((prev) => ({
         ...prev,
         ...readOsdSnapshot(osd),
       }));
+      return true;
     } catch {
       setAircraftPose((prev) => ({
         ...prev,
         ...EMPTY_OSD_FIELDS,
       }));
+      return false;
     }
   }, []);
 
@@ -336,6 +384,17 @@ export function useConsoleController() {
     return () => window.clearInterval(timer);
   }, [pullModelLogs]);
 
+  /** Close session log file on tab unload only (not on React dev unmount). */
+  useEffect(() => {
+    const onPageHide = () => {
+      flushSessionLogLinesOnPageHide();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, []);
+
   const rawImageUrl = useMemo(
     () => (rtmpActive ? mediaClient.rawImageUrl(rawImageTick) : ""),
     [rawImageTick, rtmpActive],
@@ -378,6 +437,7 @@ export function useConsoleController() {
       }
       setActionQueue((prev) => applyInferenceToQueue(prev, result));
       setSessionId(result.session_id);
+      sessionIdRef.current = result.session_id;
       setInferenceNextAction(result.next_action);
       setInferenceRemainingActions(result.remaining_actions);
       setInferencePerformed(result.performed_inference);
@@ -426,22 +486,60 @@ export function useConsoleController() {
     ],
   );
 
+  const skipEnabled = useMemo(
+    () =>
+      canSkipStep({
+        flightBusy,
+        stopActive: stopEngaged || inferenceNextAction === 0,
+        drcInvalidated,
+        queue: actionQueue,
+      }),
+    [actionQueue, drcInvalidated, flightBusy, inferenceNextAction, stopEngaged],
+  );
+
   /** POST /api/satnav/model/inference only; does not trigger flight control. */
   const onInference = useCallback(async () => {
+    sessionLogActiveRef.current = true;
+    const fileReady = await syncOperatorLogFromBackend();
+    if (fileReady && !operatorLogBannerShownRef.current) {
+      operatorLogBannerShownRef.current = true;
+      const logPath = getSessionLogPath();
+      appendLog("UI", logPath ? `操作日志写入 ${logPath}` : "操作日志已开启");
+    }
     setInferenceBusy(true);
     setPhase("inferring");
+    logOperatorEvent("inference_clicked", {
+      instruction: instruction.trim(),
+    });
     try {
       appendLog("UI", "推理");
       const result = await runInferenceStep(instruction);
+      sessionIdRef.current = result.session_id;
       applyInference(result);
+      logOperatorEvent("inference_done", {
+        instruction: result.instruction,
+        started_new_session: result.started_new_session,
+        performed_inference: result.performed_inference,
+        raw_action_text: result.raw_action_text,
+        actions: result.actions,
+        next_action: result.next_action,
+        remaining_actions: result.remaining_actions,
+        completed_action: result.completed_action,
+        deploy_state: result.deploy_state,
+        frame_sequence: result.frame_sequence,
+        image_path: result.image_path.split("/").pop() ?? result.image_path,
+        timing: result.timing,
+        timestamp: result.timestamp,
+      });
       setPhase("idle");
     } catch (error) {
       setPhase("error");
+      logOperatorEvent("inference_failed", { error: String(error) });
       appendLog("INFER", String(error), "error");
     } finally {
       setInferenceBusy(false);
     }
-  }, [appendLog, applyInference, instruction]);
+  }, [appendLog, applyInference, instruction, logOperatorEvent]);
 
   const onLoginFlightSystem = useCallback(
     async (form: { username: string; password: string; flag: number }) => {
@@ -587,6 +685,21 @@ export function useConsoleController() {
     }
   }, [appendLog, applyStickTaskUpdate, currentStickTaskId]);
 
+  const onRefreshOsd = useCallback(async () => {
+    if (!flightReady) {
+      appendLog("UI", "OSD 刷新需先获取飞行控制", "warn");
+      return;
+    }
+    setOsdRefreshBusy(true);
+    try {
+      appendLog("UI", "刷新飞行器 OSD");
+      const ok = await refreshOsd();
+      appendLog("FC", ok ? "OSD 已刷新" : "OSD 刷新失败", ok ? "info" : "warn");
+    } finally {
+      setOsdRefreshBusy(false);
+    }
+  }, [appendLog, flightReady, refreshOsd]);
+
   /**
    * Execute One Step: call forward/turn from inferenceNextAction, poll stick-task to terminal state.
    * Does not advance currentIndex here (next inference feedback frame does that).
@@ -606,7 +719,14 @@ export function useConsoleController() {
     setPhase("flying");
     setFlightProgress(0);
     setLatestStickTask(null);
+    lastStickStatusRef.current = null;
+    const executeStartMs = performance.now();
+    let flightSubmitMs: number | null = null;
     try {
+      logOperatorEvent("execute_clicked", {
+        next_action: nextAction,
+        slot_index: currentIndex,
+      });
       appendLog("UI", `执行一步：action=${nextAction}, slot=${currentIndex + 1}`);
       const flight = await executeFlightAction(nextAction);
       if (!flight?.task_id) {
@@ -616,6 +736,7 @@ export function useConsoleController() {
 
       /** Initial status from flight submit response, usually PENDING. */
       const initialStatus = normalizeStickStatus(flight.status) ?? "PENDING";
+      lastStickStatusRef.current = initialStatus.toUpperCase();
       setActionQueue((prev) =>
         updateSlotAtIndex(prev, currentIndex, {
           flightTriggered: true,
@@ -626,11 +747,28 @@ export function useConsoleController() {
 
       setPhase("waiting_fc");
       setCurrentStickTaskId(flight.task_id);
+      flightSubmitMs = performance.now();
+      logOperatorEvent("flight_submit", {
+        action: flight.action,
+        task_id: flight.task_id,
+        status: flight.status,
+        parameters: flight.parameters,
+      });
       appendLog("FC", `下发 action=${flight.action}, task_id=${flight.task_id}`);
 
       const stickTask = await pollStickTask(flight.task_id, {
         onUpdate: (stick) => {
           applyStickTaskUpdate(stick);
+          const status = (stick.status ?? "").toUpperCase();
+          if (status && status !== lastStickStatusRef.current) {
+            logOperatorEvent("stick_status", {
+              task_id: stick.task_id,
+              from: lastStickStatusRef.current,
+              to: status,
+              backend_data: extractStickBackendData(stick),
+            });
+            lastStickStatusRef.current = status;
+          }
           appendLog("FC", `stick-task ${stick.task_id} status=${stick.status}`);
         },
       });
@@ -644,6 +782,15 @@ export function useConsoleController() {
         }),
       );
 
+      const stickDoneMs = performance.now();
+      logOperatorEvent("stick_done", {
+        task_id: stickTask.task_id,
+        status: finalStatus,
+        execute_wall_ms: Math.round(stickDoneMs - executeStartMs),
+        flight_wall_ms:
+          flightSubmitMs === null ? null : Math.round(stickDoneMs - flightSubmitMs),
+        backend_data: extractStickBackendData(stickTask),
+      });
       appendLog("FC", `stick-task 结束: ${stickTask.status}`);
 
       /** If emergency STOP was queued during flight, activate STOP after this task ends. */
@@ -672,6 +819,7 @@ export function useConsoleController() {
     applyStickTaskUpdate,
     executeEnabled,
     inferenceNextAction,
+    logOperatorEvent,
   ]);
 
   /**
@@ -688,6 +836,41 @@ export function useConsoleController() {
     activateStop("manual");
     setPhase("stopped");
   }, [activateStop, appendLog, flightBusy]);
+
+  /** Mark the current slot as COMPLETED without re-running stick-task (unlock inference). */
+  const onSkipCurrentStep = useCallback(() => {
+    const currentIndex = actionQueue.currentIndex;
+    const slot = actionQueue.slots[currentIndex ?? -1];
+    if (
+      !skipEnabled ||
+      currentIndex === null ||
+      !slot?.flightTriggered ||
+      slot.stickStatus !== "FAILED"
+    ) {
+      appendLog("UI", "当前步骤不可跳过", "warn");
+      return;
+    }
+
+    const previousStatus = slot.stickStatus;
+    setActionQueue((prev) =>
+      updateSlotAtIndex(prev, currentIndex, {
+        stickStatus: "COMPLETED",
+      }),
+    );
+    setPhase("idle");
+    setFlightProgress(100);
+    logOperatorEvent("step_skipped", {
+      slot_index: currentIndex,
+      previous_stick_status: previousStatus,
+      task_id: slot.taskId,
+      action: slot.action,
+    });
+    appendLog(
+      "UI",
+      `跳过 slot=${currentIndex + 1}，视为完成（原状态 ${previousStatus}）`,
+      "warn",
+    );
+  }, [actionQueue, appendLog, logOperatorEvent, skipEnabled]);
 
   /** Dismiss STOP modal only; does not restore DRC (user must re-acquire flight control). */
   const dismissStopModal = useCallback(() => {
@@ -744,6 +927,7 @@ export function useConsoleController() {
     inferencePerformed,
     inferenceEnabled,
     executeEnabled,
+    skipEnabled,
     stopEngaged,
     stopModalOpen,
     dismissStopModal,
@@ -751,6 +935,7 @@ export function useConsoleController() {
     latestStickTask,
     currentStickTaskId,
     stickRefreshBusy,
+    osdRefreshBusy,
     rawImageUrl,
     modelInputUrl,
     rawMeta,
@@ -766,7 +951,9 @@ export function useConsoleController() {
     onRegisterDevice,
     onAcquireFlightControl,
     onRunOneStep,
+    onSkipCurrentStep,
     onRefreshStickTask,
+    onRefreshOsd,
     onEmergencyStop,
   };
 }

@@ -692,6 +692,31 @@ class ModelPathMappingTest(unittest.TestCase):
             self.assertEqual(checkpoint.resolve(), model_path.resolve())
 
 
+class OperatorSessionLogWriterTest(unittest.TestCase):
+    def test_start_append_close_writes_log_file(self) -> None:
+        from app.services.operator_session_log import OperatorSessionLogWriter
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            writer = OperatorSessionLogWriter(
+                log_root=root / "satnav" / "runtime" / "logs",
+                repo_root=root,
+            )
+            started = writer.start()
+            self.assertTrue(started["active"])
+            self.assertTrue(started["log_path_relative"].startswith("satnav/runtime/logs/operator-"))
+
+            writer.append(["[12:00:00.000] [EVT] {\"event\":\"inference_clicked\"}"])
+            again = writer.start()
+            self.assertEqual(again["log_path"], started["log_path"])
+            writer.close()
+            self.assertFalse(writer.status()["active"])
+
+            log_path = Path(started["log_path"])
+            self.assertTrue(log_path.is_file())
+            self.assertIn("inference_clicked", log_path.read_text(encoding="utf-8"))
+
+
 class CorsConfigTest(unittest.TestCase):
     def test_default_origin_when_env_missing(self) -> None:
         env = {

@@ -22,6 +22,7 @@ set -euo pipefail
 # SATNAV_FLIGHT_DEFAULT_FORWARD_TOLERANCE_M — default forward tolerance in meters; default 0.3; 默认前进容差（米），默认 0.3。
 # SATNAV_FLIGHT_DEFAULT_TIMEOUT_MS — default stick-task timeout in milliseconds; default 30000; 默认 Stick 任务超时（毫秒），默认 30000。
 # SATNAV_CORS_ORIGINS — comma-separated allowed frontend Origins; default http://127.0.0.1:5173; 允许跨域的前端 Origin（逗号分隔），默认 http://127.0.0.1:5173。
+# SATNAV_OPERATOR_LOG_ROOT — operator session log directory (absolute path); default $REPO_ROOT/satnav/runtime/logs; 操作复盘日志目录（绝对路径），默认仓库下 satnav/runtime/logs。
 # SATNAV_API_HOST / SATNAV_API_PORT — FastAPI bind host and port; default 0.0.0.0:8000; FastAPI 监听地址与端口，默认 0.0.0.0:8000。
 # CUDA_VISIBLE_DEVICES — GPU index for the model process, e.g. 0; 指定模型使用的 GPU，例如 0。
 # Dependencies: pip install -r satnav/backend/requirements.txt (fastapi, opencv, Pillow, numpy, …); 依赖：pip install -r satnav/backend/requirements.txt（含 fastapi / opencv / Pillow / numpy 等）

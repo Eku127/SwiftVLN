@@ -14,7 +14,7 @@ Operators enter a navigation instruction in the web UI, inspect the live stream 
 |---|---|---|
 | `satnav/frontend/` | Ground-station web console (UI / interaction) | React 18 + TypeScript + Vite |
 | `satnav/backend/` | Orchestration API (model / RTMP / flight proxy) | Python + FastAPI |
-| `satnav/runtime/` | Runtime data (model registry, session images; not versioned) | — |
+| `satnav/runtime/` | Runtime data (model registry, session images, operator logs; not versioned) | — |
 
 The frontend talks to the backend **only** over REST. The backend starts and talks to the model long-running process, consumes RTMP, and proxies flight login / DRC / stick / OSD. Training and core model code live under `src/swiftvln/`; `satnav/` holds real-world integration only.
 
@@ -187,7 +187,7 @@ satnav/
 │           ├── utils/actionQueue.ts  # action-queue state machine
 │           └── components/         # Header / ActionPanel / ActionQueue / …
 │
-└── runtime/                        # runtime data (model_registry / model_sessions / …)
+└── runtime/                        # runtime data (model_registry / model_sessions / logs / …)
 ```
 
 Notes:
@@ -287,6 +287,7 @@ Environment variables:
 | `SATNAV_MODEL_DEPLOY_RESPONSE_TIMEOUT_SECONDS` | Deploy JSONL response timeout (s) | `120` |
 | `SATNAV_MODEL_INPUT_RESIZE_MODE` | `center-crop` / `stretch` | `center-crop` |
 | `SATNAV_MODEL_INFERENCE_INPUT_ROOT` | JPEG output dir | `satnav/runtime/model_sessions/inference_inputs` |
+| `SATNAV_OPERATOR_LOG_ROOT` | Operator session log directory (absolute path) | `satnav/runtime/logs` |
 | `SATNAV_BACKEND_HOST` | Flight CloudSDK host | — |
 | `SATNAV_BACKEND_PORT` | Flight CloudSDK port | `6789` |
 | `SATNAV_BACKEND_API_DOCS_PATH` | OpenAPI docs path | `/v3/api-docs` |
@@ -301,6 +302,12 @@ Environment variables:
 | `SATNAV_API_HOST` | FastAPI bind host | `0.0.0.0` |
 | `SATNAV_API_PORT` | FastAPI bind port | `8000` |
 | `SATNAV_CORS_ORIGINS` | Allowed frontend Origins (comma-separated) | `http://127.0.0.1:5173` |
+
+**Operator session logs** (from the first **Inference** click): appended to `SATNAV_OPERATOR_LOG_ROOT` (default `satnav/runtime/logs/`). **One log file per FastAPI process** (created at API startup, closed on API shutdown), e.g. `operator-20260805T141830+08.log`. Use an **absolute path** to override:
+
+```bash
+export SATNAV_OPERATOR_LOG_ROOT=/data/satnav/operator-logs
+```
 
 ### 5.3 Start SatNav Frontend
 
@@ -396,6 +403,10 @@ Full request / response / samples: [`backend/API_DOCS.md`](backend/API_DOCS.md).
 | `POST` | `/api/satnav/model/inference`   | Grab RTMP frame + one model step |
 | `GET`  | `/api/satnav/media/raw_img`         | Latest raw RTMP JPEG |
 | `GET`  | `/api/satnav/media/model_input_img` | Latest 448×448 model-input JPEG |
+| `POST` | `/api/satnav/operator/logs/start` | Start operator session log file |
+| `POST` | `/api/satnav/operator/logs/append` | Append lines to operator log |
+| `POST` | `/api/satnav/operator/logs/close` | Close operator log file |
+| `GET`  | `/api/satnav/operator/logs/status` | Operator log file status |
 
 Inference body sample:
 
@@ -453,7 +464,7 @@ flight    → DRC → forward/turn → stick-task / osd
 |---|---|---|
 | `satnav/frontend/` | 地面站 Web 控制台（展示与人机交互） | React 18 + TypeScript + Vite |
 | `satnav/backend/` | 地面站编排 API（代理模型 / RTMP / 飞控） | Python + FastAPI |
-| `satnav/runtime/` | 运行时数据（模型映射、session 图片等，不入代码仓） | — |
+| `satnav/runtime/` | 运行时数据（模型映射、session 图片、操作复盘日志等，不入代码仓） | — |
 
 前端只通过 REST 调用后端；后端负责拉起并对接模型长进程、消费 RTMP、代理飞控 login / DRC / stick / OSD。模型训练与核心算法仍在仓库 `src/swiftvln/`；本目录只放实机集成与地面站相关代码。
 
@@ -626,7 +637,7 @@ satnav/
 │           ├── utils/actionQueue.ts  # Action 队列状态机
 │           └── components/         # Header / ActionPanel / ActionQueue 等
 │
-└── runtime/                        # 运行时数据（model_registry / model_sessions 等）
+└── runtime/                        # 运行时数据（model_registry / model_sessions / logs 等）
 ```
 
 说明：
@@ -726,6 +737,7 @@ curl -sS "http://127.0.0.1:8000/api/satnav/health"
 | `SATNAV_MODEL_DEPLOY_RESPONSE_TIMEOUT_SECONDS` | Deploy JSONL 响应超时（秒） | `120` |
 | `SATNAV_MODEL_INPUT_RESIZE_MODE` | 模型输入缩放：`center-crop` / `stretch` | `center-crop` |
 | `SATNAV_MODEL_INFERENCE_INPUT_ROOT` | 推理 JPEG 落盘目录 | `satnav/runtime/model_sessions/inference_inputs` |
+| `SATNAV_OPERATOR_LOG_ROOT` | 操作复盘日志目录（绝对路径） | `satnav/runtime/logs` |
 | `SATNAV_BACKEND_HOST` | 飞控 CloudSDK 地址 | — |
 | `SATNAV_BACKEND_PORT` | 飞控 CloudSDK 端口 | `6789` |
 | `SATNAV_BACKEND_API_DOCS_PATH` | OpenAPI 文档路径 | `/v3/api-docs` |
@@ -740,6 +752,12 @@ curl -sS "http://127.0.0.1:8000/api/satnav/health"
 | `SATNAV_API_HOST` | FastAPI 监听地址 | `0.0.0.0` |
 | `SATNAV_API_PORT` | FastAPI 监听端口 | `8000` |
 | `SATNAV_CORS_ORIGINS` | 允许跨域的前端 Origin（逗号分隔） | `http://127.0.0.1:5173` |
+
+**操作复盘日志**（从首次点击「推理」起）：由后端写入 `SATNAV_OPERATOR_LOG_ROOT`（默认 `satnav/runtime/logs/`）。**每次 FastAPI 服务启动一个文件**（启动时创建、进程退出时关闭），例如 `operator-20260805T141830+08.log`。自定义目录请设置**绝对路径**：
+
+```bash
+export SATNAV_OPERATOR_LOG_ROOT=/data/satnav/operator-logs
+```
 
 ### 5.3 启动 SatNav Frontend
 
@@ -835,6 +853,10 @@ Action 队列与按钮门控细节见 [`frontend/README.md`](frontend/README.md)
 | `POST` | `/api/satnav/model/inference`   | 从 RTMP 抽一帧并执行一次模型推理 |
 | `GET`  | `/api/satnav/media/raw_img`         | 获取最新 RTMP 原始帧（JPEG）       |
 | `GET`  | `/api/satnav/media/model_input_img` | 获取最近一次推理的 448×448 模型输入（JPEG）   |
+| `POST` | `/api/satnav/operator/logs/start` | 开始写入操作复盘日志文件 |
+| `POST` | `/api/satnav/operator/logs/append` | 追加操作复盘日志行 |
+| `POST` | `/api/satnav/operator/logs/close` | 关闭操作复盘日志文件 |
+| `GET`  | `/api/satnav/operator/logs/status` | 查询操作复盘日志状态 |
 
 推理请求示例：
 

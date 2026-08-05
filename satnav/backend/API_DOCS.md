@@ -6,7 +6,7 @@
 
 # English
 
-Service version: `0.1.9`  
+Service version: `0.2.1`  
 Default Base URL: `http://127.0.0.1:8000` (controlled by `SATNAV_API_HOST` / `SATNAV_API_PORT`)
 
 FastAPI interactive docs:
@@ -49,7 +49,7 @@ Model and deploy session fields `actions` / `next_action` / `remaining_actions` 
 | `400` | Request parameters or business preconditions not satisfied |
 | `422` | Request body validation failed (Pydantic) |
 | `503` | Dependency not configured or deploy process unavailable |
-| `504` | Timed out waiting for RTMP frame or deploy response |
+| `409` | Conflict (e.g. append before log session started) |
 
 ---
 
@@ -74,6 +74,10 @@ Model and deploy session fields `actions` / `next_action` / `remaining_actions` 
 | `POST` | `/api/satnav/model/inference` | RTMP frame capture + one deploy image step |
 | `GET` | `/api/satnav/media/raw_img` | Latest RTMP raw frame JPEG preview |
 | `GET` | `/api/satnav/media/model_input_img` | Most recent inference 448×448 model input JPEG |
+| `POST` | `/api/satnav/operator/logs/start` | Start operator session log file |
+| `POST` | `/api/satnav/operator/logs/append` | Append lines to operator log file |
+| `POST` | `/api/satnav/operator/logs/close` | Close operator log file |
+| `GET` | `/api/satnav/operator/logs/status` | Operator log file status |
 
 ---
 
@@ -1515,6 +1519,111 @@ Host: 127.0.0.1:8000
 
 ---
 
+## 16. Operator session logs
+
+Ground-station **operator replay logs** (UI console + `[EVT]` structured events from the first Inference click) are appended by the backend to a plain-text file.
+
+| Item | Description |
+|------|-------------|
+| **File granularity** | **One file per FastAPI process** (API startup → API shutdown) |
+| Created | Automatically in API `lifespan` on startup |
+| Default directory | `{repo_root}/satnav/runtime/logs/` |
+| Override | `SATNAV_OPERATOR_LOG_ROOT` — **absolute path** to a writable directory |
+| File name | `operator-YYYYMMDDTHHMMSS+08.log` (timestamp at API startup) |
+| Closed | FastAPI process shutdown only (not browser tab close, not emergency STOP) |
+
+### `POST /api/satnav/operator/logs/start`
+
+Return the current log file status. The file is **opened automatically when the API starts**; this endpoint is idempotent (does not create a second file).
+
+#### Request
+
+No body.
+
+#### Response `200`
+
+| Field | Type | Description |
+|------|------|------|
+| `active` | boolean | Whether a log file is open after this call |
+| `log_path` | string \| null | Absolute path of the log file |
+| `log_path_relative` | string \| null | Path relative to repo root when under repo; otherwise same as `log_path` |
+| `started_at` | string \| null | Log session start time (Shanghai ISO) |
+| `timestamp` | string | Response time |
+
+#### Example
+
+```http
+POST /api/satnav/operator/logs/start HTTP/1.1
+Host: 127.0.0.1:8000
+```
+
+```json
+{
+  "active": true,
+  "log_path": "/path/to/SwiftVLN/satnav/runtime/logs/operator-20260805T142530+08.log",
+  "log_path_relative": "satnav/runtime/logs/operator-20260805T142530+08.log",
+  "started_at": "2026-08-05T14:25:30.123456+08:00",
+  "timestamp": "2026-08-05T14:25:30.125000+08:00"
+}
+```
+
+### `POST /api/satnav/operator/logs/append`
+
+Append pre-formatted log lines (one line per array element; newline added if missing).
+
+#### Request body
+
+| Field | Type | Required | Description |
+|------|------|------|------|
+| `lines` | string[] | yes | 1–200 lines per request |
+
+#### Response `200`
+
+Same shape as `start` (`active`, `log_path`, …).
+
+#### Response `409`
+
+No log session started yet (`detail`: `operator log session is not started`).
+
+#### Example
+
+```http
+POST /api/satnav/operator/logs/append HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Type: application/json
+
+{
+  "lines": [
+    "[14:25:31.002] [EVT] {\"event\":\"inference_clicked\",\"session_id\":null}"
+  ]
+}
+```
+
+### `POST /api/satnav/operator/logs/close`
+
+Flush and close the active log file. **Normally only called on API process shutdown** (not by the frontend on tab close).
+
+#### Request
+
+No body.
+
+#### Response `200`
+
+Status object (`active` becomes `false`).
+
+### `GET /api/satnav/operator/logs/status`
+
+Return whether a log file is open and its path (no side effects).
+
+#### Related environment variables
+
+| Variable | Default | Description |
+|------|------|------|
+| `SATNAV_OPERATOR_LOG_ROOT` | `{repo_root}/satnav/runtime/logs` | Operator log directory (absolute path recommended) |
+| `SATNAV_REPO_ROOT` | Auto-detected from package layout | Repo root used to compute `log_path_relative` |
+
+---
+
 ## Changelog
 
 | Date | Version | Notes |
@@ -1528,12 +1637,13 @@ Host: 127.0.0.1:8000
 | 2026-08-03 | 0.1.8 | Added `media/raw_img`, `media/model_input_img`; completed `requirements.txt` |
 | 2026-08-03 | 0.1.9 | Added `SATNAV_CORS_ORIGINS`, default allows `http://127.0.0.1:5173` |
 | 2026-08-03 | 0.2.0 | Added `GET .../flight/osd/latest` (LiveStore OSD snapshot) |
+| 2026-08-05 | 0.2.1 | Added operator session log APIs (`/api/satnav/operator/logs/*`); `SATNAV_OPERATOR_LOG_ROOT` |
 
 ---
 
 # 中文
 
-服务版本：`0.1.9`  
+服务版本：`0.2.1`  
 默认 Base URL：`http://127.0.0.1:8000`（由 `SATNAV_API_HOST` / `SATNAV_API_PORT` 控制）
 
 FastAPI 自带交互式文档：
@@ -1577,6 +1687,7 @@ FastAPI 自带交互式文档：
 | `422` | 请求体校验失败（Pydantic） |
 | `503` | 依赖未配置或 deploy 进程不可用 |
 | `504` | 等待 RTMP 帧或 deploy 响应超时 |
+| `409` | 冲突（例如在日志会话未 start 时 append） |
 
 ---
 
@@ -1601,6 +1712,10 @@ FastAPI 自带交互式文档：
 | `POST` | `/api/satnav/model/inference` | RTMP 抽帧 + 一次 deploy image 步骤 |
 | `GET` | `/api/satnav/media/raw_img` | 最新 RTMP 原始帧 JPEG 预览 |
 | `GET` | `/api/satnav/media/model_input_img` | 最近一次推理的 448×448 模型输入 JPEG |
+| `POST` | `/api/satnav/operator/logs/start` | 开始写入操作复盘日志文件 |
+| `POST` | `/api/satnav/operator/logs/append` | 追加操作复盘日志行 |
+| `POST` | `/api/satnav/operator/logs/close` | 关闭操作复盘日志文件 |
+| `GET` | `/api/satnav/operator/logs/status` | 查询操作复盘日志状态 |
 
 ---
 
@@ -3042,6 +3157,111 @@ Host: 127.0.0.1:8000
 
 ---
 
+## 16. 操作复盘日志
+
+地面站**操作复盘日志**（从首次点击「推理」起的面板输出 + `[EVT]` 结构化事件）由后端追加写入纯文本文件。
+
+| 项目 | 说明 |
+|------|------|
+| **文件粒度** | **每次 FastAPI 服务启动一个文件**（启动 → 进程退出） |
+| 创建时机 | API `lifespan` 启动时自动创建 |
+| 默认目录 | `{repo_root}/satnav/runtime/logs/` |
+| 自定义 | `SATNAV_OPERATOR_LOG_ROOT` — 可写目录的**绝对路径** |
+| 文件名 | `operator-YYYYMMDDTHHMMSS+08.log`（取 API 启动时刻） |
+| 关闭时机 | 仅 FastAPI 进程退出（关浏览器 / 关 npm **不**关闭；**不是**应急 STOP） |
+
+### `POST /api/satnav/operator/logs/start`
+
+返回当前日志文件状态。文件在 **API 启动时已自动创建**；本接口幂等（不会新建第二个文件）。
+
+#### 入参
+
+无 Body。
+
+#### 出参 `200`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `active` | boolean | 调用后是否有打开的日志文件 |
+| `log_path` | string \| null | 日志文件绝对路径 |
+| `log_path_relative` | string \| null | 相对仓库根路径（在仓库内时）；否则同 `log_path` |
+| `started_at` | string \| null | 日志会话开始时间（上海 ISO） |
+| `timestamp` | string | 响应时间 |
+
+#### 示例
+
+```http
+POST /api/satnav/operator/logs/start HTTP/1.1
+Host: 127.0.0.1:8000
+```
+
+```json
+{
+  "active": true,
+  "log_path": "/path/to/SwiftVLN/satnav/runtime/logs/operator-20260805T142530+08.log",
+  "log_path_relative": "satnav/runtime/logs/operator-20260805T142530+08.log",
+  "started_at": "2026-08-05T14:25:30.123456+08:00",
+  "timestamp": "2026-08-05T14:25:30.125000+08:00"
+}
+```
+
+### `POST /api/satnav/operator/logs/append`
+
+追加已格式化的日志行（数组每项一行；若无换行符则自动补全）。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `lines` | string[] | 是 | 每次 1–200 行 |
+
+#### 出参 `200`
+
+与 `start` 相同（`active`、`log_path` 等）。
+
+#### 响应 `409`
+
+尚未 `start`（`detail`：`operator log session is not started`）。
+
+#### 示例
+
+```http
+POST /api/satnav/operator/logs/append HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Type: application/json
+
+{
+  "lines": [
+    "[14:25:31.002] [EVT] {\"event\":\"inference_clicked\",\"session_id\":null}"
+  ]
+}
+```
+
+### `POST /api/satnav/operator/logs/close`
+
+刷盘并关闭当前日志文件。**通常仅在 API 进程退出时调用**（前端关标签页不应调用）。
+
+#### 入参
+
+无 Body。
+
+#### 出参 `200`
+
+状态对象（`active` 变为 `false`）。
+
+### `GET /api/satnav/operator/logs/status`
+
+查询当前是否有打开的日志文件及路径（无副作用）。
+
+#### 相关环境变量
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `SATNAV_OPERATOR_LOG_ROOT` | `{repo_root}/satnav/runtime/logs` | 操作复盘日志目录（建议使用绝对路径） |
+| `SATNAV_REPO_ROOT` | 按包路径自动推断 | 用于计算 `log_path_relative` 的仓库根 |
+
+---
+
 ## 变更记录
 
 | 日期 | 版本 | 说明 |
@@ -3055,3 +3275,4 @@ Host: 127.0.0.1:8000
 | 2026-08-03 | 0.1.8 | 新增 `media/raw_img`、`media/model_input_img`；补全 `requirements.txt` |
 | 2026-08-03 | 0.1.9 | 新增 `SATNAV_CORS_ORIGINS`，默认允许 `http://127.0.0.1:5173` |
 | 2026-08-03 | 0.2.0 | 新增 `GET .../flight/osd/latest`（LiveStore OSD 快照） |
+| 2026-08-05 | 0.2.1 | 新增操作复盘日志 API（`/api/satnav/operator/logs/*`）；`SATNAV_OPERATOR_LOG_ROOT` |
