@@ -32,6 +32,7 @@
 ## Current Source Layout
 
 - `src/swiftvln/model/`：SwiftVLN 主线模型、训练和评测实现
+- `src/swiftvln/cli.py`：单模型 CLI，直接分发 SwiftVLN 与 queue；无 model registry/runner 中间层
 - `src/swiftvln/common/training/`：arguments / base SFT / dataset 公共层
 - `src/swiftvln/common/eval/`：runner / evaluator / reporting 公共层
 - `src/swiftvln/common/env/`：Habitat / SatNav 环境抽象
@@ -47,7 +48,7 @@
 
 | 用途 | 当前入口 |
 | --- | --- |
-| CLI | `src/swiftvln/cli.py`（安装后命令 `swiftvln`） |
+| CLI | `src/swiftvln/cli.py`（安装后命令 `swiftvln`；train/eval 默认即 SwiftVLN） |
 | SwiftVLN 单次训练 | `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh` |
 | SwiftVLN 训练队列 | `src/swiftvln/scripts/train/train_queue.sh` |
 | 训练 watchdog | `src/swiftvln/scripts/train/train_watchdog.sh` |
@@ -298,7 +299,9 @@ TRAIN_EXPERIMENTS_FILE=/path/to/experiments.sh \
   `.codex/skills/swiftvln-smoke-test/SKILL.md`。
 - 任一 baseline smoke 使用 `.codex/skills/baseline-smoke-test/SKILL.md`。
 - smoke 必须显式限样、验证 checkpoint 可评测，并在完成后只清理本次 smoke 产物。
-- 当前没有顶层统一 `tests/` suite。
+- 顶层 `tests/` 是重构契约 suite，覆盖 CLI、模型名、dataset/window、history
+  processor、Habitat 扩展和 JSONL resume/去重；运行：
+  `PYTHONPATH=src python -m unittest discover -s tests -v`。
 - 仅保留 Stage-B loader smoke：
   `src/swiftvln/model/script/test/test_uav_adapter_strategy.py`。
 
