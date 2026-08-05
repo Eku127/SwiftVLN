@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from swiftvln.common.eval.environment import EvaluationEnvironment
+from swiftvln.model.eval import build_summary_extras, parse_eval_args
+from swiftvln.model.eval_runner import distribute_episodes
 from swiftvln.model.evaluator import SwiftVLNEvaluator
 
 
@@ -16,6 +18,9 @@ class EvaluationStructureContractTest(unittest.TestCase):
             (
                 Path(__file__).parents[1] / "src/swiftvln/common/eval/evaluator.py"
             ).exists()
+        )
+        self.assertFalse(
+            (Path(__file__).parents[1] / "src/swiftvln/common/eval/runner.py").exists()
         )
 
     def test_satnav_config_and_action_parsing_do_not_import_habitat(self):
@@ -43,6 +48,34 @@ class EvaluationStructureContractTest(unittest.TestCase):
         args = SimpleNamespace(eval_split="test")
         with self.assertRaisesRegex(ValueError, "Unknown env_type"):
             EvaluationEnvironment("unused.yaml", args, "unknown")
+
+    def test_eval_cli_keeps_model_and_summary_defaults(self):
+        args = parse_eval_args(["--model_path", "/model", "--env-type", "satnav"])
+        extras = build_summary_extras(args)
+
+        self.assertEqual(args.model_type, "swiftvln_qwen2_5_vl")
+        self.assertEqual(args.template_type, "swiftvln_qwen2_5_vl")
+        self.assertEqual(args.num_frames, 32)
+        self.assertEqual(args.num_history, 8)
+        self.assertEqual(args.compress_stride, 2)
+        self.assertEqual(extras["history_processor_type"], "per_frame")
+        self.assertEqual(extras["log_base"], 1.0)
+
+    def test_episode_distribution_is_global_and_balanced(self):
+        episodes = [
+            SimpleNamespace(episode_id=index, scene_id=f"scene-{index // 3}")
+            for index in range(8)
+        ]
+        shards = [
+            distribute_episodes(episodes, rank=rank, world_size=8)[0]
+            for rank in range(8)
+        ]
+
+        self.assertEqual([len(shard) for shard in shards], [1] * 8)
+        self.assertEqual(
+            {episode.episode_id for shard in shards for episode in shard},
+            set(range(8)),
+        )
 
 
 if __name__ == "__main__":

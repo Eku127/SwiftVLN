@@ -11,23 +11,7 @@ from .reporting import (
 )
 from .results import ResultRecorder
 
-_lazy_imports = {
-    "BaseVLNEval": ".runner",
-}
-
-
-def __getattr__(name):
-    """Delay simulator-dependent imports until the component is requested."""
-    if name in _lazy_imports:
-        import importlib
-
-        module = importlib.import_module(_lazy_imports[name], __package__)
-        return getattr(module, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 __all__ = [
-    "BaseVLNEval",
     "EvaluationEnvironment",
     "ResultRecorder",
     "compute_trajectory_type_stats",

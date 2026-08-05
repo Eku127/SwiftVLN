@@ -24,7 +24,6 @@ from .history_processors.compressor import HistoryTokenCompressor
 _lazy_imports = {
     "HabitatEnvWrapper": ".env",
     "SatNavEnvWrapper": ".env",
-    "BaseVLNEval": ".eval",
     "compute_trajectory_type_stats": ".eval",
     "clean_results_for_output": ".eval",
     "save_timing_stats": ".eval",
@@ -61,7 +60,6 @@ __all__ = [
     "EnvWrapper",
     "HabitatEnvWrapper",
     "SatNavEnvWrapper",
-    "BaseVLNEval",
     "compute_trajectory_type_stats",
     "clean_results_for_output",
     "save_timing_stats",

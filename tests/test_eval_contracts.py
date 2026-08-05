@@ -18,7 +18,7 @@ SRC_ROOT = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
 from swiftvln.common.eval.results import ResultRecorder  # noqa: E402
-from swiftvln.common.eval.runner import BaseVLNEval  # noqa: E402
+from swiftvln.model.eval_runner import SwiftVLNEvaluationRunner  # noqa: E402
 from swiftvln.model.inference import (  # noqa: E402
     SwiftVLNInferenceSession,
     TurnContext,
@@ -151,8 +151,10 @@ class EvalJsonlContractTest(unittest.TestCase):
         self.assertNotIn("_timing_stats", public_results[1])
 
     def test_episode_exception_becomes_durable_error_result(self):
-        runner = BaseVLNEval()
-        runner.args = SimpleNamespace(env_type="habitat")
+        runner = SwiftVLNEvaluationRunner(
+            SimpleNamespace(env_type="habitat"),
+            summary_extras={},
+        )
         episode = SimpleNamespace(
             episode_id="ep-7",
             scene_id="scene.glb",

@@ -1,252 +1,226 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-"""
-SwiftVLN Multi-Environment Evaluation Entry Point
+"""SwiftVLN multi-environment evaluation CLI."""
 
-This script runs VLN evaluation using the trained SwiftVLN model
-with history frame compression in multiple environments (Habitat or SatNav).
+from __future__ import annotations
 
-Key difference from StreamVLN:
-- Uses SwiftVLN model and template with history compression
-- Compression applies during inference as well
-
-Usage:
-    # Habitat evaluation (default)
-    python -m swiftvln.model.eval --model_path /path/to/checkpoint --env-type habitat
-    
-    # SatNav evaluation
-    python -m swiftvln.model.eval --model_path /path/to/checkpoint --env-type satnav \
-        --satnav-config configs/satnav_task.yaml
-    
-    # Distributed evaluation (8 GPUs)
-    torchrun --nproc_per_node=8 -m swiftvln.model.eval \
-        --model_path /path/to/checkpoint --env-type habitat --distributed
-"""
-
-# ============================================================================
-# CRITICAL: Force NVIDIA EGL before ANY imports
-# This MUST be set before importing habitat/habitat_sim to prevent Mesa fallback
-# Without this, Habitat rendering can be 1000x slower on machines with Mesa installed
-# ============================================================================
+# Set NVIDIA EGL before any optional Habitat import.
 import os
-os.environ.setdefault('__EGL_VENDOR_LIBRARY_FILENAMES', '/usr/share/glvnd/egl_vendor.d/10_nvidia.json')
 
-import importlib
+os.environ.setdefault(
+    "__EGL_VENDOR_LIBRARY_FILENAMES",
+    "/usr/share/glvnd/egl_vendor.d/10_nvidia.json",
+)
 
-import torch
+import argparse
+from typing import Any
 
-from swiftvln.common import BaseVLNEval
 from swiftvln.experiment import SwiftVLNExperimentSpec
+from swiftvln.model.eval_runner import SwiftVLNEvaluationRunner
+
+DEFAULT_MODEL_TYPE = "swiftvln_qwen2_5_vl"
 
 
-class SwiftVLNEval(BaseVLNEval):
-    """SwiftVLN evaluation implementation."""
-    
-    model_type = 'swiftvln_qwen2_5_vl'
-    template_type = 'swiftvln_qwen2_5_vl'
-    model_description = 'SwiftVLN'
-    uses_compression = True
-    uses_num_frames = True
-    
-    def add_model_specific_args(self, parser):
-        """Add SwiftVLN-specific arguments."""
-        parser.add_argument("--model_type", type=str, default=self.model_type,
-                            choices=["swiftvln_qwen2_5_vl", "swiftvln_qwen3_vl"],
-                            help="Registered SwiftVLN model type")
-        parser.add_argument("--template_type", type=str, default=self.template_type,
-                            choices=["swiftvln_qwen2_5_vl", "swiftvln_qwen3_vl"],
-                            help="Registered SwiftVLN template type")
-        parser.add_argument("--num_overlap", type=int, default=0,
-                            help="Number of overlapping actions between windows")
-        parser.add_argument("--use_tome", action="store_true",
-                            help="Use GridToMe compression instead of average pooling (per_frame mode)")
-        parser.add_argument("--verbose", action="store_true",
-                            help="Enable verbose output during evaluation")
-        
-        # System prompt setting
-        parser.add_argument("--system_prompt_setting", type=str, default="vanilla",
-                            choices=["vanilla", "initial"],
-                            help="System prompt strategy: 'vanilla' (default) or 'initial' "
-                                 "(add first frame as uncompressed initial observation)")
-        parser.add_argument("--memory_method", type=str, default="history",
-                            choices=["history", "map"],
-                            help="History memory source: raw history frames or SatNav explored maps")
-        parser.add_argument("--map_global_side_m", type=float, default=1000.0,
-                            help="[map] Global explored-map side length in meters")
-        parser.add_argument("--map_local_side_m", type=float, default=400.0,
-                            help="[map] Local explored-map side length in meters")
-        parser.add_argument("--map_render_px", type=int, default=448,
-                            help="[map] Render resolution for each map image")
-        parser.add_argument("--map_mask_method", type=str, default="dilate20",
-                            help="[map] Explored-area mask rule, e.g. strict or dilate20")
-        
-        # History processor type
-        parser.add_argument("--history_processor_type", type=str, default="per_frame",
-                            choices=["per_frame", "gtc", "segment_gtc"],
-                            help="History processing method: 'per_frame' (default), 'gtc' (Global Token Clustering), 'segment_gtc' (Segment-wise GTC)")
-        
-        # Per-frame specific arguments
-        parser.add_argument("--log_base", type=float, default=1.0,
-                            help="[Per-frame] Sampling distribution: 1.0=uniform, >1.0=logarithmic (more recent frames)")
-        parser.add_argument("--use_random", action="store_true",
-                            help="[Per-frame] Use random history sampling without replacement (must match training)")
-        
-        # GTC-specific arguments
-        parser.add_argument("--gtc_output_tokens", type=int, default=512,
-                            help="[GTC] Fixed number of output tokens for clustering")
-        parser.add_argument("--gtc_temperature", type=float, default=0.1,
-                            help="[GTC] Temperature for soft assignment (lower = sharper)")
-        parser.add_argument("--gtc_num_iterations", type=int, default=1,
-                            help="[GTC] Number of soft k-means iterations")
-        parser.add_argument("--use_pose_embed", action="store_true",
-                            help="Enable pose embedding enhancement (must match training)")
-        parser.add_argument("--use_uav_adapter", action="store_true",
-                            help="Enable Stage-A UAV adapter enhancement (must match training)")
-        parser.add_argument("--uav_adapter_path", type=str, default="",
-                            help="Optional external Stage-A checkpoint (.pt or s2r output dir)")
-        parser.add_argument("--uav_adapter_type", type=str, default="transformer_v1",
-                            help="UAV adapter implementation type")
-        parser.add_argument("--uav_adapter_apply_scope", type=str, default="all_images",
-                            help="Where to apply the UAV adapter. Current implementation uses all_images.")
-        parser.add_argument("--pose_fusion_method", type=str, default="additive",
-                            choices=["additive", "film"],
-                            help="Pose embedding fusion method")
-        parser.add_argument("--pose_norm_scale", type=float, default=100.0,
-                            help="tanh normalization scale for pose position components")
-    
-    def get_summary_extras(self):
-        """Add SwiftVLN-specific summary fields."""
-        extras = super().get_summary_extras()
+def create_eval_parser() -> argparse.ArgumentParser:
+    """Build the single supported SwiftVLN evaluation interface."""
+    parser = argparse.ArgumentParser(
+        description="SwiftVLN Multi-Environment Evaluation"
+    )
+    parser.add_argument(
+        "--model_path",
+        required=True,
+        help="Path to a SwiftVLN checkpoint or HF model directory",
+    )
+    parser.add_argument(
+        "--model_type",
+        default=DEFAULT_MODEL_TYPE,
+        choices=["swiftvln_qwen2_5_vl", "swiftvln_qwen3_vl"],
+        help="Registered SwiftVLN model type",
+    )
+    parser.add_argument(
+        "--template_type",
+        default=DEFAULT_MODEL_TYPE,
+        choices=["swiftvln_qwen2_5_vl", "swiftvln_qwen3_vl"],
+        help="Registered SwiftVLN template type",
+    )
 
-        for field_name in (
-            'model_type',
-            'template_type',
-            'num_overlap',
-            'history_processor_type',
-            'system_prompt_setting',
-            'memory_method',
-            'use_pose_embed',
-            'use_uav_adapter',
-            'uav_adapter_type',
-            'uav_adapter_apply_scope',
-            'pose_fusion_method',
-            'pose_norm_scale',
-        ):
-            if hasattr(self.args, field_name):
-                extras[field_name] = getattr(self.args, field_name)
+    environment = parser.add_argument_group("environment")
+    environment.add_argument(
+        "--env-type",
+        default="habitat",
+        choices=["habitat", "satnav"],
+        help="Evaluation environment",
+    )
+    environment.add_argument(
+        "--habitat_config_path",
+        default="configs/vln_r2r.yaml",
+        help="Habitat YAML path relative to the SwiftVLN package or repository",
+    )
+    environment.add_argument(
+        "--satnav-config",
+        default="configs/satnav_task.yaml",
+        help="SatNav YAML path relative to the SwiftVLN package or repository",
+    )
+    environment.add_argument(
+        "--eval_split",
+        default="val_unseen",
+        help="Dataset split to evaluate",
+    )
 
-        if getattr(self.args, 'memory_method', 'history') == 'map':
-            for field_name, default_value in (
-                ('map_global_side_m', 1000.0),
-                ('map_local_side_m', 400.0),
-                ('map_render_px', 448),
-                ('map_mask_method', 'dilate20'),
-            ):
-                extras[field_name] = getattr(self.args, field_name, default_value)
+    window = parser.add_argument_group("window and memory")
+    window.add_argument("--num_frames", type=int, default=32)
+    window.add_argument("--num_history", type=int, default=8)
+    window.add_argument("--num_future_steps", type=int, default=4)
+    window.add_argument("--num_overlap", type=int, default=0)
+    window.add_argument(
+        "--memory_method",
+        default="history",
+        choices=["history", "map"],
+        help="Use history frames or SatNav explored maps as memory",
+    )
+    window.add_argument(
+        "--history_processor_type",
+        default="per_frame",
+        choices=["per_frame", "gtc", "segment_gtc"],
+    )
+    window.add_argument("--compress_stride", type=int, default=2)
+    window.add_argument("--log_base", type=float, default=1.0)
+    window.add_argument("--use_random", action="store_true")
+    window.add_argument("--use_tome", action="store_true")
+    window.add_argument("--gtc_output_tokens", type=int, default=512)
+    window.add_argument("--gtc_temperature", type=float, default=0.1)
+    window.add_argument("--gtc_num_iterations", type=int, default=1)
+    window.add_argument(
+        "--system_prompt_setting",
+        default="vanilla",
+        choices=["vanilla", "initial"],
+    )
 
-        if hasattr(self.args, 'uav_adapter_path') and self.args.uav_adapter_path:
-            extras['uav_adapter_path'] = self.args.uav_adapter_path
+    map_group = parser.add_argument_group("map memory")
+    map_group.add_argument("--map_global_side_m", type=float, default=1000.0)
+    map_group.add_argument("--map_local_side_m", type=float, default=400.0)
+    map_group.add_argument("--map_render_px", type=int, default=448)
+    map_group.add_argument("--map_mask_method", default="dilate20")
 
-        history_type = getattr(self.args, 'history_processor_type', 'per_frame')
+    embedding = parser.add_argument_group("embedding enhancement")
+    embedding.add_argument("--use_pose_embed", action="store_true")
+    embedding.add_argument("--use_uav_adapter", action="store_true")
+    embedding.add_argument("--uav_adapter_path", default="")
+    embedding.add_argument("--uav_adapter_type", default="transformer_v1")
+    embedding.add_argument("--uav_adapter_apply_scope", default="all_images")
+    embedding.add_argument(
+        "--pose_fusion_method",
+        default="additive",
+        choices=["additive", "film"],
+    )
+    embedding.add_argument("--pose_norm_scale", type=float, default=100.0)
 
-        # Add processor-specific fields
-        if history_type in ('gtc', 'segment_gtc'):
-            for field_name in (
-                'gtc_output_tokens',
-                'gtc_temperature',
-                'gtc_num_iterations',
-            ):
-                if hasattr(self.args, field_name):
-                    extras[field_name] = getattr(self.args, field_name)
-        else:
-            # per_frame
-            for field_name in ('log_base', 'use_random', 'use_tome'):
-                if hasattr(self.args, field_name):
-                    extras[field_name] = getattr(self.args, field_name)
-        return extras
+    output = parser.add_argument_group("output and execution")
+    output.add_argument(
+        "--output_dir",
+        default=f"./results/eval/{DEFAULT_MODEL_TYPE}",
+    )
+    output.add_argument("--save_video", action="store_true")
+    output.add_argument("--video_compression", action="store_true")
+    output.add_argument("--distributed", action="store_true")
+    output.add_argument("--max_episodes", type=int)
+    output.add_argument("--debug_timing", action="store_true")
+    output.add_argument("--verbose", action="store_true")
+    return parser
 
-    def validate_args(self):
-        """Apply the same cross-field rules used by train and name parsing."""
-        SwiftVLNExperimentSpec.from_runtime_flags(
-            env_type=self.args.env_type,
-            model_family=(
-                "qwen3_vl"
-                if self.args.model_type == "swiftvln_qwen3_vl"
-                else "qwen2_5_vl"
-            ),
-            num_frames=self.args.num_frames,
-            num_future_steps=self.args.num_future_steps,
-            num_overlap=self.args.num_overlap,
-            memory_method=self.args.memory_method,
-            history_processor_type=self.args.history_processor_type,
-            num_history=self.args.num_history,
-            log_base=self.args.log_base,
-            use_random=self.args.use_random,
-            compress_stride=self.args.compress_stride,
-            use_tome=self.args.use_tome,
-            gtc_output_tokens=self.args.gtc_output_tokens,
-            gtc_temperature=self.args.gtc_temperature,
-            gtc_num_iterations=self.args.gtc_num_iterations,
-            map_global_side_m=self.args.map_global_side_m,
-            map_local_side_m=self.args.map_local_side_m,
-            map_render_px=self.args.map_render_px,
-            map_mask_method=self.args.map_mask_method,
-            system_prompt_setting=self.args.system_prompt_setting,
-            use_pose_embed=self.args.use_pose_embed,
-            use_uav_adapter=self.args.use_uav_adapter,
-            pose_fusion_method=self.args.pose_fusion_method,
+
+def validate_eval_args(args: argparse.Namespace) -> None:
+    """Apply the shared train/name/eval cross-field rules."""
+    SwiftVLNExperimentSpec.from_runtime_flags(
+        env_type=args.env_type,
+        model_family=(
+            "qwen3_vl" if args.model_type == "swiftvln_qwen3_vl" else "qwen2_5_vl"
+        ),
+        num_frames=args.num_frames,
+        num_future_steps=args.num_future_steps,
+        num_overlap=args.num_overlap,
+        memory_method=args.memory_method,
+        history_processor_type=args.history_processor_type,
+        num_history=args.num_history,
+        log_base=args.log_base,
+        use_random=args.use_random,
+        compress_stride=args.compress_stride,
+        use_tome=args.use_tome,
+        gtc_output_tokens=args.gtc_output_tokens,
+        gtc_temperature=args.gtc_temperature,
+        gtc_num_iterations=args.gtc_num_iterations,
+        map_global_side_m=args.map_global_side_m,
+        map_local_side_m=args.map_local_side_m,
+        map_render_px=args.map_render_px,
+        map_mask_method=args.map_mask_method,
+        system_prompt_setting=args.system_prompt_setting,
+        use_pose_embed=args.use_pose_embed,
+        use_uav_adapter=args.use_uav_adapter,
+        pose_fusion_method=args.pose_fusion_method,
+    )
+
+
+def build_summary_extras(args: Any) -> dict[str, Any]:
+    """Select configuration fields persisted in ``evaluation_summary.json``."""
+    fields = (
+        "model_type",
+        "template_type",
+        "num_frames",
+        "compress_stride",
+        "num_overlap",
+        "history_processor_type",
+        "system_prompt_setting",
+        "memory_method",
+        "use_pose_embed",
+        "use_uav_adapter",
+        "uav_adapter_type",
+        "uav_adapter_apply_scope",
+        "pose_fusion_method",
+        "pose_norm_scale",
+    )
+    extras = {field: getattr(args, field) for field in fields}
+    if args.memory_method == "map":
+        extras.update(
+            {
+                "map_global_side_m": args.map_global_side_m,
+                "map_local_side_m": args.map_local_side_m,
+                "map_render_px": args.map_render_px,
+                "map_mask_method": args.map_mask_method,
+            }
         )
-    
-    def register_module(self):
-        """Import SwiftVLN module to register model."""
-        importlib.import_module('swiftvln.model')
-
-    def load_model(self):
-        """Load model and processor with optional embedding enhancements."""
-        from swift.model import get_model_processor
-
-        # Device mapping based on mode
-        if self.world_size > 1:
-            device_map = {'': self.local_rank}
-        else:
-            device_map = 'auto'
-
-        model, processor = get_model_processor(
-            model_id_or_path=self.args.model_path,
-            model_type=self.args.model_type,
-            torch_dtype=torch.bfloat16,
-            device_map=device_map,
-            attn_impl='flash_attn',
-            use_pose_embed=getattr(self.args, 'use_pose_embed', False),
-            use_uav_adapter=getattr(self.args, 'use_uav_adapter', False),
-            uav_adapter_path=getattr(self.args, 'uav_adapter_path', ''),
-            uav_adapter_type=getattr(self.args, 'uav_adapter_type', 'transformer_v1'),
-            uav_adapter_apply_scope=getattr(self.args, 'uav_adapter_apply_scope', 'all_images'),
-            pose_fusion_method=getattr(self.args, 'pose_fusion_method', 'additive'),
-            pose_norm_scale=getattr(self.args, 'pose_norm_scale', 100.0),
+    if args.uav_adapter_path:
+        extras["uav_adapter_path"] = args.uav_adapter_path
+    if args.history_processor_type in {"gtc", "segment_gtc"}:
+        extras.update(
+            {
+                "gtc_output_tokens": args.gtc_output_tokens,
+                "gtc_temperature": args.gtc_temperature,
+                "gtc_num_iterations": args.gtc_num_iterations,
+            }
         )
-        return model, processor
-    
-    def load_template(self, processor):
-        """Load SwiftVLN template."""
-        from swift.template import get_template
-        
-        template = get_template(
-            template_type=self.args.template_type,
-            processor=processor
+    else:
+        extras.update(
+            {
+                "log_base": args.log_base,
+                "use_random": args.use_random,
+                "use_tome": args.use_tome,
+            }
         )
-        
-        return template
-    
-    @property
-    def evaluator_class(self):
-        """Lazy load evaluator class to avoid circular imports."""
-        from swiftvln.model.evaluator import SwiftVLNEvaluator
-        return SwiftVLNEvaluator
+    return extras
 
 
-def main():
-    eval_runner = SwiftVLNEval()
-    eval_runner.run()
+def parse_eval_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = create_eval_parser()
+    args = parser.parse_args(argv)
+    try:
+        validate_eval_args(args)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return args
+
+
+def main() -> None:
+    args = parse_eval_args()
+    SwiftVLNEvaluationRunner(args, build_summary_extras(args)).run()
 
 
 if __name__ == "__main__":
