@@ -453,7 +453,7 @@ class BaseVLNEvaluator(ABC):
             if len(topdown_frames) < step_id:
                 topdown_frames.append(rgb_fallback.copy())
                 
-        except Exception as e:
+        except Exception:
             # Use rgb_fallback on any error
             if len(topdown_frames) < step_id:
                 topdown_frames.append(rgb_fallback.copy())

@@ -1468,9 +1468,6 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
         
         max_steps = env_wrapper.max_steps
         
-        # Track exception for graceful handling after video save
-        episode_exception = None
-        
         # Debug landmark tracking
         debug_state = None
         if self._is_debug_landmark_enabled():
@@ -1653,8 +1650,6 @@ class SwiftVLNEvaluator(BaseVLNEvaluator):
                 timing_stats['error_analysis'] = time.time() - t0
         
         except Exception as e:
-            # Store exception info for logging
-            episode_exception = e
             # Try to get metrics even on error (contains last known distance_to_goal)
             try:
                 metrics = env_wrapper.get_metrics()
