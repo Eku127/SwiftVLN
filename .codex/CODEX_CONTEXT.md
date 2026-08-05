@@ -33,10 +33,10 @@
 
 - `src/swiftvln/model/`：SwiftVLN 主线模型、训练和评测实现；评测职责分为
   `evaluator.py`（环境 episode loop）、`inference.py`（frame/history/prompt/window）和
-  `diagnostics.py`（可选 map/initial/timing 诊断）
+  `diagnostics.py`（可选 map/initial/timing 诊断）；训练参数和 dataset hook 直接位于
+  `arguments.py` / `trainer.py`，不经过仓库内单实现 Base 层
 - `src/swiftvln/cli.py`：单模型 CLI，直接分发 SwiftVLN 与 queue；无 model registry/runner 中间层
 - `src/swiftvln/experiment.py`：train/eval 共用的 ExperimentSpec、约束和模型名 codec
-- `src/swiftvln/common/training/`：arguments / base SFT / dataset 公共层
 - `src/swiftvln/common/eval/`：runner / evaluator / reporting 公共层
 - `src/swiftvln/common/env/`：Habitat / SatNav 环境抽象
 - `src/swiftvln/common/history_processors/`：history 压缩实现
