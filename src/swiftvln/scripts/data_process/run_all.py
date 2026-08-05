@@ -4,12 +4,10 @@
 
 Usage:
     python run_all.py ver_260202
-    python run_all.py ver_260202 --episodes-only
 """
 
 import argparse
 import sys
-from pathlib import Path
 
 try:
     from .config import get_data_dir, get_dataset_path, TRAIN_CITIES, EVAL_CITIES
@@ -21,16 +19,12 @@ except ImportError:
     from normalize_trajectory_types import normalize_dataset
 
 
-def run_all(
-    version: str,
-    episodes_only: bool = False,
-):
+def run_all(version: str):
     """
     运行所有数据处理步骤
     
     Args:
         version: 数据集版本名称
-        episodes_only: 只处理episodes
     """
     dataset_path = get_dataset_path(version)
     data_dir = get_data_dir(version)
@@ -103,17 +97,9 @@ def main():
         type=str,
         help="数据集版本名称 (e.g., ver_260202)"
     )
-    parser.add_argument(
-        "--episodes-only",
-        action="store_true",
-        help="只处理episodes"
-    )
     args = parser.parse_args()
 
-    run_all(
-        version=args.version,
-        episodes_only=args.episodes_only,
-    )
+    run_all(version=args.version)
 
 
 if __name__ == "__main__":

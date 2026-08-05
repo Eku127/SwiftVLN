@@ -354,23 +354,3 @@ class HistoryTokenCompressor:
         out = torch.mm(attn.T.to(dtype), features)
         
         return out
-    
-    def get_compressed_length(self, original_length: int, stride: int = None) -> int:
-        """
-        Calculate the compressed sequence length (approximate, for pooling).
-        
-        DEPRECATED: Use get_compressed_token_count() instead for accurate calculation.
-        
-        Args:
-            original_length: Original number of tokens
-            stride: Pooling stride (if None, uses self.stride)
-        
-        Returns:
-            Compressed sequence length
-        """
-        if stride is None:
-            stride = self.stride
-        
-        # For a square grid, compression ratio is stride^2
-        compression_ratio = stride ** 2
-        return original_length // compression_ratio
