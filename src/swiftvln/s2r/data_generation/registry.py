@@ -21,9 +21,6 @@ DATASET_COMMANDS: Dict[str, Dict[str, str]] = {
         "pipeline": f"{_PACKAGE}.sues.pipeline",
         "center_recrop_pairs": f"{_PACKAGE}.center_recrop_pairs",
         "sample_preview": f"{_PACKAGE}.sample_preview",
-        "merge_variants_dense_style": (
-            f"{_PACKAGE}.sues.merge_variants_dense_style"
-        ),
         "merge_variants": f"{_PACKAGE}.merge_variants",
     },
     "uavvisloc": {

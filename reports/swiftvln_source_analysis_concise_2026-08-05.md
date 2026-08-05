@@ -12,8 +12,8 @@
 
 - P0 已完成：17 服务器 Docker bootstrap、eval-time template 清理、两个
   `__init__.py` facade 收缩、UAV 测试迁移和模型文档收口均已落地并验证。
-- 应先合并再删除：4 个 `sample_preview.py`、2 个 `center_recrop_pairs.py`、
-  SUES 专用 variant merge。
+- P1 已完成：4 个 preview、2 个 recrop 与 SUES 专用 variant merge 均先迁移到
+  共享实现并通过等价 contract，再删除旧文件。
 - 已完成文档收口：`model/doc/OVERVIEW.md` 已按当前架构重写，独立
   `model/doc/pose_embed.md` 的有效内容并入后删除。
 - 不应作为“死代码”删除：history/map/pose/UAV、Habitat 支持、诊断、视频、
@@ -184,7 +184,7 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 | --- | ---: | --- |
 | 四个 `*/sample_preview.py` | **已完成**：合并为根目录 `sample_preview.py` 的 schema-aware renderer。 | DenseUAV/GTA-UAV/SUES/UAV-VisLoc adapter 只负责分组、字段、路径和 label；registry、launcher、SUES pipeline、README/config 已迁移，四个旧文件删除。四类合成 contract 与 `/mnt/data3/.../SatDronePair/{denseuav,gta,sues,uavvisloc}` 真实 schema 抽样均成功输出 JPEG。 |
 | SUES/UAV-VisLoc `center_recrop_pairs.py` | **已完成**：合并为根目录共享实现并删除两个旧 wrapper。 | `PairSchema` 自动适配 `satellite_file/drone_file` 与 `export_*_path`，统一 image recrop、CSV 复制和 metadata 写入；两个 registry 命令与 YAML/README 接口保持不变，3 项双 schema contract 通过。 |
-| `sues/merge_variants_dense_style.py` 与通用 `merge_variants.py` | 226 + 274 行 | 给通用命令增加 one-root/variant-map 模式；迁移现有 SUES 命令和文档后删专用实现。 |
+| `sues/merge_variants_dense_style.py` 与通用 `merge_variants.py` | **已完成**：通用命令增加 one-root/variant-map 模式，专用实现删除。 | SUES 已迁到 `merge_variants --dataset-dir --variant-map`，UAV-VisLoc 原 `--variant NAME=DIR` 模式保持；registry、README/config 已移除旧命令，两种输入模式均有 materialization/schema/metadata contract。 |
 
 这些文件都被 registry、README 或 SUES pipeline 使用，不能先删再补。它们是“重复实现”，
 不是“未使用文件”。

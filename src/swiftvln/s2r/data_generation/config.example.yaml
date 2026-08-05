@@ -54,12 +54,13 @@ DATASETS:
         heights: "150,200,250,300"
         nadir_min_conf: 0.30
         crop_sizes: "384,256"
-    merge_variants_dense_style:
+    merge_variants:
       input:
         dataset_dir: /path/to/SatDronePair-work/sues_export
       output:
         output_dir: /path/to/SatDronePair/sues
       args:
+        variant_map: orig:satellite:drone,crop384:satellite_crop384:drone_crop384,crop256:satellite_crop256:drone_crop256
         mode: link
     sample_preview:
       input:

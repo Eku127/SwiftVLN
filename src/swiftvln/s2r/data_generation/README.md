@@ -94,8 +94,9 @@ swiftvln s2r-data sues pipeline \
   --nadir-min-conf 0.30 \
   --skip-preview
 
-swiftvln s2r-data sues merge_variants_dense_style \
+swiftvln s2r-data sues merge_variants \
   --dataset-dir "$PAIR_WORK/sues_export" \
+  --variant-map "orig:satellite:drone,crop384:satellite_crop384:drone_crop384,crop256:satellite_crop256:drone_crop256" \
   --output-dir "$PAIR_ROOT/sues"
 ```
 
