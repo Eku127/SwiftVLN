@@ -24,28 +24,27 @@
 - 推理部署包已有独立构建 profile，排除 S2R 数据生产目录，同时保留 Stage-B UAV、
   Habitat、视频和正式环境配置；完整仓库仍保留数据复现工具。
 
-在不取消现有能力的前提下，P0 清理预计可从安装包移出或删除约 200–300 行代码，
-并压缩 600 行以上过时文档；完成 P1 合并后，预计还可净减约 500–700 行重复代码。
+本轮落地后，`src/swiftvln` 从快照时的 106 个文件、23,173 行收缩为 98 个文件、
+21,774 行，净减 8 个文件、1,399 行；仓库外新增的 inference packaging profile 和
+顶层 contract tests 不计入该源码范围。
 
 ## 当前规模与核验方式
 
 | 区域 | 文件数 | 行数 | 主要职责 |
 | --- | ---: | ---: | --- |
-| 包根 | 4 | 709 | CLI、实验规格与模型名 codec |
-| `common/` | 28 | 3,703 | 环境、评测结果、history、embedding、工具 |
+| 包根 | 4 | 719 | CLI、实验规格与模型名 codec |
+| `common/` | 27 | 3,396 | 环境、评测结果、history、embedding、工具 |
 | `configs/` | 5 | 303 | SatNav/Habitat 正式与 smoke 配置 |
 | `habitat_extensions/` | 2 | 59 | 自定义 Habitat measures |
-| `model/` | 17 | 8,067 | 模型、训练、推理、评测、诊断、文档与入口 |
-| `s2r/` | 35 | 6,949 | Stage-A/Stage-B 与四类数据转换 |
-| `scripts/` | 15 | 3,383 | 数据、同步、train/eval queue、Docker |
-| **合计** | **106** | **23,173** | 85 Python、12 shell、6 YAML、3 Markdown |
+| `model/` | 15 | 7,212 | 模型、训练、推理、评测、诊断、文档与入口 |
+| `s2r/` | 30 | 6,738 | Stage-A/Stage-B 与四类数据转换 |
+| `scripts/` | 15 | 3,347 | 数据、同步、train/eval queue、Docker |
+| **合计** | **98** | **21,774** | 78 Python、12 shell、6 YAML、2 Markdown |
 
 检查依据：逐文件阅读入口与关键实现、全仓引用检索、动态注册表核对、当前 context/
-skills/tests 交叉核对。85 个 Python 文件均通过 AST 解析，12 个 shell 文件均通过
-`bash -n`，Ruff `F401/F841` 无告警。
-
-已在仓库规定的 `swift-vln-eval-update` 环境运行完整 contract suite：59 项通过。
-后续清理落地后仍需追加一次 train→eval smoke。
+skills/tests 交叉核对。最终对源码、tests 和 packaging 共 101 个 Python 文件执行 AST
+解析，12 个 shell 文件通过 `bash -n`，Ruff `F401/F841` 无告警；完整 contract suite
+为 78/78。变更前、变更后的 SatNav train→eval smoke 均完成且指标逐值一致。
 
 ## 变更前 SatNav train→eval smoke 基线
 
@@ -60,7 +59,28 @@ skills/tests 交叉核对。85 个 Python 文件均通过 AST 解析，12 个 sh
 - checkpoint：`output/swiftvln/swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-210207/v0-20260805-210217/checkpoint-1`；配置和 2 个 safetensors shard 完整，训练 loss 为 `1.29994798`。
 - `val_seen`：10 episodes，SR `0.00%`、SPL `0.0000`、OS `0.00%`、NE `209.67844198863096m`、平均 `170.0` steps；摘要位于 `results/eval/swiftvln/<模型名>/val_seen/20260805_210539/evaluation_summary.json`。
 - `val_unseen`：10 episodes，SR `0.00%`、SPL `0.0000`、OS `0.00%`、NE `19.665423601546554m`、平均 `16.5` steps；摘要位于 `results/eval/swiftvln/<模型名>/val_unseen/20260805_210856/evaluation_summary.json`。
-- 日志：`/tmp/smoke_swiftvln_pre_p0p1_train_20260805.log`、`/tmp/smoke_swiftvln_pre_p0p1_eval_20260805.log`。smoke 产物按 skill 约定保留，供变更后对照。
+- 日志：`/tmp/smoke_swiftvln_pre_p0p1_train_20260805.log`、`/tmp/smoke_swiftvln_pre_p0p1_eval_20260805.log`。完成变更后对照后，checkpoint、结果和日志均已按要求删除。
+
+## 变更后 SatNav train→eval smoke
+
+全部重构完成后用相同的 2-GPU、16 条训练样本、每 split 10 episodes 与
+`EMBEDDING_MODE=none` 口径重新执行 train→checkpoint→`val_seen + val_unseen`：
+
+- 模型名：`swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-213624`。
+- checkpoint：`output/swiftvln/<模型名>/v0-20260805-213633/checkpoint-1`；
+  `config.json` 和 2 个 safetensors shard 完整，训练 loss 为 `1.29994798`。
+- `val_seen`：10 episodes，SR `0.00%`、SPL `0.0000`、OS `0.00%`、
+  NE `209.67844198863096m`、平均 `170.0` steps；原摘要目录时间戳为
+  `val_seen/20260805_213856`。
+- `val_unseen`：10 episodes，SR `0.00%`、SPL `0.0000`、OS `0.00%`、
+  NE `19.665423601546554m`、平均 `16.5` steps；原摘要目录时间戳为
+  `val_unseen/20260805_214216`。
+- 两个 split 的五项指标与变更前基线逐值一致；20 条 public result 均不含已删除的
+  失败分类字段，train/eval 日志无 `Traceback`、`RuntimeError` 或
+  `ChildFailedError`。
+- 原日志：`/tmp/smoke_swiftvln_post_p0p1_train_20260805_213612.log`、
+  `/tmp/smoke_swiftvln_post_p0p1_eval_20260805_213612.log`。核验完成后，本次及变更前
+  smoke 的 checkpoint、结果和日志均已精确清理。
 
 ## 功能总览
 
