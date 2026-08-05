@@ -55,7 +55,6 @@ SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 source "${SCRIPT_DIR}/eval_lib.sh"
 EVAL_BY_NAME_SCRIPT="${SCRIPT_DIR}/eval_by_name.sh"
-COLLECT_SCRIPT="${SCRIPT_DIR}/collect_eval_results.py"
 EVAL_QUEUE_DIR="${EVAL_QUEUE_DIR:-${SWIFTVLN_ROOT}/runtime/eval_queue}"
 TODO_FILE="${EVAL_QUEUE_DIR}/eval_todo.txt"
 DONE_FILE="${EVAL_QUEUE_DIR}/eval_done.txt"
@@ -125,9 +124,6 @@ mark_model_failed() {
 if [ ! -f "$EVAL_BY_NAME_SCRIPT" ]; then
     print_error "找不到 eval_by_name.sh: $EVAL_BY_NAME_SCRIPT"
     exit 1
-fi
-if [ ! -f "$COLLECT_SCRIPT" ]; then
-    print_warning "找不到收集脚本: $COLLECT_SCRIPT (将跳过CSV收集)"
 fi
 
 # ============================================================================
@@ -391,23 +387,6 @@ run_evaluation() {
         EXP_RESULTS+=("$exp_idx|$model|SUCCESS|$duration_str|SR:$sr SPL:$spl NE:$ne")
         RESULT_PATHS+=("$exp_idx|$model|${_paths_str:-${result_path:-N/A}}")
         print_success "评估 $exp_idx 完成! 耗时: $duration_str"
-
-        # 自动收集到 results/eval_collected/<split>/eval_results.csv
-        # 对每个实际评测的 split 分别收集
-        if [[ -f "$COLLECT_SCRIPT" ]]; then
-            for _sp in "${_split_result_paths[@]}"; do
-                local _sname="${_sp%%|*}"
-                local _spath="${_sp##*|}"
-                if [[ "$_spath" != "N/A" && -d "$_spath" ]]; then
-                    python3 "$COLLECT_SCRIPT" \
-                        --model-name "$model" \
-                        --result-path "$_spath" \
-                        --eval-split "$_sname" \
-                        --output-dir "${SWIFTVLN_ROOT}/results/eval_collected" >/dev/null 2>&1 || \
-                        print_warning "CSV收集失败 [${_sname}]: $model"
-                fi
-            done
-        fi
         
         return 0
     else

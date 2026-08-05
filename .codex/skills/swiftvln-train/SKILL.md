@@ -1,11 +1,11 @@
 ---
 name: swiftvln-train
-description: "Launch VLN training with tmux-based async execution and watchdog monitoring. Supports multi-server parallel launch and Codex callbacks on completion/failure/stall."
+description: "Launch VLN training with tmux-based async execution and direct status checks. Supports multi-server parallel launch and automatic eval enqueue after successful training."
 ---
 
 # SwiftVLN Train Skill
 
-Launch VLN training on one or more servers. Codex acts as a **launch operator**: confirm plan, pick hosts, start training in tmux, register watchdog, do quick health check, then exit. The watchdog runs in background and records key events for Codex callbacks and later inspection.
+Launch VLN training on one or more servers. Codex acts as a **launch operator**: confirm the plan, pick hosts, start training in tmux, and verify the process through tmux output and queue status files.
 
 Related skills:
 - **`swiftvln-eval`**: run eval after training completes (triggered manually or by user).
@@ -146,7 +146,6 @@ Before starting, confirm with the user:
 ## Step 4 → Launch Training in tmux (per server)
 
 > **All training must be launched in tmux.** For each server, create a separate tmux session.
-> **⚠️ Step 4 和 Step 5 是原子操作：启动 tmux 后必须立即注册 watchdog，不可跳过。**
 
 ### tmux naming
 
@@ -196,52 +195,9 @@ ssh 10.246.132.17 "docker exec -d streamvln-container bash -c \
 
 **Record**: tmux session name, host, log path, start time for each server.
 
-## Step 5 → Register Watchdog & Quick Health Check (MANDATORY)
+## Step 5 → Quick Health Check
 
-> **🚨 此步骤为 MANDATORY（强制），不可跳过。**
-> Watchdog 负责：训练结束/崩溃/停滞时写入状态并触发可选 Codex 回调，训练结束后**自动退出**。
-
-### 5.1 — 注册 watchdog（每台服务器各一个）
-
-Watchdog 必须运行在**与 tmux session 相同的服务器上**。
-
-**训练在 98 上（本地启动）：**
-
-```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
-nohup bash "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/train_watchdog.sh" \
-  --tmux-session "${session_name}" \
-  --train-log "${run_log}" \
-  --on-all-done notify \
-  --cleanup-days 7 \
-  > /dev/null 2>&1 &
-WATCHDOG_PID=$!
-echo "Watchdog PID=${WATCHDOG_PID}"
-```
-
-**训练在 73 或 17 上（SSH 到对应服务器启动）：**
-
-```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
-ssh 10.246.152.73 "cd ${SWIFTVLN_ROOT} && \
-  nohup bash src/swiftvln/scripts/train/train_watchdog.sh \
-    --tmux-session '${session_name}' \
-    --train-log '${run_log}' \
-    --on-all-done notify \
-    --cleanup-days 7 \
-    > /dev/null 2>&1 & echo \$!"
-```
-
-### 5.2 — 验证 watchdog 存活
-
-```bash
-sleep 2
-kill -0 "$WATCHDOG_PID" 2>/dev/null && echo "✅ Watchdog alive (PID=${WATCHDOG_PID})" || echo "❌ Watchdog failed"
-```
-
-如果失败：检查脚本路径和 tmux session 名称是否正确，重新注册。
-
-### 5.3 — Quick health check（1-2 轮）
+启动后检查 1–2 轮，确认 tmux 存活、训练日志开始推进且没有立即报错：
 
 ```bash
 # tmux alive?
@@ -251,31 +207,18 @@ tmux has-session -t "${session_name}" 2>/dev/null && echo "OK"
 tmux capture-pane -pt "${session_name}" -S -30 2>/dev/null | tail -30
 ```
 
+远程任务通过对应 SSH 主机执行同样的 `tmux has-session` 和 `capture-pane` 检查。若用户要求持续监控，继续轮询 tmux、训练日志以及 `runtime/train_queue/train_queue_last_run_<hostname>.json`；不要启动额外后台监控脚本。
+
 ## Step 6 → Report & Exit
 
 Report to user:
 
 - Training running on server(s) `<hosts>` in tmux session(s) `<names>`
-- **Watchdog PID**: `<pid>`（若为空则说明 Step 5 未执行）
 - 进度查看：`tmux attach -t <name>`
-- Watchdog 日志：`runtime/train_queue/runs/<hostname>_<session>/watchdog.log`
-- 训练完成/崩溃/停滞时：查看 watchdog 状态与日志
+- 启动日志：`logs/train_launch/<session>.log`
+- 完成状态：`runtime/train_queue/train_queue_last_run_<hostname>.json`
 
-**The Codex session can safely end here.**
-
----
-
-## Per-Run Directory Structure
-
-```
-runtime/train_queue/runs/<hostname>_<session_name>/
-├── watchdog_result.json       watchdog 最终状态
-├── watchdog.log               watchdog 运行日志
-├── train_queue_status.json    train_queue.sh 写入
-└── train_events.log           实验事件（SUCCESS/FAILED/QUEUE_DONE）
-```
-
-Auto-cleanup: watchdog cleans dirs older than 7 days at startup.
+训练成功后 `train_queue.sh` 会继续自动加入 eval todo；启动 eval worker 是独立操作，不依赖训练 sidecar。
 
 ---
 
@@ -284,7 +227,6 @@ Auto-cleanup: watchdog cleans dirs older than 7 days at startup.
 | Purpose | Path |
 |---|---|
 | Training queue | `src/swiftvln/scripts/train/train_queue.sh` |
-| **Train watchdog** | `src/swiftvln/scripts/train/train_watchdog.sh` |
 | SwiftVLN single run | `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh` |
 | Eval todo queue | `runtime/eval_queue/eval_todo.txt` |
 | Eval enqueue helper | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
@@ -303,7 +245,7 @@ After training completes, `train_queue.sh` writes `train_metadata.json` to `$OUT
 }
 ```
 
-Downstream consumers: eval runner (`runner.py`) and CSV collector (`collect_eval_results.py`) both read this file for SwanLab URL.
+The eval result recorder reads this file to carry the SwanLab URL into `evaluation_summary.json`.
 
 ---
 
@@ -313,11 +255,9 @@ Downstream consumers: eval runner (`runner.py`) and CSV collector (`collect_eval
 2. **Always launch training in tmux**. Use naming: `train_<short_desc>_<HHMMSS>`.
 3. 默认不指定 GPU 参数时，训练脚本会自动使用当前环境里全部可见 GPU；不要再默认假设是 8 卡。
 4. 若用户指定卡数，用 `TRAIN_NUM_GPUS=<N>`；若用户指定具体卡位，用 `TRAIN_CUDA_DEVICES=<csv>`。
-5. **🚨 MANDATORY: tmux 启动后必须立即注册 watchdog（Step 5）并验证存活。** 不可跳过。
-6. **Watchdog 在 tmux session 结束后自动退出**，无需手动清理。
-7. **报告中必须包含 watchdog PID**。没有 PID 说明 Step 5 被跳过了。
-8. **Multi-server**: each server gets its own tmux session + watchdog. They run independently.
-9. **Prefer existing project scripts** over ad-hoc logic.
-10. **Eval enqueue is always a local file operation** (shared filesystem).
-11. **Do not commit** unless user explicitly asks.
-10. **Fail fast** on missing datasets, checkpoints, or conda envs.
+5. tmux 启动后必须执行 Step 5 的快速健康检查。
+6. **Multi-server**: each server gets its own tmux session and log file. They run independently.
+7. **Prefer existing project scripts** over ad-hoc logic.
+8. **Eval enqueue is always a local file operation** (shared filesystem).
+9. **Fail fast** on missing datasets, checkpoints, or conda envs.
+10. **Do not commit** unless user explicitly asks.

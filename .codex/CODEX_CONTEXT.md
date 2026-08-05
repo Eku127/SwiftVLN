@@ -49,7 +49,7 @@
 - `swiftvln.common` 顶层不提供跨子包 facade；内部代码直接从 `constants`、
   `env`、`eval`、`history_processors`、`utils` 等具体模块导入
 - `src/swiftvln/configs/`：主线配置
-- `src/swiftvln/scripts/`：训练、评测、数据处理、同步和监控入口
+- `src/swiftvln/scripts/`：训练、评测、数据处理和同步入口
 - `src/swiftvln/s2r/`：S2R Stage-A / Stage-B 相关实现
 - `baseline/{streamvln,navila,uninavid,openfly}/`：四个 SatNav baseline
 - `runtime/`：队列、计划、状态、临时运行元数据；不是长期实验归档
@@ -61,16 +61,13 @@
 | CLI | `src/swiftvln/cli.py`（安装后命令 `swiftvln`；train/eval 默认即 SwiftVLN） |
 | SwiftVLN 单次训练 | `src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh` |
 | SwiftVLN 训练队列 | `src/swiftvln/scripts/train/train_queue.sh` |
-| 训练 watchdog | `src/swiftvln/scripts/train/train_watchdog.sh` |
 | SwiftVLN 分布式评测 | `src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh` |
 | 按模型名评测 | `src/swiftvln/scripts/eval/eval_by_name.sh` |
 | Eval 队列 | `src/swiftvln/scripts/eval/eval_queue.sh` |
 | Eval 入队 | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
 | Eval 常驻 worker | `src/swiftvln/scripts/eval/start_eval_worker.sh` |
 | SatNav 全流程处理 | `src/swiftvln/scripts/data_process/run_all.py` |
-| SatNav 数据合并 | `src/swiftvln/scripts/data_process/merge_satnav_data.py` |
 | 数据同步 | `src/swiftvln/scripts/data_sync/*.sh` |
-| GPU 健康监控 | `src/swiftvln/scripts/monitor/gpu_health_monitor.sh` |
 | 实验计划 | `runtime/plans/` |
 | S2R 数据生产 | `swiftvln s2r-data ...` / `src/swiftvln/s2r/data_generation/` |
 | S2R Stage-A 训练/评测 | `src/swiftvln/s2r/trainer.py` / `src/swiftvln/s2r/eval.py` |
@@ -232,16 +229,12 @@ Eval 队列文件固定为：
 - scratch/continue、动作格式、采样和 checkpoint 加载差异以各 baseline 脚本、文档
   及对应 repo skill 为准，不在启动上下文重复维护。
 
-## Data Processing and Merge
+## Data Processing
 
 - SatNav 数据处理任务使用 `.codex/skills/satnav-data/SKILL.md`。
-- 两版本合并、overlap 分析或 episode ID remap 使用
-  `.codex/skills/merge-satnav-data/SKILL.md`。
-- 默认处理入口 `run_all.py` 会先标准化 trajectory type，再生成 episodes。
-- 合并必须先 analyze；identical overlap 去重，conflicting overlap 对 secondary
-  remap ID，并同步重写 trajectory summary、annotations 和 image directory。
-- 合并后必须校验 `scene_id + episode_id` 唯一，以及 summary / annotations /
-  images 三者严格对齐。
+- 默认处理入口 `run_all.py` 只根据 canonical `VLN_episodes.json` 生成 train、
+  val_seen 和 val_unseen episodes；不再原地迁移 trajectory type 或删除城市数据。
+- 输入数据必须在进入本仓库处理流程前满足公开 SatNav schema。
 
 ## Runtime and Servers
 
@@ -284,7 +277,6 @@ TRAIN_EXPERIMENTS_FILE=/path/to/experiments.sh \
 运行状态写入：
 
 - `runtime/train_queue/train_queue_last_run_<hostname>.json`
-- `runtime/train_queue/runs/<hostname>_<session>/`
 
 ## Persistent Assets
 

@@ -1,23 +1,23 @@
 ---
 name: orchestrate-plan
-description: "Read a natural-language experiment plan file, interpret the experiments, confirm with the user, schedule training across servers 98/73/17 non-interactively, chain eval automatically, and return a results summary CSV. Use when the user asks to 'run a plan', '执行实验计划', '跑 runtime/plans/…', or 'orchestrate experiments'."
+description: "Read a natural-language experiment plan file, interpret the experiments, confirm with the user, schedule training across servers 98/73/17 non-interactively, chain eval automatically, and return a results summary. Use when the user asks to 'run a plan', '执行实验计划', '跑 runtime/plans/…', or 'orchestrate experiments'."
 ---
 
 # Orchestrate Plan Skill
 
 Codex acts as a **full-pipeline orchestrator**: read a natural-language plan → extract experiments → confirm → allocate servers → launch training non-interactively → wait for eval to complete → return results.
 
-This skill coordinates the existing `swiftvln-train` and `swiftvln-eval` skills without duplicating their internal steps. Follow each step in order.
+This skill coordinates the existing `swiftvln-train` and `swiftvln-eval` skills without duplicating their internal steps. Follow each step in order and actively monitor the requested end-to-end run.
 
 ---
 
 ## Related Skills & Scripts
 
 - **Training**: `swiftvln-train` skill (Step 2/3/4/5 conventions reused here)
-- **Evaluation**: `swiftvln-eval` skill (eval launch and results collection)
+- **Evaluation**: `swiftvln-eval` skill (eval launch, monitoring, and result inspection)
 - **Train queue**: `src/swiftvln/scripts/train/train_queue.sh` (non-interactive mode via `TRAIN_EXPERIMENTS_FILE`)
 - **Eval queue**: `runtime/eval_queue/eval_todo.txt` (auto-populated by train_queue after each training)
-- **Results**: `src/swiftvln/scripts/eval/collect_eval_results.py`
+- **Results**: per-run `evaluation_summary.json` under `results/eval/`
 
 ---
 
@@ -148,8 +148,6 @@ ssh -o BatchMode=yes -o ConnectTimeout=8 10.246.132.17 "docker ps" 2>/dev/null
 
 ## Step 4 → Generate EXPERIMENTS Files & Launch Training
 
-> **Steps 4 and 5 are atomic. Must execute both without interruption.**
-
 For each server with allocated experiments:
 
 ### 4.1 — Generate the EXPERIMENTS bash file
@@ -219,32 +217,17 @@ ssh 10.246.152.73 "tmux new-session -d -s '${session_name}' \
 
 ---
 
-## Step 5 → Register Train Watchdog (MANDATORY)
+## Step 5 → Monitor Training and Chain Eval
 
-For each server, register a watchdog **immediately** after tmux launch. Must run on the same server as the tmux session.
-
-```bash
-SWIFTVLN_ROOT="/mnt/data1/home/jiangjiajun/workspace/SwiftVLN"
-nohup bash "${SWIFTVLN_ROOT}/src/swiftvln/scripts/train/train_watchdog.sh" \
-  --tmux-session "${session_name}" \
-  --train-log "${run_log}" \
-  --on-all-done eval \
-  --cleanup-days 7 \
-  > /dev/null 2>&1 &
-WATCHDOG_PID=$!
-sleep 2
-kill -0 "$WATCHDOG_PID" 2>/dev/null && echo "Watchdog alive PID=${WATCHDOG_PID}" || echo "ERROR: watchdog failed"
-```
-
-`--on-all-done eval` means: when training finishes on this server, the watchdog will automatically:
-1. Collect successful model names
-2. Trigger a new Codex session to start eval (via `swiftvln-eval` skill)
-
-**Record per server**: tmux session name, host, log path, watchdog PID, start time.
+1. Immediately perform the `swiftvln-train` quick health check for every tmux session.
+2. Record each server's tmux session, host, log path, start time, and `runtime/train_queue/train_queue_last_run_<hostname>.json` path.
+3. Continue monitoring tmux/logs until the planned training queues finish. Successful models are appended to `runtime/eval_queue/eval_todo.txt` by `train_queue.sh`.
+4. As soon as planned models are available, start or reuse an eval worker through the `swiftvln-eval` skill on server 98 or 73.
+5. Continue monitoring until every planned model is present in either `eval_done.txt` or `eval_failed_todo.txt` and its expected result directories exist.
 
 ---
 
-## Step 6 → Report & Exit (Wait for Eval)
+## Step 6 → Progress Report
 
 After all servers are launched:
 
@@ -254,11 +237,9 @@ After all servers are launched:
    ```
 2. Report to user:
    - Training running on server(s) `<hosts>` in tmux session(s) `<names>`
-   - Watchdog PID(s): `<pids>`
    - Progress: `tmux attach -t <name>`
-   - What happens next: "训练完成后 watchdog 自动触发评测启动；评测在 tmux 中运行，完成后查看队列状态与结果文件"
-
-**The Codex session can safely end here.** Everything from this point is handled automatically.
+   - Eval worker/session status when started
+   - What happens next: "训练成功后模型自动入评测队列；当前任务会继续监控训练和评测，直到计划完成或出现需要用户处理的阻塞"
 
 ---
 
@@ -268,31 +249,23 @@ To report final results, manually inspect queue state and result files after the
 
 1. Read `runtime/eval_queue/eval_done.txt` to confirm which models finished.
 2. Check `runtime/eval_queue/eval_failed_todo.txt` for any failures.
-3. Run CSV collection:
-   ```bash
-   cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
-   source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-   conda activate swift-vln-eval-update
-   python src/swiftvln/scripts/eval/collect_eval_results.py
-   ```
-4. Read the output CSV at `results/eval_collected/<split>/eval_results.csv`.
-5. Present results to the user as a formatted table showing SR / SPL / NE for each experiment.
-6. If there are failures, diagnose and offer to requeue.
+3. Locate each model/split's latest `evaluation_summary.json` under `results/eval/swiftvln/<model>/<split>/<timestamp>/`.
+4. Read SR / SPL / NE directly from those summaries and present a formatted comparison table.
+5. If there are failures, diagnose and offer to requeue.
 
 ---
 
 ## Operating Rules
 
 1. **Always wait for user confirmation** at Step 2 (experiment list) and Step 3 (server allocation).
-2. **Steps 4 and 5 are atomic** — register watchdog immediately after tmux launch, never skip.
-3. **Report watchdog PID** — missing PID means Step 5 was skipped.
-4. **Train hosts**: 98, 73, 17 all supported. **Eval hosts**: 98 and 73 only (never eval on 17).
-5. **TRAIN_EXPERIMENTS_FILE** must exist on the target server's local filesystem before tmux launch. Since all three servers share `/mnt/data1/...`, generating to any subpath there works for all.
-6. **Prefer `runtime/plans/generated/`** over `/tmp/` for EXPERIMENTS files — persists across reboots for debugging.
-7. **Do not modify existing eval_todo.txt entries** — train_queue.sh's `enqueue_model_for_eval` handles auto-enqueue after each successful training.
-8. **Data version**: always verify latest `ver_*` under `/mnt/data3/jiangjiajun/dataset/satnav_datasets/` unless plan specifies otherwise.
-9. **Fail fast** on missing base model, data paths, or conda envs.
-10. **Do not commit** unless user explicitly asks.
+2. Perform a quick health check immediately after every tmux launch.
+3. **Train hosts**: 98, 73, 17 all supported. **Eval hosts**: 98 and 73 only (never eval on 17).
+4. **TRAIN_EXPERIMENTS_FILE** must exist on the target server's local filesystem before tmux launch. Since all three servers share `/mnt/data1/...`, generating to any subpath there works for all.
+5. **Prefer `runtime/plans/generated/`** over `/tmp/` for EXPERIMENTS files — persists across reboots for debugging.
+6. **Do not modify existing eval_todo.txt entries** — train_queue.sh's `enqueue_model_for_eval` handles auto-enqueue after each successful training.
+7. **Data version**: always verify latest `ver_*` under `/mnt/data3/jiangjiajun/dataset/satnav_datasets/` unless plan specifies otherwise.
+8. **Fail fast** on missing base model, data paths, or conda envs.
+9. **Do not commit** unless user explicitly asks.
 
 ---
 

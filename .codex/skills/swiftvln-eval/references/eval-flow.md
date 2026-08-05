@@ -36,8 +36,7 @@ No SSH is required for queue-file operations.
 | Eval worker starter | `src/swiftvln/scripts/eval/start_eval_worker.sh` |
 | Single eval by name | `src/swiftvln/scripts/eval/eval_by_name.sh` |
 | Queue runner | `src/swiftvln/scripts/eval/eval_queue.sh` |
-| CSV collector | `src/swiftvln/scripts/eval/collect_eval_results.py` |
-| Collected CSV | `results/eval_collected/<split>/eval_results.csv` |
+| Per-run metrics | `results/eval/<model_arch>/<model>/<split>/<timestamp>/evaluation_summary.json` |
 
 ## Failure Policy
 

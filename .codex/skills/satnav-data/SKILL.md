@@ -26,9 +26,7 @@ Execute a 4-step pipeline **continuously without pausing between steps**. Only s
    - 当前自动分类结果（由 `classify_eval_cities()` 判断）：
      - `val_seen`: `LosAngeles-1`, `Rome-1`, `NewYork-1`
      - `val_unseen`: `Auckland-1`, `Orlando-1`, `Rotterdam-1`
-   - 当前默认 trajectory 归一化：
-     - `highway / multiway / multway / waterway` -> `trajectory_type = Road`
-     - 同时保留细分类到 `trajectory_subtype`，规范值为 `Highway / Multiway / Waterway`
+   - 输入的 `VLN_episodes.json` 必须已经使用公开数据规范中的 canonical trajectory types；数据处理脚本不会原地迁移或删除原始城市数据。
 5. Run episodes processing to produce grouped outputs:
    - `episodes/train/` — 训练集（all_episodes.json + 各类型）
    - `episodes/eval/val_seen/` — seen eval 城市（基础城市名在 train 中有 TIF）

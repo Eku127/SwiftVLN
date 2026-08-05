@@ -1,6 +1,6 @@
 ---
 name: swiftvln-eval
-description: "Run VLN evaluation by model name or queue using tmux-based execution. Supports queue consumption and CSV result collection."
+description: "Run VLN evaluation by model name or queue using tmux-based execution. Supports queue consumption and direct evaluation-summary inspection."
 ---
 
 # SwiftVLN Eval Skill
@@ -205,9 +205,7 @@ Rules:
 | Queue logs | `logs/eval_queue_*.log` |
 | Queue summaries | `logs/eval_queue_results/eval_results_*.txt` |
 | Per-host completion status | `runtime/eval_queue/eval_queue_last_run_<hostname>.json` |
-| Collected CSV | `results/eval_collected/<split>/eval_results.csv` |
-
-CSV collection is triggered by `src/swiftvln/scripts/eval/collect_eval_results.py` after each successful eval.
+| Per-run metrics | `<result_dir>/evaluation_summary.json` |
 
 ---
 
@@ -219,7 +217,6 @@ CSV collection is triggered by `src/swiftvln/scripts/eval/collect_eval_results.p
 | Queue engine | `src/swiftvln/scripts/eval/eval_queue.sh` |
 | Long-lived worker | `src/swiftvln/scripts/eval/start_eval_worker.sh` |
 | Local enqueue helper | `src/swiftvln/scripts/eval/enqueue_eval.sh` |
-| CSV collector | `src/swiftvln/scripts/eval/collect_eval_results.py` |
 | Eval todo queue | `runtime/eval_queue/eval_todo.txt` |
 | Eval done list | `runtime/eval_queue/eval_done.txt` |
 | Eval failed list | `runtime/eval_queue/eval_failed_todo.txt` |

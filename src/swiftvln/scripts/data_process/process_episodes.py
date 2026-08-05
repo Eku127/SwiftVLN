@@ -23,7 +23,6 @@ try:
         get_episodes_dir,
         classify_eval_cities,
     )
-    from .normalize_trajectory_types import normalize_dataset
 except ImportError:
     from config import (
         TRAIN_CITIES,
@@ -33,7 +32,6 @@ except ImportError:
         get_episodes_dir,
         classify_eval_cities,
     )
-    from normalize_trajectory_types import normalize_dataset
 
 
 def load_episodes(city_path: Path) -> List[Dict[str, Any]]:
@@ -116,7 +114,6 @@ def process_episodes(
     version: str,
     train_only: bool = False,
     eval_only: bool = False,
-    normalize_first: bool = True,
 ):
     """
     处理指定版本的episodes数据
@@ -135,14 +132,6 @@ def process_episodes(
     print(f"Processing episodes for version: {version}")
     print(f"Data directory: {data_dir}")
     print(f"Output directory: {output_dir}")
-
-    if normalize_first:
-        normalize_result = normalize_dataset(version)
-        print(
-            "Normalization complete: "
-            f"removed={normalize_result['removed_cities']}, "
-            f"normalized={normalize_result['normalized_episodes']}"
-        )
     
     results = {}
 

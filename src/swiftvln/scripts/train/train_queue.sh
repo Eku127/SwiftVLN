@@ -71,14 +71,6 @@ MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
 MAP_RENDER_PX="${MAP_RENDER_PX:-448}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 
-# ── 事件日志（供 train_watchdog 消费）──────────────────────────────────────
-# 写入 TRAIN_EVENTS_FILE（由 watchdog export），回退到 TRAIN_RUN_DIR 下的文件
-_emit_train_event() {
-    local event_file="${TRAIN_EVENTS_FILE:-${TRAIN_RUN_DIR:+${TRAIN_RUN_DIR}/train_events.log}}"
-    [[ -z "$event_file" ]] && return 0
-    echo "$*" >> "$event_file"
-}
-
 enqueue_model_for_eval() {
     local model_name="$1"
     local enqueue_opt_local=""
@@ -554,11 +546,9 @@ run_experiment() {
         EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|SUCCESS|$duration_str|$exp_name")
         if [[ "$dry_run_completed" == "true" ]]; then
             print_success "实验 $exp_idx Dry Run 完成! 耗时: $duration_str"
-            _emit_train_event "EXPERIMENT_DRY_RUN_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${run_log_file}|$(date -Iseconds)"
         else
             print_success "实验 $exp_idx 完成! 耗时: $duration_str"
             enqueue_model_for_eval "$exp_name" || true
-            _emit_train_event "EXPERIMENT_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${output_path:-N/A}|$(date -Iseconds)"
         fi
 
         return 0
@@ -569,7 +559,6 @@ run_experiment() {
         EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|FAILED|--|--")
         EXP_ERRORS+=("实验 $exp_idx ($model): $error_msg")
         print_error "实验 $exp_idx 失败!"
-        _emit_train_event "EXPERIMENT_FAILED|${exp_idx}|${total:-0}|${model}|unknown|${error_msg:0:200}|${run_log_file}|$(date -Iseconds)"
 
         return 1
     fi
@@ -641,7 +630,6 @@ show_final_results() {
         echo "════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
     } | tee "$RESULT_FILE"
 
-    _emit_train_event "QUEUE_DONE|${success_count}|${fail_count}|${#EXP_RESULTS[@]}|$(date -Iseconds)"
     _write_train_completion_status "$RESULT_FILE" "$success_count" "$fail_count"
 
     echo ""
@@ -681,20 +669,10 @@ _write_train_completion_status() {
 EOF
 )
 
-    local queue_dir="${TRAIN_RUN_DIR:-${SWIFTVLN_ROOT}/runtime/train_queue}"
-    mkdir -p "$queue_dir"
-
-    # Per-host global file
     local host_file="${SWIFTVLN_ROOT}/runtime/train_queue/train_queue_last_run_${_hostname}.json"
     mkdir -p "$(dirname "$host_file")"
     echo "$json_body" > "$host_file"
     print_info "完成状态已写入: $host_file"
-
-    # Per-run file (if TRAIN_RUN_DIR set by watchdog)
-    if [[ -n "${TRAIN_RUN_DIR:-}" && -d "${TRAIN_RUN_DIR}" ]]; then
-        echo "$json_body" > "${TRAIN_RUN_DIR}/train_queue_status.json"
-        print_info "Per-run 状态已写入: ${TRAIN_RUN_DIR}/train_queue_status.json"
-    fi
 }
 
 # ============================================================================
