@@ -61,8 +61,6 @@ class SwiftVLNEval(BaseVLNEval):
                             help="Use GridToMe compression instead of average pooling (per_frame mode)")
         parser.add_argument("--verbose", action="store_true",
                             help="Enable verbose output during evaluation")
-        parser.add_argument("--debug_landmark", action="store_true",
-                            help="Enable detailed debug output for landmark episodes (saves frames, trajectory analysis, model outputs)")
         
         # System prompt setting
         parser.add_argument("--system_prompt_setting", type=str, default="vanilla",

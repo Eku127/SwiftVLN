@@ -31,7 +31,9 @@
 
 ## Current Source Layout
 
-- `src/swiftvln/model/`：SwiftVLN 主线模型、训练和评测实现
+- `src/swiftvln/model/`：SwiftVLN 主线模型、训练和评测实现；评测职责分为
+  `evaluator.py`（环境 episode loop）、`inference.py`（frame/history/prompt/window）和
+  `diagnostics.py`（可选 map/initial/timing 诊断）
 - `src/swiftvln/cli.py`：单模型 CLI，直接分发 SwiftVLN 与 queue；无 model registry/runner 中间层
 - `src/swiftvln/experiment.py`：train/eval 共用的 ExperimentSpec、约束和模型名 codec
 - `src/swiftvln/common/training/`：arguments / base SFT / dataset 公共层
@@ -184,6 +186,8 @@ GPU 选择：
 - 未显式设置 `OUTPUT_DIR` 时，`AUTO_RESUME_EVAL=true` 会复用最近的未完成目录。
 - 每个 rank 逐 episode append `result.jsonl`，resume/去重键为
   `scene_id::episode_id`；rank0 等待文件 marker 后离线汇总。
+- `SwiftVLNEvaluator` 只组合环境服务、`SwiftVLNInferenceSession` 和
+  `EnvironmentEpisodeLoop`；新增 history/inference 能力不要重新塞回 episode loop。
 - `evaluation_summary.json` 顶层指标是当前 split 全 episode 的直接平均；
   `by_trajectory_type` 只提供细分，不做重加权。
 

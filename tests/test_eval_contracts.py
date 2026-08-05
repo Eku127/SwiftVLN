@@ -14,8 +14,8 @@ SRC_ROOT = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
 from swiftvln.common.eval.runner import BaseVLNEval  # noqa: E402
-from swiftvln.model.evaluator import (  # noqa: E402
-    SwiftVLNEvaluator,
+from swiftvln.model.inference import (  # noqa: E402
+    SwiftVLNInferenceSession,
     TurnContext,
 )
 
@@ -82,14 +82,14 @@ class EvalJsonlContractTest(unittest.TestCase):
 
 class EvalWindowContractTest(unittest.TestCase):
     def _make_evaluator(self, overlap_turns: int, num_turns: int = 3):
-        evaluator = object.__new__(SwiftVLNEvaluator)
-        evaluator.overlap_turns = overlap_turns
-        evaluator.window_turns = [make_turn(index) for index in range(num_turns)]
-        evaluator.overlap_context = object()
-        evaluator._build_assistant_turn_ids = (
-            lambda response: torch.tensor([[99]], dtype=torch.long)
+        session = object.__new__(SwiftVLNInferenceSession)
+        session.overlap_turns = overlap_turns
+        session.window_turns = [make_turn(index) for index in range(num_turns)]
+        session.overlap_context = object()
+        session._build_assistant_turn_ids = lambda response: torch.tensor(
+            [[99]], dtype=torch.long
         )
-        return evaluator
+        return session
 
     def test_zero_overlap_does_not_reuse_previous_window_context(self):
         evaluator = self._make_evaluator(overlap_turns=0)
