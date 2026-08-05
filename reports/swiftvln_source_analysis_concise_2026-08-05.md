@@ -174,7 +174,7 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 | eval-time template 链路 | **已完成**：删除 `eval.py --template_type`、eval shell 的 `TEMPLATE_TYPE`、`EvalRunner.load_template()`、`create_evaluator(..., template)`、`SwiftVLNEvaluator.template` 及 summary 冗余字段。 | template 在评测中只创建、传递、保存，从未读取；`inference.py` 自行构造 prompt token 与视觉 embedding。训练使用的 `model/template.py` 与模型注册保持不变；7 项结构 contract 通过，旧 CLI 参数被拒绝，现有 checkpoint 的 2-GPU `val_unseen` 单 episode 实测通过（摘要：`results/eval/swiftvln/<基线模型名>/val_unseen/20260805_211258/evaluation_summary.json`）。 |
 | `s2r/__init__.py` | **已完成**：缩成最小 package marker，删除历史 lazy re-export 表和 `__getattr__`。 | 仓库内部全部显式导入 `swiftvln.s2r.dataset/model/losses`，没有顶层导出消费者；contract test 固定要求显式子模块导入。 |
 | `scripts/data_process/__init__.py` | **已完成**：缩成最小 package marker。 | 删除 eager import、副作用和过期 `ver_260202` 示例；`run_all.py`、`process_episodes.py` 等 canonical 脚本及其直接入口保持不变。 |
-| `model/script/test/test_uav_adapter_strategy.py`（114 行） | 迁移为 `tests/test_uav_adapter_strategy.py` 后从安装包删除。 | 它是有价值的 Stage-B smoke test，但测试代码不应位于运行时 package；当前 context 也要同步新路径。 |
+| `model/script/test/test_uav_adapter_strategy.py` | **已完成**：迁移并改造成可由 unittest discover 执行的 `tests/test_uav_adapter_strategy.py`。 | Stage-B synthetic checkpoint loader/forward smoke 保留，测试代码已从运行时 package 删除；context 已同步新路径。 |
 | `model/doc/OVERVIEW.md`（727 行） | 用当前架构短文替换，删除历史结果和伪代码。 | 仍写 `ver_260206`、默认 `num_overlap=16`；当前默认是 `SatNav-v0.1`、overlap 0；还把已拆出的 inference/runner 职责归给单体 evaluator。 |
 | `model/doc/pose_embed.md`（113 行） | 更新后并入新 overview，或只保留参数参考。 | 功能仍有效，但路径写成不存在的 `swiftvln/arguments.py`，推理职责描述也已过时。 |
 

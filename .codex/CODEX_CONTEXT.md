@@ -328,8 +328,8 @@ TRAIN_EXPERIMENTS_FILE=/path/to/experiments.sh \
 - 顶层 `tests/` 是重构契约 suite，覆盖 CLI、模型名、dataset/window、history
   processor、Habitat 扩展和 JSONL resume/去重；运行：
   `PYTHONPATH=src python -m unittest discover -s tests -v`。
-- 仅保留 Stage-B loader smoke：
-  `src/swiftvln/model/script/test/test_uav_adapter_strategy.py`。
+- Stage-B loader smoke 位于顶层 contract suite：
+  `tests/test_uav_adapter_strategy.py`。
 
 不要在启动上下文保存某次 smoke 的输出路径、loss、时间或已删除日志；需要当前验证时
 重新运行对应 smoke skill。

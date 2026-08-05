@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Smoke test for SwiftVLN UAV adapter propagation and external loading."""
 
-import argparse
 import importlib.util
 import os
 import sys
 import tempfile
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
 import torch
 
 CURRENT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = CURRENT_DIR.parents[4]
+REPO_ROOT = CURRENT_DIR.parent
 SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
@@ -27,6 +27,7 @@ def _load_overlap_model_module(repo_root: str):
     if spec is None or spec.loader is None:
         raise RuntimeError(f'Failed to load module spec from: {module_path}')
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -75,26 +76,13 @@ def _run_case(module, checkpoint_path: str):
     return model, resolved_path
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--checkpoint', default='', help='Stage-A checkpoint (.pt or s2r output dir)')
-    args = parser.parse_args()
-
-    module = _load_overlap_model_module(str(REPO_ROOT))
-
-    if args.checkpoint:
-        checkpoint_path = args.checkpoint
-    else:
+class UAVAdapterStrategyTest(unittest.TestCase):
+    def test_stagea_checkpoint_is_propagated_to_model_loader(self):
+        module = _load_overlap_model_module(str(REPO_ROOT))
         with tempfile.TemporaryDirectory() as tmp:
             checkpoint_path = _write_temp_stagea_checkpoint(Path(tmp) / 'best.pt')
             loaded_model, resolved_path = _run_case(module, checkpoint_path)
             _assert_loaded_model(loaded_model, resolved_path)
-            print('PASS: embedding_mode=uav and its checkpoint are propagated to the model loader.')
-            return
-
-    loaded_model, resolved_path = _run_case(module, checkpoint_path)
-    _assert_loaded_model(loaded_model, resolved_path)
-    print('PASS: embedding_mode=uav and its checkpoint are propagated to the model loader.')
 
 
 def _assert_loaded_model(loaded_model, resolved_path: str):
@@ -109,4 +97,4 @@ def _assert_loaded_model(loaded_model, resolved_path: str):
 
 
 if __name__ == '__main__':
-    main()
+    unittest.main()
