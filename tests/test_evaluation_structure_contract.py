@@ -24,21 +24,9 @@ class EvaluationStructureContractTest(unittest.TestCase):
             (Path(__file__).parents[1] / "src/swiftvln/common/eval/runner.py").exists()
         )
 
-    def test_failure_classification_is_removed_without_removing_visuals_or_habitat(self):
+    def test_failure_classification_is_removed(self):
         source_root = Path(__file__).parents[1] / "src/swiftvln"
         self.assertFalse((source_root / "common/utils/error_analyzer.py").exists())
-        self.assertTrue((source_root / "common/env/habitat.py").exists())
-        self.assertTrue((source_root / "habitat_extensions/measures.py").exists())
-        self.assertTrue((source_root / "configs/vln_r2r.yaml").exists())
-
-        for method in (
-            "collect_habitat_frame",
-            "collect_satnav_topdown",
-            "save_habitat_video",
-            "save_satnav_video",
-        ):
-            self.assertTrue(hasattr(EvaluationEnvironment, method))
-
         evaluation_sources = "\n".join(
             path.read_text(encoding="utf-8")
             for path in (
@@ -55,6 +43,21 @@ class EvaluationStructureContractTest(unittest.TestCase):
             "deviation_recovered",
         ):
             self.assertNotIn(removed_symbol, evaluation_sources)
+
+    def test_habitat_and_video_capabilities_are_retained(self):
+        source_root = Path(__file__).parents[1] / "src/swiftvln"
+        self.assertTrue((source_root / "common/env/habitat.py").exists())
+        self.assertTrue((source_root / "habitat_extensions/measures.py").exists())
+        self.assertTrue((source_root / "configs/vln_r2r.yaml").exists())
+        self.assertTrue((source_root / "configs/vln_r2r_smoke.yaml").exists())
+
+        for method in (
+            "collect_habitat_frame",
+            "collect_satnav_topdown",
+            "save_habitat_video",
+            "save_satnav_video",
+        ):
+            self.assertTrue(hasattr(EvaluationEnvironment, method))
 
     def test_satnav_config_and_action_parsing_do_not_import_habitat(self):
         with tempfile.TemporaryDirectory() as tmpdir:

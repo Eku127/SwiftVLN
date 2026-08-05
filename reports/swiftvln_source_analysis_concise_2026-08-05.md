@@ -199,8 +199,8 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 | --- | --- | --- |
 | 深度诊断 | `model/diagnostics.py`（326 行）及 map debug 分支 | 失去 `SWIFTVLN_DEBUG` 下的 token/map/initial/timing 定位能力。 |
 | 失败分类 | **已完成**：删除 `common/utils/error_analyzer.py` 及 Habitat 轨迹采样、分析和结果透传。 | 三个派生分类字段不再写入结果；真实 episode 异常仍以 `error` 持久化，标准指标不变。结构契约同时固定 Habitat wrapper/config/extensions 和两类视频入口必须保留；定向测试 9/9、完整 contract suite 73/73、Ruff 均通过。 |
-| 视频与可视化 | `video_utils.py`、部分 `image_utils.py`、evaluator/environment 分支 | 失去 `--save_video`、压缩和俯视图输出。 |
-| Habitat 支持 | `common/env/habitat.py`、`habitat_extensions/`、`vln_r2r*.yaml` | 项目变成 SatNav-only；需同步 experiment codec、CLI、tests 和文档。 |
+| 视频与可视化 | **明确保留**：`video_utils.py`、`image_utils.py` 和 evaluator/environment 的 Habitat/SatNav 分支不删。 | 独立 contract 覆盖指令画布拼接与 MP4 分块归档/源文件清理；结构契约固定两类 frame collection/save 入口，inference wheel 也校验包含视频模块。与 Habitat 合并的定向测试 6/6、完整 suite 78/78、Ruff 均通过，临时视频/zip 自动清理。 |
+| Habitat 支持 | **明确保留**：`common/env/habitat.py`、`habitat_extensions/` 和 `vln_r2r*.yaml` 不删。 | Habitat 自定义 measure import/UUID 契约、wrapper/config/smoke config 结构契约继续执行；inference wheel 同时校验 Habitat runtime 和正式配置存在。与视频合并的定向测试 6/6、完整 suite 78/78 通过。 |
 | S2R 数据生产 | **已完成部署隔离**：新增 `packaging/inference/pyproject.toml` 与 `packaging/build_inference_wheel.py`，源码不删除。 | `swiftvln-inference` wheel 排除整个 `s2r/data_generation/`；保留 UAV 所需 `s2r/model.py`、Habitat、视频和正式 YAML。构建器自校验内容，解包 CLI 不展示 `s2r-data`，而开发安装保持该命令；定向测试 6/6、完整 contract suite 75/75 与 Ruff 均通过，临时 wheel 已自动清理。 |
 
 ## 明确保留
