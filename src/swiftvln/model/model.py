@@ -176,6 +176,16 @@ def _pop_embedding_options(kwargs):
     }
 
 
+def _prepare_loader_kwargs(kwargs):
+    embedding_options = _pop_embedding_options(kwargs)
+    new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
+    for token in SWIFTVLN_SPECIAL_TOKENS:
+        if token not in new_special_tokens:
+            new_special_tokens.append(token)
+    kwargs['new_special_tokens'] = new_special_tokens
+    return embedding_options
+
+
 def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
     if model is None:
         return
@@ -203,12 +213,7 @@ class SwiftVLNQwen25VLLoader(Qwen2_5VLLoader):
     """ms-swift 4.x loader for the SwiftVLN Qwen2.5-VL model."""
 
     def __init__(self, *args, **kwargs):
-        self._swiftvln_embedding_options = _pop_embedding_options(kwargs)
-        new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
-        for token in SWIFTVLN_SPECIAL_TOKENS:
-            if token not in new_special_tokens:
-                new_special_tokens.append(token)
-        kwargs['new_special_tokens'] = new_special_tokens
+        self._swiftvln_embedding_options = _prepare_loader_kwargs(kwargs)
         super().__init__(*args, **kwargs)
 
     def get_model(self, model_dir: str, *args, **kwargs):
@@ -226,12 +231,7 @@ class SwiftVLNQwen3VLLoader(Qwen3VLLoader):
     """ms-swift 4.x loader for the SwiftVLN Qwen3-VL model."""
 
     def __init__(self, *args, **kwargs):
-        self._swiftvln_embedding_options = _pop_embedding_options(kwargs)
-        new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
-        for token in SWIFTVLN_SPECIAL_TOKENS:
-            if token not in new_special_tokens:
-                new_special_tokens.append(token)
-        kwargs['new_special_tokens'] = new_special_tokens
+        self._swiftvln_embedding_options = _prepare_loader_kwargs(kwargs)
         super().__init__(*args, **kwargs)
 
     def get_model(self, model_dir: str, *args, **kwargs):
