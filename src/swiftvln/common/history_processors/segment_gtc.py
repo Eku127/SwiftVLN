@@ -12,10 +12,10 @@ Key benefits:
 """
 
 import torch
-import torch.nn.functional as F
 from typing import List, Tuple
 
 from .base import HistoryProcessor
+from .gtc import soft_kmeans_step
 
 
 class SegmentGTC(HistoryProcessor):
@@ -195,24 +195,6 @@ class SegmentGTC(HistoryProcessor):
         
         # Soft K-Means iterations
         for _ in range(self.num_iterations):
-            C = self._soft_kmeans_step(X, C)
+            C = soft_kmeans_step(X, C, self.temperature)
         
         return C
-    
-    def _soft_kmeans_step(self, X: torch.Tensor, C: torch.Tensor) -> torch.Tensor:
-        """One step of Soft K-Means."""
-        dtype = X.dtype
-        
-        # Cosine similarity
-        X_norm = F.normalize(X.float(), dim=-1)
-        C_norm = F.normalize(C.float(), dim=-1)
-        S = torch.mm(X_norm, C_norm.T)  # [M, K]
-        
-        # Soft assignment
-        A = F.softmax(S / self.temperature, dim=-1)  # [M, K]
-        
-        # Weighted aggregation
-        numerator = torch.mm(A.T.to(dtype), X)  # [K, d]
-        denominator = A.sum(dim=0, keepdim=True).T.to(dtype).clamp(min=1e-6)  # [K, 1]
-        
-        return numerator / denominator
