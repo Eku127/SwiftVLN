@@ -3,19 +3,20 @@
 > 初始审计日期：2026-08-05<br>
 > 审计范围：`src/swiftvln/`<br>
 > 初始审计约束：只审计、分类和规划，不删除、不重构任何源码<br>
-> 实施更新：2026-08-05 已完成 Phase 1 的 A01–A07 源码精简，本文档同步记录实现、验证与提交<br>
+> 实施更新：2026-08-05 已完成 A01–A07 及第 5 节确认范围内的结构性精简；本文档同步记录实现、验证、清理与原子提交<br>
+> 当前状态：重构代码、契约测试、Qwen2.5/Qwen3 × SatNav/Habitat 实机矩阵均已完成，专用测试产物已清理<br>
 > 结论性质：以静态引用、当前入口、仓库模型库和默认事实文档为依据；涉及外部调用方的项目均列为“需确认”，不直接判死
 
 ## 1. 结论摘要
 
-当前 `src/swiftvln` 的主要问题并不是某一个大文件，而是四类历史设计叠加：
+初始审计发现，`src/swiftvln` 的主要问题并不是某一个大文件，而是四类历史设计叠加：
 
 1. **单模型仓库仍保留多模型框架抽象**：CLI、registry、runner、训练/评测 Base 类都在为不存在的第二个主线模型提供间接层。
 2. **同一份实验配置存在多套事实源**：训练参数、评测参数、训练 shell、评测 shell、模型名解析、部署解析和结果汇总各自维护规则，已经发生漂移。
 3. **一次性工具和调试功能长期留在主包**：历史 SatNav split 脚本、R2R/UniNaVid 特征预计算、旧分析工具、landmark/map debug 代码占用了较多主流程体积。
 4. **推理、数据处理和小型算法存在重复实现**：评测与部署维护两套窗口推理，多个 SatNav 脚本重复 I/O，GTC/SegmentGTC 重复 soft k-means 步骤。
 
-建议的精简顺序是：
+本轮按以下顺序完成精简：
 
 - 先补契约测试和模型名 golden cases；
 - 再清理确定无行为影响的注释、无用变量、废弃 API 和 no-op 参数；
@@ -23,9 +24,9 @@
 - 再统一配置与模型名解析；
 - 最后处理评测/部署推理合并，以及 Base 类、CLI、队列交互层等结构性问题。
 
-不建议为了行数直接删除以下能力：GTC、SegmentGTC、map memory、initial prompt、pose、overlap/no-memory、Qwen2.5-VL、Qwen3-VL、SatNav/Habitat。当前模型库仍保存这些变体，贸然删除会破坏已有模型复现。
+没有为了行数删除以下能力：GTC、SegmentGTC、map memory、initial prompt、pose、overlap/no-memory、Qwen2.5-VL、Qwen3-VL、SatNav/Habitat。当前模型库保存的这些变体仍可由统一实验 schema 解析；唯一主动收缩的是已由维护者明确不要的 pose 与 UAV 组合模式。
 
-实施进度：本轮已完成 A01–A07，共修改 12 个源码文件，净减少 580 行；没有改变 HF wrapper/config 类名、模型类型、主训练/评测入口或 SatNav/Habitat 能力边界。B01 及后续结构性工作仍保持未实施状态。
+实施结论：初始审计的 141 个源码/脚本/配置/文档文件、33,272 行，现为 114 个文件、26,269 行，净减少 27 个文件和 7,003 行（约 21%）。deployment、多模型 registry/runners、历史数据/分析工具、单实现 Base 层和交互式队列向导已经移除；配置命名、评测推理、环境循环、结果记录和环境能力边界已结构化。HF wrapper/config 类名、模型类型、稳定训练/评测 shell 路径、S2R 主线及 SatNav/Habitat 能力保持不变。
 
 ## 2. 当前规模与健康度
 
@@ -46,7 +47,20 @@
 | `scripts/` | 35 | 10,971 | 当前编排脚本、一次性历史工具、分析脚本混杂 |
 | **合计** | **141** | **33,272** | 108 Python、20 shell、6 YAML、7 Markdown |
 
-Phase 1 A01–A07 完成后，文件数不变，源码总行数为 32,692；七个源码提交合计 90 行新增、670 行删除，净减少 580 行。新增内容主要是共享 helper 和显式注册逻辑，不是新增功能分支。
+Phase 1 A01–A07 完成后，文件数不变，源码总行数为 32,692；七个源码提交合计净减少 580 行。完成后续结构性精简的当前规模如下：
+
+| 区域 | 当前文件数 | 当前行数 | 相对初始状态 |
+|---|---:|---:|---|
+| 根入口 | 4 | 754 | 新增统一 `experiment.py`，CLI 改为单模型直连 |
+| `common/` | 28 | 3,706 | 移除单实现训练/评测 Base，保留组合组件 |
+| `configs/` | 5 | 303 | 路径和能力不变 |
+| `deployment/` | 0 | 0 | 按维护者决定整体删除 |
+| `habitat_extensions/` | 2 | 59 | 只保留当前 YAML 使用的两个 measure |
+| `model/` | 17 | 8,061 | evaluator 拆为 inference/runner/diagnostics 等职责 |
+| `runners/` | 0 | 0 | 删除唯一模型的动态分发层 |
+| `s2r/` | 35 | 6,949 | Stage-A 主线保持不变 |
+| `scripts/` | 23 | 6,437 | 删除历史工具，收口 train/eval queue 协议 |
+| **合计** | **114** | **26,269** | **较初始净减少 27 个文件、7,003 行** |
 
 ### 2.2 静态检查（初始审计基线）
 
@@ -62,7 +76,13 @@ Phase 1 A01–A07 完成后，文件数不变，源码总行数为 32,692；七�
 - 60 个问题可由 Ruff 常规安全修复，另有 4 个需要 unsafe fix；不能盲目全修，评测入口中的部分 E402 是为了在 Habitat import 前设置 NVIDIA EGL。
 - 当前仓库只发现一个测试脚本：`src/swiftvln/model/script/test/test_uav_adapter_strategy.py`。缺少覆盖训练/评测核心契约的测试，是精简工作的首要风险。
 
-Phase 1 实施后，Ruff 问题由 87 个降至 70 个，5 个未使用局部变量已全部清零；`compileall`、全部 shell `bash -n`、现有 UAV adapter 测试、针对本轮改动的契约测试及 Qwen3 实际模型加载均通过。完整集成验证见第 10 节。
+最终实施后：
+
+- Ruff 问题由 87 个降至 0；需要在路径/EGL 初始化后导入的少数位置使用显式 `# noqa: E402`，没有移动其运行时顺序。
+- `python -m compileall -q src/swiftvln tests`、`src/swiftvln` 下全部 shell 的 `bash -n` 均通过。
+- 新增 15 个契约测试文件，`python -m unittest discover -s tests -v` 共 57/57 通过。
+- UAV adapter 独立 smoke、CLI/数据/S2R 入口 smoke 通过。
+- Qwen2.5/Qwen3 × SatNav/Habitat 的训练和评测实机矩阵通过；完整结果见第 12 节。
 
 ## 3. 当前必须保留的边界
 
@@ -113,22 +133,22 @@ CLI 中的 `swiftvln train`、`swiftvln eval`、`swiftvln queue` 没有出现在
 | A05 ✅ 已完成 | GTC 与 SegmentGTC 的 `_soft_kmeans_step` | B | 两个 17 行方法 AST 完全一致 | 已提取共享私有函数，保留两种处理器及公开行为。提交：`f808ca5`；验证：固定输入数值等价及两种处理器 shape 契约 |
 | A06 ✅ 已完成 | Qwen loader 的重复初始化 | B | Qwen2.5/Qwen3 loader 的两个 `__init__` 为相同实现 | 已提取共享 loader 参数 helper，保留两套注册类和 Qwen3 patch。提交：`5bd5707`；验证：参数契约和 Qwen3 2B 实际加载 |
 | A07 ✅ 已完成 | 过宽异常吞噬 | B | `model.py` 注册处捕获所有 `Exception`；`model/eval.py` 的注册 import 捕获 `ImportError` 后直接 pass | 已改为 Transformers `exist_ok=True` 幂等注册，并让模块导入错误显式暴露。提交：`7d3ed13`；验证：重复 reload、扩展注册及 train/eval smoke |
-| B01 | 统一实验配置和模型名 schema | B | 参数/默认值分散在 arguments、eval argparse、训练/评测 shell、`eval_by_name.sh`、deploy resolver、results collector | 建立一个 Python schema/parser/serializer；shell 只作薄包装 |
-| B02 | 评测与部署的推理核心 | B/C | 两边重复 `OverlapContext`、`TurnContext`、frame encode、history cache、prompt 构造和滑窗逻辑 | 若保留部署，先提取共享 inference session；若不保留部署则不做过度抽象 |
-| B03 | evaluator 内 landmark 调试分析 | B | `evaluator.py` 1197–1400 约 204 行专用于一次 landmark failure 分析，另有主流程 hook | 移到 `tools/debug` 或独立 observer，不让核心 evaluator 承担报告生成 |
-| B04 | evaluator/map_memory 的 map debug | B | evaluator 约 144 行 map prompt/tensor dump；map_memory 另有 debug render 和环境变量逻辑 | 提取可选 diagnostics 模块；保留必要的 map memory 能力 |
+| B01 ✅ 已完成 | 统一实验配置和模型名 schema | B | 参数/默认值曾分散在 arguments、eval argparse、训练/评测 shell、`eval_by_name.sh` 和 results collector | 新增 `SwiftVLNExperimentSpec`、统一 parse/build/validation；训练 shell、评测 shell 和结果汇总共用。提交：`332cff6` |
+| B02 ✅ 已完成 | 评测与部署的推理核心 | B/C | 两边曾重复 frame encode、history cache、prompt 构造和滑窗逻辑 | deployment 按决定删除；保留逻辑提取为 `SwiftVLNInferenceSession`。提交：`c1cb769`、`22ee635` |
+| B03 ✅ 已完成 | evaluator 内 landmark 调试分析 | B | landmark failure 分析曾混在 episode 主循环 | 移入独立 `model/diagnostics.py`，核心 evaluator 不再生成调试报告。提交：`22ee635` |
+| B04 ✅ 已完成 | evaluator/map_memory 的 map debug | B | map prompt/tensor dump 曾混在 evaluator | 调试职责移入 diagnostics，map memory 推理能力保留。提交：`22ee635` |
 | B05 | SatNav 脚本公共 I/O | B | 四个脚本重复 read/write episode、annotation、summary、copy tree、reindex 等 helper | 若保留脚本，提取 `satnav_io.py`；若归档一次性脚本，则只为现行脚本抽取 |
 | B06 | S2R 数据生成小工具重复 | B | SUES/UAVVisLoc 的参数解析完全一致；DenseUAV/GTA 的裁剪/NCC 逻辑相似 | 只做共享 image/pair utility，不删除近期 Stage-A 工作流 |
-| B07 | 单实现 Base 层 | B/C | `BaseVLNTrainArguments`、`BaseVLNSft`、`BaseVLNEval`、`BaseVLNEvaluator` 均只有一个 SwiftVLN 子类 | 若确认仓库长期单主模型，合并到具体实现或改为小型组合组件 |
-| B08 | `common` 顶层大面积 lazy re-export | B/C | `common/__init__.py` 暴露训练、评测、环境、历史处理器和工具，隐藏真实依赖 | 内部改为直接模块 import，再缩小 public surface |
-| C01 | 三个 2026-04-21 的一次性 SatNav split 脚本 | C | 共 2,127 行；绑定 `ver_260418/val_seen_update` 历史流程；当前 SatNav skill 和主线无引用 | 默认建议归档，确认不需要历史数据重建后再移出主包或删除 |
-| C02 | R2R/UniNaVid ViT 预计算工具 | C | Python+shell 共 455 行；硬编码 R2R/RxR 路径，生成物无主线消费者 | 若仍服务 UniNaVid，迁到 baseline 工具目录；否则归档 |
-| C03 | 旧 trajectory frame 分析工具 | C | 脚本、README、生成报告合计 747 行；默认 R2R/RxR 路径，无当前主线引用 | 归档到历史分析目录，生成报告不应放在 Python 主包内 |
-| C04 | `analyze_satnav_results.py` | C | 401 行；读取 `all_results.json` 数组，但当前 44 份模型结果均为 `all_results.jsonl` | 若仍需要则改造成 JSONL 工具并加测试，否则归档 |
-| C05 | Habitat 未使用 measure 与 `maps.py` | C | 当前两个 Habitat YAML 只配置 OracleSuccess/OracleNavigationError；`maps.py` 的活跃调用仅来自注释掉代码 | 先做 Habitat smoke，再决定只保留两个实际 measure，或保留兼容集合 |
-| C06 | 整个 deployment 子系统 | C | 1,518 行，另有 115 行启动脚本；当前 resolver 只找 `output/swiftvln/.../checkpoint-*`，不能使用现有 model zoo HF 目录 | 维护者选择“修复并共用推理核心”或“整体归档”，不要继续维护半可用状态 |
-| C07 | CLI registry/runners 的 train/eval/queue | C | registry 只有 `swiftvln` 一个 key；CLI 却强制 `--model swiftvln`；规范入口绕过这些 runner | 若无外部用户，删除动态 registry/runner，CLI 只保留实际公共命令 |
-| C08 | train/eval queue 的交互式向导 | C | 两个队列脚本合计 2,016 行；自动编排使用 `TRAIN_EXPERIMENTS_FILE`、`AUTO_TODO/DYNAMIC_TODO` | 若人工不再交互启动，保留非交互 worker，去掉 wizard/shortcode/UI 分支 |
+| B07 ✅ 已完成 | 单实现 Base 层 | B/C | 四组 Base 均只有一个 SwiftVLN 实现 | 训练类合并到具体实现；评测改为 inference、environment、result recorder 等组合组件。提交：`c1e61e9`、`0cd6bd1`、`cfc4a8b`、`3f5dadf` |
+| B08 ✅ 已完成 | `common` 顶层大面积 lazy re-export | B/C | 顶层 facade 隐藏真实依赖 | 内部改为具体模块 import，`common.__all__` 收缩为空。提交：`f8cd0fe` |
+| C01 ✅ 已完成 | 三个 2026-04-21 的一次性 SatNav split 脚本 | C | 共 2,127 行，绑定历史数据版本且无主线引用 | 按维护者确认直接删除。提交：`da2df3c` |
+| C02 ✅ 已完成 | R2R/UniNaVid ViT 预计算工具 | C | Python+shell 共 455 行，无主线消费者 | 按维护者确认直接删除。提交：`da2df3c` |
+| C03 ✅ 已完成 | 旧 trajectory frame 分析工具 | C | 脚本、README、生成报告合计 747 行 | 按维护者确认直接删除。提交：`da2df3c` |
+| C04 ✅ 已完成 | `analyze_satnav_results.py` | C | 读取旧 JSON 数组，与当前 JSONL 不兼容 | 按维护者确认直接删除。提交：`da2df3c` |
+| C05 ✅ 已完成 | Habitat 未使用 measure 与 `maps.py` | C | 当前 YAML 只配置 OracleSuccess/OracleNavigationError | 删除 `maps.py` 和其余兼容 measure；两种 backbone 的 Habitat 实流验证通过。提交：`af22dc1` |
+| C06 ✅ 已完成 | 整个 deployment 子系统 | C | 子系统与当前模型路径和能力脱节 | 按维护者决定删除 deployment、CLI deploy、runner 和启动脚本，共删除 1,714 行。提交：`c1cb769` |
+| C07 ✅ 已完成 | CLI registry/runners 的 train/eval/queue | C | registry 只有 `swiftvln` 一个 key，规范入口绕过 runner | 删除 registry/runners；CLI 直接调用唯一的 train/eval 实现，稳定 shell 入口保留。提交：`5a871f6` |
+| C08 ✅ 已完成 | train/eval queue 的交互式向导 | C | 自动化已有文件配置/todo 协议 | 删除 wizard、shortcode 和 positional 模式；训练只接受 `TRAIN_EXPERIMENTS_FILE`，评测只接受 todo 文件。提交：`622c1bc`、`84b8e9c` |
 | C09 | `s2r/__init__.py` 历史顶层导出 | C | 文件明确称为 historical top-level exports；内部代码主要直接 import 子模块 | 确认是否承诺 Python public API，再决定移除兼容层 |
 | D01 | GTC/SegmentGTC/map/initial/pose/overlap/no-memory | D | 现有 SwiftVLN model zoo 直接覆盖 | 保留并纳入回归矩阵 |
 | D02 | Qwen2.5/Qwen3 wrapper/config 注册 | D | HF checkpoint 配置和 Qwen3 inputs-embeds patch 依赖 | 类名、model_type、config type 必须保持兼容 |
@@ -162,6 +182,14 @@ CLI 中的 `swiftvln train`、`swiftvln eval`、`swiftvln queue` 没有出现在
 
 意见：
 本repo将会只会服务于swiftvln，也默认使用swiftvln。相关的冗余设计可以进行清理
+
+实施更新（✅ 已完成）：
+
+- 删除 `common/registry.py` 和 `runners/` 中 train/eval/queue/deploy 的动态分发；`swiftvln train`、`swiftvln eval` 现在直连唯一实现，不再要求 `--model swiftvln`。
+- 合并 `BaseVLNTrainArguments`/`BaseVLNSft` 到具体训练实现；移除 `BaseVLNEval`/`BaseVLNEvaluator`，把仍然真正共享的能力改为组合组件。
+- `common/__init__.py` 不再跨包 lazy re-export，内部 import 显式指向实际模块。
+- 契约覆盖 CLI 参数转发、唯一模型入口、Base 类消失和直接 import；最终 57/57 单测通过。
+- 对应提交：`5a871f6`、`c1e61e9`、`0cd6bd1`、`cfc4a8b`、`3f5dadf`、`f8cd0fe`。
 
 ### 5.2 配置与模型名不是单一事实源
 
@@ -197,6 +225,14 @@ CLI 中的 `swiftvln train`、`swiftvln eval`、`swiftvln queue` 没有出现在
 
 意见：这边确实非常乱，你需要进行修改修正。一些功能可以进行简化
 
+实施更新（✅ 已完成）：
+
+- 新增 `src/swiftvln/experiment.py`，以 `SwiftVLNExperimentSpec` 统一环境、backbone、memory/history、overlap、system prompt、embedding 和运行元数据的解析、验证与命名。
+- `train_swiftvln_qwen_vl.sh` 通过 `build-name` 生成名称；`eval_by_name.sh`/`eval_lib.sh` 通过 `parse-name` 获取 shell 变量；结果汇总直接调用同一 Python parser，不再各自维护 sed/grep/正则规则。
+- golden tests 覆盖现有 model-zoo 名称、历史长名、Qwen2.5/Qwen3、map/GTC/SegmentGTC、非默认 GTC 参数、overlap 与 round-trip。
+- 外部 embedding 选择收口为 `none`、`pose`、`posefilm`、`uav` 四种互斥模式；pose-additive + UAV 和 pose-film + UAV 会在名称解析、模型加载和运行时配置阶段提前拒绝。
+- 对应提交：`332cff6`、`bc1c3aa`。
+
 ### 5.3 评测器承担了过多职责
 
 `model/evaluator.py` 有 1,725 行，当前同时负责：
@@ -224,6 +260,14 @@ SwiftVLNEvaluator
 
 意见：可以进行职能拆分，不过拆分前后都需要进行测试
 
+实施更新（✅ 已完成）：
+
+- 原 1,720 行 `model/evaluator.py` 已降为 288 行的薄编排器；窗口推理移入 `model/inference.py`，命令入口移入 `model/eval_runner.py`，landmark/map/timing 诊断移入 `model/diagnostics.py`。
+- 环境 episode 能力组合到 `common/eval/environment.py`，JSONL resume/去重/汇总写入集中到 `common/eval/results.py`。
+- 保留原窗口、overlap、history processor、异常 episode 持久化、分布式 rank 完成标记和汇总 schema；不重写模型算法。
+- 拆分前建立 window/JSONL 契约，拆分后通过 57 个单测及四组真实评测；两组 8-rank SatNav 结果均完整、无重复。
+- 对应提交：`22ee635`、`0cd6bd1`、`cfc4a8b`、`3f5dadf`。
+
 ### 5.4 deployment 已经与当前仓库状态脱节
 
 `DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME` 指向一个带时间戳的历史长名。resolver：
@@ -243,6 +287,13 @@ SwiftVLNEvaluator
 
 意见：deployment部分暂时先删除，当前代码库先不需要deployment的feature
 
+实施更新（✅ 已完成）：
+
+- 删除 `deployment/`、`scripts/deploy/`、`runners/deploy.py`、CLI deploy 子命令和相关上下文说明，共删除 1,714 行。
+- 删除前先用 CLI/import 契约固定保留入口；删除后确认 train/eval/queue/s2r-data 不受影响，仓库内无 deployment 残余引用。
+- evaluator 的推理拆分只服务当前训练/评测需求，没有为已删除产品能力新增抽象。
+- 对应提交：`c1cb769`。
+
 ### 5.5 Habitat 历史代码
 
 `habitat_extensions/measures.py` 后半段保存了被整段注释的旧实现；这些注释还使 gzip/json/pickle、logger、Action、fog_of_war、地图工具等 import 看似必要。`maps.py` 的活跃函数没有被当前主线调用，现有 Habitat YAML 只配置 `OracleSuccess` 和 `OracleNavigationError`。
@@ -253,6 +304,13 @@ SwiftVLNEvaluator
 2. 在 Habitat `vln_r2r` smoke 后，确认是否只保留两个在用 measure。若外部配置仍可能引用 PathLength/OracleSPL/StepsTaken，则保留兼容类但不必保留未使用 maps。
 
 意见：同意按照现在的进行测试，修改之后也需要跑一下habitat的运行，看看eval是否可以正常运行，可以shiyongswiftvln的模型，只是跑一下流程
+
+实施更新（✅ 已完成）：
+
+- 删除不在当前 YAML 中使用的 `maps.py`、PathLength/OracleSPL/PL/StepsTaken 等兼容实现；只保留 `OracleSuccess` 和 `OracleNavigationError` 及其注册。
+- 新增 Habitat 扩展契约，确认导出面与 YAML 一致。
+- Qwen2.5 和 Qwen3 均完成 Habitat 数据 8-GPU、1-step 训练，并各自生成完整 checkpoint；两种 backbone 又分别完成 `vln_r2r_smoke.yaml`、`val_unseen` 的真实环境评测，均为 1 episode、5 steps、0 执行异常。
+- 对应提交：`af22dc1`；实机结果见 12.3–12.4。
 
 ### 5.6 历史数据与分析工具
 
@@ -271,6 +329,13 @@ SwiftVLNEvaluator
 
 意见：这些都可以进行删除，目前不需要这些功能
 
+实施更新（✅ 已完成）：
+
+- 按确认直接删除三个历史 SatNav split 脚本、ViT 预计算工具、trajectory frame 分析脚本/README/生成报告，以及旧 JSON 结果分析器，共 9 个文件、3,730 行。
+- 删除后检查当前 SatNav skill 依赖的 `inspect_data.py`、`run_all.py`、`process_episodes.py`、`normalize_trajectory_types.py`、`merge_satnav_data.py` 均仍存在；关键数据和 S2R 入口 `--help` 通过。
+- 没有移动或修改正式数据集、模型库和 Stage-A 主线。
+- 对应提交：`da2df3c`。
+
 ### 5.7 队列脚本过重
 
 `train_queue.sh` 1,084 行，`eval_queue.sh` 932 行。当前自动化已经有：
@@ -285,38 +350,50 @@ SwiftVLNEvaluator
 
 意见：这边整体可以进行精简，因为后续应该还是使用config的形式来进行启动，不需要再进行手工运行向导。所以这边交互的部分可以删除。同样做好本职的测试
 
+实施更新（✅ 已完成）：
+
+- 训练队列只接受 `TRAIN_EXPERIMENTS_FILE` 的严格五字段 pipe 配置；删除交互 wizard、shortcode 和宽松多格式解析，并新增 `--check-config` 无启动校验。
+- 评测队列只消费 todo 文件；删除位置参数模型列表和交互向导，保留 `DYNAMIC_TODO`/`WAIT_FOR_NEW_TASKS` worker 行为及 `AUTO_TODO` 兼容映射，并新增 `--check-queue`。
+- 新增 9 个队列协议测试，覆盖合法配置、非法名称、只读检查、动态等待约束、旧位置参数拒绝和“校验不触发真实任务”。
+- 稳定脚本路径、todo 文件路径和 watchdog/编排调用边界保持不变。
+- 对应提交：`622c1bc`、`84b8e9c`。
+
 ## 6. 建议的目标结构
 
 建议：我觉得很ok
 
-这是方向示意，不要求一次性重构：
+实际落地后的核心结构如下：
 
 ```text
 src/swiftvln/
-├── cli.py                         # 只保留真实公共命令
+├── cli.py                         # 单 SwiftVLN 公共命令，直接调用具体实现
+├── experiment.py                  # ExperimentSpec + validation + name codec
 ├── model/
-│   ├── config.py                  # ExperimentSpec + validation + name codec
+│   ├── arguments.py               # 具体训练参数
+│   ├── trainer.py                 # 具体训练实现
+│   ├── eval.py / eval_runner.py   # CLI 与分布式评测编排
+│   ├── evaluator.py               # 薄 episode orchestration
+│   ├── inference.py               # 窗口、prompt、history 推理状态
+│   ├── diagnostics.py             # landmark/map/timing 可选诊断
 │   ├── model.py                   # HF config/model/loader 注册
-│   ├── training.py                # 具体训练实现
-│   ├── evaluation.py              # episode orchestration
-│   ├── inference.py               # train/eval/deploy 共享的窗口推理原语
 │   ├── dataset.py
 │   ├── template.py
 │   └── map_memory.py
 ├── common/
-│   ├── env/                       # Habitat/SatNav adapter
-│   ├── history_processors/        # per-frame/GTC/SegmentGTC
+│   ├── env/                       # Habitat/SatNav 数据与动作 adapter
+│   ├── eval/environment.py        # 环境能力组合
+│   ├── eval/results.py            # JSONL、resume、去重、汇总
+│   ├── history_processors/        # per-frame/GTC/SegmentGTC/map 支撑
 │   ├── embedding_enhancement/
-│   └── reporting/                 # JSONL、video、error/timing
 ├── s2r/                           # 当前 Stage-A 主线
-└── scripts/                       # 稳定薄入口；一次性脚本移到仓库 tools/archive
+└── scripts/                       # 稳定薄入口和非交互配置/todo 队列
 ```
 
-关键原则：按“当前是否有多个实现”决定抽象，而不是按“未来也许会有”提前构建 registry/Base 层。
+`deployment/`、`runners/`、历史分析/数据脚本已经移除。关键原则仍是按“当前是否有多个实现”决定抽象；未来增加数据或环境时扩展明确的参数、dataset/env adapter 和 environment composition 边界，而不是恢复全局 registry/Base 壳层。
 
 ## 7. 分阶段执行方案
 
-### Phase 0：建立防护网
+### Phase 0：建立防护网（✅ 已完成）
 
 在任何结构删除前先补：
 
@@ -329,7 +406,7 @@ src/swiftvln/
 7. map 配置约束测试；
 8. CLI/import/help smoke。
 
-完成标准：测试可在无 GPU 环境执行，GPU smoke 只作为后续集成门禁。
+完成结果：新增 15 个测试文件、57 个 CPU 契约测试，覆盖名称/config、history、pose、embedding、window、JSONL、CLI、队列、训练/评测结构和 Habitat 扩展；提交 `d0b071c` 及各阶段随附测试。
 
 ### Phase 1：无行为精简
 
@@ -349,42 +426,31 @@ src/swiftvln/
 
 验证：compileall、Ruff、全部新增单测、主入口 `--help`、模型 config/load smoke。
 
-### Phase 2：历史工具归档
+### Phase 2：历史工具清理（✅ 已完成）
 
-- 先归档三份 SatNav split 工具；
-- 归档 R2R/RxR trajectory/VIT 工具；
-- 对 `analyze_satnav_results.py` 做“升级 JSONL 或归档”的二选一；
-- 把生成报告移出 Python 包；
-- 记录历史输入版本和复现说明。
+- 维护者明确这些历史能力不再需要，因此没有保留虚假归档入口，直接删除 9 个文件、3,730 行；
+- 当前 SatNav skill 使用的脚本、S2R Stage-A 入口和配置全部保留；
+- 数据与 S2R 入口 smoke 通过。提交：`da2df3c`。
 
-验证：当前 SatNav skill 引用的脚本全部存在；README、skill 和 shell 中无断链。
+### Phase 3：统一配置和名称解析（✅ 已完成）
 
-### Phase 3：统一配置和名称解析
+- 引入 `SwiftVLNExperimentSpec`，统一 train/eval/map/history/embed/overlap/backbone 校验；
+- 训练名称生成、`eval_by_name.sh`、eval helper 和结果汇总都迁移到统一 codec；
+- 所有 model-zoo/历史 golden names 保持含义，当前训练命名保持稳定；
+- deployment resolver 随整个 deployment 删除。提交：`332cff6`、`bc1c3aa`。
 
-- 引入 `SwiftVLNExperimentSpec`；
-- 统一 train/eval/map/history/embed/overlap 校验；
-- 迁移 `eval_by_name.sh`；
-- 迁移 model-name 生成和结果汇总；
-- 最后处理 deploy resolver。
+### Phase 4：拆分 evaluator，处理 deployment（✅ 已完成）
 
-验证：所有 model-zoo 名称 round-trip；历史长名解析结果与现有 shell 一致；训练命名不变。
+- 提取 inference session、diagnostics、environment composition 和 result recorder；
+- 删除 deployment；删除单实现 `BaseVLNEvaluator`/`BaseVLNEval`；
+- 契约覆盖 per-frame、GTC、SegmentGTC、map、initial、pose、overlap 和 JSONL，实机覆盖 Qwen2.5/Qwen3、Habitat/SatNav。提交：`c1cb769`、`22ee635`、`0cd6bd1`、`cfc4a8b`、`3f5dadf`。
 
-### Phase 4：拆分 evaluator，处理 deployment
+### Phase 5：入口与队列收口（✅ 已完成）
 
-- 提取 inference session；
-- 提取 diagnostics observer；
-- 让 evaluator 和部署共享 session；
-- 或在决定不保留部署后整体归档 deployment；
-- 随后再评估 `BaseVLNEvaluator`/`BaseVLNEval` 是否还有价值。
-
-验证至少覆盖：per-frame baseline、GTC、SegmentGTC、map、initial、pose、overlap、Qwen3、Habitat 和 SatNav。
-
-### Phase 5：入口与队列收口
-
-- 确认 CLI train/eval/queue 是否有外部用户；
-- 确认交互式 train/eval queue 是否仍使用；
-- 保留稳定 shell 路径作为兼容 wrapper；
-- 内部只保留一种非交互配置协议。
+- 仓库被确认只服务 SwiftVLN，CLI 删除唯一模型 registry/runners；
+- 交互式 train/eval wizard 被确认不再需要；
+- 稳定 shell/队列路径保留，内部只保留训练配置文件与评测 todo 文件两种非交互协议；
+- `B05`、`B06` 的小工具去重和 `C09` 的 S2R 顶层兼容层没有足够收益，本轮保持不变。提交：`5a871f6`、`622c1bc`、`84b8e9c`、`f8cd0fe`。
 
 ## 8. 每阶段验证门禁
 
@@ -398,16 +464,16 @@ src/swiftvln/
 | 环境 smoke | SatNav 与 Habitat 各一条最小 episode |
 | 回归 | 模型名、输出目录、`all_results.jsonl` schema、队列文件路径保持兼容 |
 
-## 9. 需要维护者确认的六个决策
+## 9. 六个维护者决策的落实状态
 
-1. **deployment 是否仍是当前产品能力？** 若否，建议整体归档；若是，优先修复模型路径并共用 inference session。
-2. **Habitat 是持续支持，还是只保留历史兼容？** 当前上下文仍称支持，因此本报告默认不删除 Habitat 主能力。
-3. **train/eval queue 的交互向导是否仍有人使用？** 若只剩自动化，应收口为非交互协议。
-4. **`ver_260418/val_seen_update` 是否还要求精确重建？** 若否，归档三个一次性 split 工具。
-5. **是否承诺 Python public API？** 特别是 `swiftvln.common.*`、`swiftvln.s2r.*` 顶层导出和 CLI train/eval/queue。
-6. **是否计划在 `src/swiftvln` 内加入第二个主线模型？** 若没有，registry 和单实现 Base 类应精简。
+1. **deployment：已决定当前不需要。** 已整体删除，不保留半可用入口。
+2. **Habitat：持续支持。** 只删除未使用扩展，训练和评测主能力保留并完成双 backbone 实机验证。
+3. **train/eval queue 交互向导：不再使用。** 已收口为配置文件/todo 文件协议。
+4. **`ver_260418/val_seen_update` 历史重建：不再需要。** 三个一次性 split 工具已删除。
+5. **Python public API：`common` 不承诺聚合 facade。** 内部已直接 import；`s2r/__init__.py` 的历史导出暂时保留，避免无收益兼容破坏。
+6. **第二个主线模型：不计划加入。** registry、runners 和单实现 Base 类已精简；Qwen2.5/Qwen3 被视为同一 SwiftVLN 的 backbone 选择。
 
-本报告的默认建议是：保留所有已发布模型所需能力；优先归档历史一次性工具；把 deployment、交互队列和 public compatibility 层作为三个独立决策，不与低风险清理混在同一提交中。
+最终边界是：保留已发布模型和当前训练/评测所需能力，删除维护者明确放弃的产品/历史功能；每个决策独立提交并配套契约或实机验证。
 
 ## 10. Phase 1 实施与验证记录
 
@@ -479,6 +545,102 @@ SatNav smoke 的训练 loss 为 1.29994798；`val_seen` 完成 10 episodes（NE 
 | 训练队列非交互入口 | `src/swiftvln/scripts/train/train_queue.sh:411-434` |
 | 评测队列非交互入口 | `src/swiftvln/scripts/eval/eval_queue.sh:762-840` |
 
+当前实现不再使用上述已删除路径和旧行号。重构后的关键证据入口为：
+
+| 结论 | 当前位置 |
+|---|---|
+| 单模型 CLI 直连具体实现 | `src/swiftvln/cli.py` |
+| 配置、校验和模型名唯一事实源 | `src/swiftvln/experiment.py` |
+| 训练具体参数与实现 | `src/swiftvln/model/arguments.py`、`src/swiftvln/model/trainer.py` |
+| 推理 session / 薄 evaluator / CLI runner | `src/swiftvln/model/inference.py`、`evaluator.py`、`eval_runner.py` |
+| 环境组合与结果记录 | `src/swiftvln/common/eval/environment.py`、`results.py` |
+| 独立诊断 | `src/swiftvln/model/diagnostics.py` |
+| 互斥 embedding 运行时边界 | `src/swiftvln/common/embedding_enhancement/runtime.py`、`src/swiftvln/model/model.py` |
+| 非交互队列协议 | `src/swiftvln/scripts/train/train_queue.sh`、`src/swiftvln/scripts/eval/eval_queue.sh` |
+| 重构契约测试 | `tests/test_*contract*.py`、`tests/test_*protocol.py` |
+
+## 12. 全量重构实施与验收记录
+
+### 12.1 最终变更范围
+
+- 从重构契约基线到最终代码，共 92 个代码/测试/上下文文件发生变化，新增 5,867 行、删除 10,981 行，净减少 5,114 行；其中 `src/swiftvln` 相对该基线净减少约 6,424 行。
+- 相对最初审计口径，`src/swiftvln` 从 141 个文件、33,272 行降至 114 个文件、26,269 行，净减少 27 个文件、7,003 行。
+- 删除 33 个源码文件，新增 6 个职责明确的源码文件；新增内容主要是统一 schema、推理 session、diagnostics、环境组合和结果记录，而不是重复功能分支。
+- `.codex/CODEX_CONTEXT.md` 已随重大结构变化同步更新；训练/评测稳定脚本路径、数据默认约定和结果 JSONL 边界保持有效。
+
+### 12.2 静态与契约门禁
+
+| 门禁 | 最终结果 |
+|---|---|
+| 编译 | `python -m compileall -q src/swiftvln tests` 通过 |
+| shell | `src/swiftvln` 下全部 `.sh` 执行 `bash -n` 通过 |
+| Ruff | 初始 87 个问题 → **0**，`src/swiftvln tests` 全部通过 |
+| 单元/契约 | **57/57** 通过，运行时间 2.666 秒 |
+| UAV adapter | 在主线训练环境完成外部 checkpoint 加载、挂载和 forward shape smoke |
+| 入口 | CLI、SatNav 数据脚本和 S2R manifest 的 `--help` smoke 通过 |
+| JSON 结果 | 四组结果的 count、唯一 episode key、model type、world size、rank 集合和异常字段自动断言通过 |
+
+### 12.3 8-GPU 训练矩阵
+
+四组训练都在本机服务器 98 的 8 张 H100 上执行，限制为 16 个样本、`max_steps=1`，并验证最终 checkpoint 的 config 和权重完整性。
+
+| Backbone | 训练环境/数据 | 结果 | loss | checkpoint |
+|---|---|---|---:|---|
+| Qwen2.5-VL 3B | SatNav | 通过 | 1.27842259 | 完整，两份 safetensors shard |
+| Qwen2.5-VL 3B | Habitat（R2R/RxR） | 通过 | 1.35145164 | 完整，两份 safetensors shard |
+| Qwen3-VL 2B | SatNav | 通过 | 1.63227499 | 完整，单份 safetensors；token acc 0.68604651 |
+| Qwen3-VL 2B | Habitat（R2R/RxR） | 通过 | 1.69761992 | 完整；token acc 0.63141994 |
+
+四组任务都正常退出并释放 8 张 GPU。日志中的 NCCL “process group 未显式 destroy”是成功退出后的既有 warning，没有造成残留进程或 checkpoint 不完整。
+
+### 12.4 SatNav/Habitat 评测矩阵
+
+SatNav 使用 8 GPU、每卡 1 episode 验证分布式收集；Habitat 使用单模拟器、1 episode 验证稳定实流。每个 episode 最多 5 steps，关闭视频和自动恢复。
+
+| Backbone | 评测环境 | world size / episodes | SR / SPL / OS | NE | 平均 steps | 异常 |
+|---|---|---:|---|---:|---:|---:|
+| Qwen2.5-VL 3B | SatNav `val_seen` | 8 / 8 | 0 / 0 / 0 | 151.131708 | 4.75 | 0 |
+| Qwen2.5-VL 3B | Habitat `val_unseen` | 1 / 1 | 0 / 0 / 0 | 7.960824 | 5.00 | 0 |
+| Qwen3-VL 2B | SatNav `val_seen` | 8 / 8 | 0 / 0 / 0 | 143.782667 | 5.00 | 0 |
+| Qwen3-VL 2B | Habitat `val_unseen` | 1 / 1 | 0 / 0 / 0 | 7.226479 | 5.00 | 0 |
+
+两组 SatNav 的 `result.jsonl` 均恰好包含 rank 0–7，`scene_id::episode_id` 无重复；两组 Habitat 的 dataset、Habitat-Sim、task、模型模板、推理 session、environment step、JSONL 和 summary 全链路完成。这些是 1-step checkpoint 的代码路径 smoke，指标不代表模型质量。
+
+### 12.5 Habitat 并发说明
+
+第一次尝试用 8 个 Habitat-Sim 进程并发评测 Qwen2.5 时，3 个 rank 正常完成，另外 5 个 rank 停在 NVIDIA/Habitat-Sim 驱动读写锁，同时 `nvidia-smi` 短暂阻塞；日志中没有 Python/模型异常。该专用 tmux 和子进程被精确终止后驱动恢复，8 张卡显存全部释放。随后使用单 Habitat 模拟器稳定完成 Qwen2.5 和 Qwen3 两组实流。
+
+因此本轮结论是“SwiftVLN 的 Habitat 功能路径通过”，而不是“当前机器上的 8-way Habitat-Sim 并发已得到保证”。若未来把多模拟器并发作为生产要求，需要单独做驱动/Habitat-Sim 稳定性验证。
+
+### 12.6 测试产物清理
+
+- 删除专用 `runtime/smoke/refactor_final_matrix_20260805`：约 **178 GB、203 个文件**，包含四组临时 checkpoint 和全部日志。
+- 删除五个带本轮唯一时间戳的评测模型目录：四个成功结果和一个并发中断的 partial result。
+- 删除 `src/`、`tests/` 下测试生成的全部 `__pycache__`/`.pyc`；最终计数为 0。
+- 清理后服务器 98 的 GPU compute process 计数为 0；所有本轮专用 tmux 均不存在，用户原有 `rebuttal` session 未触碰。
+- 正式模型库、数据集、正式评测结果和用户已有运行任务均未删除。上述临时产物按维护者要求不保留备份，可由同一 smoke 配置重建。
+
+### 12.7 本轮原子提交
+
+| 提交 | 内容 | 主要门禁 |
+|---|---|---|
+| `d0b071c` | 建立 SwiftVLN 重构契约基线 | config/name/history/window/JSONL/CLI 契约 |
+| `c1cb769` | 移除本地 deployment 功能 | CLI/import 契约 |
+| `da2df3c` | 删除历史数据与分析工具 | 当前数据/S2R 入口 smoke |
+| `af22dc1` | 收缩 Habitat 扩展兼容面 | Habitat 扩展契约 + 实流 |
+| `5a871f6` | 收口单模型 CLI 入口 | CLI 转发/help 契约 |
+| `332cff6` | 统一实验配置与模型命名 | golden names + shell/collector 契约 |
+| `22ee635` | 拆分评测推理与环境循环 | window/JSONL 契约 |
+| `c1e61e9` | 合并单实现训练 Base 层 | 训练结构契约 + GPU train |
+| `0cd6bd1` | 抽离评测结果记录组件 | resume/去重/summary 契约 |
+| `cfc4a8b` | 组合评测环境能力 | 环境分发/episode 分布契约 |
+| `3f5dadf` | 移除单实现评测 Base 层 | 评测结构契约 + GPU eval |
+| `622c1bc` | 收口训练队列配置协议 | 3 个队列协议测试 |
+| `84b8e9c` | 统一评测文件队列协议 | 6 个队列协议测试 |
+| `f8cd0fe` | 收缩 `common` 顶层导出 | import surface 契约 |
+| `bc1c3aa` | 禁止组合 embedding 增强 | 4 个边界层契约 |
+| `7eb9cda` | 清理剩余静态检查问题 | Ruff 0 + 全量回归 |
+
 # 我的需求
 0. 整体的代码都可以比较结构化，方便后续添加新的数据进行训练或者新的环境进行评测
 
@@ -487,3 +649,18 @@ SatNav smoke 的训练 loss 为 1.29994798；`val_seen` 完成 10 episodes（NE 
 2. 模型训练的时候可以使用satnav或者habitat的数据进行训练，同时eval的时候也可以使用habitat或者satnav进行eval。训练以及eval的代码我希望可以结构化一些，后续有可能需要添加新的环境进行训练
 
 3. 模型训练以及eval整体的代码结构都需要简单容易阅读容易评审
+
+4. 我希望最后模型memory中的选择在外部看比较简洁， embedding层面这两个可以不要保存 (- pose-additive + UAV) - (pose-film + UAV)
+
+5. 代码整洁，可读性非常高
+
+## 验收映射（2026-08-05）
+
+| 需求 | 状态 | 落地证据 |
+|---:|---|---|
+| 0 | ✅ | 训练参数、实验 schema、dataset/env adapter、environment composition 职责分离；新增数据或环境不需要修改全局多模型 registry |
+| 1 | ✅ | `SwiftVLNExperimentSpec` 显式支持 Qwen2.5/Qwen3；两种 backbone 均完成 8-GPU 训练和 SatNav/Habitat 评测 |
+| 2 | ✅ | SatNav/Habitat 均可作为训练数据和评测环境；四组训练 + 四组评测矩阵通过 |
+| 3 | ✅ | 训练 Base 合并，评测拆为 inference/evaluator/environment/results/diagnostics；稳定 shell 入口保持不变 |
+| 4 | ✅ | memory/history 命名与校验集中；pose-additive + UAV、pose-film + UAV 在名称、加载和运行时三层拒绝 |
+| 5 | ✅ | 初始 33,272 行降至 26,269 行，Ruff 87 → 0，57 个契约测试和职责边界共同保证可读性与可评审性 |
