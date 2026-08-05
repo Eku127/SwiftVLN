@@ -59,7 +59,13 @@ def run_command(dataset: str, command: str, forwarded_args: Sequence[str]) -> in
     if module_main is None:
         raise AttributeError(f"Module {module_path} does not define main()")
 
-    result = module_main(list(forwarded_args))
+    if command == "sample_preview":
+        result = module_main(
+            list(forwarded_args),
+            dataset=normalize_dataset_name(dataset),
+        )
+    else:
+        result = module_main(list(forwarded_args))
     return int(result) if result is not None else 0
 
 

@@ -157,6 +157,9 @@ bash src/swiftvln/s2r/scripts/train_s2r.sh
 
 预览图只用于人工 QA，不参与训练，也不需要保留在正式数据目录：
 
+四个命令共享 `data_generation/sample_preview.py` renderer；launcher 根据 dataset
+选择 pairs.csv schema adapter，因此 CLI 与各数据源原有参数保持不变。
+
 ```bash
 swiftvln s2r-data denseuav sample_preview --dataset-dir "$PAIR_ROOT/denseuav"
 swiftvln s2r-data gta_uav sample_preview --dataset-dir "$PAIR_ROOT/gta"

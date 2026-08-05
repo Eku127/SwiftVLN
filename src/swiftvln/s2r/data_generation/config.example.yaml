@@ -5,6 +5,8 @@
 #
 # Paths may be absolute, use ~/${ENV_VAR}, or be relative to this YAML file.
 # Explicit command-line arguments always override values from this file.
+# All sample_preview sections route to one schema-aware renderer; keep them under
+# each dataset so dataset-specific defaults and filters remain explicit.
 
 DATASETS:
   denseuav:

@@ -15,7 +15,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable, List, Sequence
 
-from . import build_pairs, sample_preview
+from . import build_pairs
+from .. import sample_preview
 from ..image_utils import center_square_recrop, load_rgb_image
 
 
@@ -41,6 +42,11 @@ def run_stage(
     """Run a package entry point in-process so errors keep their traceback."""
     print(f"[run] {label} {' '.join(args)}", flush=True)
     entrypoint(list(args))
+
+
+def run_preview(args: Sequence[str]) -> None:
+    """Run the shared renderer with the SUES schema adapter."""
+    sample_preview.main(list(args), dataset="sues")
 
 
 def materialize_recrops(
@@ -259,7 +265,7 @@ def main(argv=None) -> None:
         "--output",
         str(mixed_out),
     ]
-    run_stage("sues.sample_preview", sample_preview.main, mixed_args)
+    run_stage("sues.sample_preview", run_preview, mixed_args)
 
     # Per-height previews.
     for h in heights:
@@ -282,7 +288,7 @@ def main(argv=None) -> None:
             "--output",
             str(out_file),
         ]
-        run_stage("sues.sample_preview", sample_preview.main, preview_args)
+        run_stage("sues.sample_preview", run_preview, preview_args)
 
     print(f"[done] pipeline completed: {output_dir}")
 
