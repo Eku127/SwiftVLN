@@ -248,9 +248,11 @@ Eval 队列文件固定为：
 | --- | --- | --- |
 | 98 | localhost | 本机 8 GPU |
 | 73 | `ssh 10.246.152.73` | 远端 8 GPU |
-| 17 | `ssh 10.246.132.17` 后进入 Docker | 远端 8 GPU；容器名先用 `docker ps` 查询 |
+| 17 | `ssh 10.246.132.17` 后进入 Docker | 远端 8 GPU；默认容器名 `streamvln-container` |
 
 - SSH 只用于远端 GPU/进程检查以及 tmux 启停；共享文件操作始终本地执行。
+- 17 容器 bootstrap：`src/swiftvln/scripts/docker/docker_run.sh`。脚本默认幂等复用
+  常驻容器；只有显式设置 `RECREATE=true` 才重建，`DRY_RUN=true` 可只检查命令。
 - Conda 初始化：
   `source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh`
 - 主线训练环境：`swift-vln-train-update`（Python 3.10）

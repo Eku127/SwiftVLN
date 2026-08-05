@@ -170,7 +170,7 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 
 | 对象 | 建议 | 证据与边界 |
 | --- | --- | --- |
-| `scripts/docker/docker_run.sh`（156 行） | **保留并重写**为 17 服务器的幂等 bootstrap；在替代方案可复现前不要删除。 | 17 当前常驻 `streamvln-container` 的 image/mount/workdir 与脚本基本一致，说明它具有重建价值；但实际容器使用 `sleep infinity`，脚本却启动交互 bash，并设置 `--rm`，不适合作为当前事实源。日常 train/eval 仍只需 `docker exec`。 |
+| `scripts/docker/docker_run.sh` | **已完成**：重写为 17 服务器的非交互、幂等常驻容器 bootstrap。 | 默认复用/启动 `streamvln-container`，使用 `--restart unless-stopped` 和 `sleep infinity`；不再使用 `--rm` 或交互询问，只有 `RECREATE=true` 才显式重建，另提供无副作用的 `DRY_RUN=true`。通过 `bash -n`、默认/指定 GPU dry-run 和非法布尔值拒绝测试。 |
 | eval-time template 链路 | 删除 `eval.py --template_type`、eval shell 的 `TEMPLATE_TYPE`、`EvalRunner.load_template()`、`create_evaluator(..., template)` 和 `SwiftVLNEvaluator.template`。 | template 在评测中只创建、传递、保存，从未读取；`inference.py` 已自行构造 prompt token 与视觉 embedding。**不要删除训练使用的 `model/template.py`。** |
 | `s2r/__init__.py`（47 行） | 保留最小 package marker，删除历史 lazy re-export 表和 `__getattr__`。 | 仓库内部全部显式导入 `swiftvln.s2r.dataset/model/losses`，没有顶层导出消费者。删除前仍需确认仓库外 notebook/API 用户。 |
 | `scripts/data_process/__init__.py`（40 行） | 缩成最小 marker/docstring。 | 无内部 import 消费；eager import 只扩大副作用，示例仍使用旧 `ver_260202`。实际脚本必须保留。 |

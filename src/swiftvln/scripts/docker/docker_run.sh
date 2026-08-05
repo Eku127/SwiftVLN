@@ -1,156 +1,158 @@
-#!/bin/bash
-# StreamVLN Docker Container Startup Script
-# 
-# Usage:
-#   bash src/swiftvln/scripts/docker/docker_run.sh
-#
-# This script starts a Docker container with Ubuntu 22.04 and mounts necessary
-# directories including NFS-mounted conda environment.
-# You can manually run training/evaluation scripts inside the container.
+#!/usr/bin/env bash
+# Bootstrap the persistent SwiftVLN runtime container on server 17.
 
-set -e
+set -Eeuo pipefail
 
-# ============================================================================
-# Configuration
-# ============================================================================
-# Docker image (Ubuntu 22.04)
-# Found local image: docker.internal.silassz.com/public/ubuntu:22.04
-# Note: CUDA support will be provided by nvidia-docker runtime and host CUDA drivers
-DOCKER_IMAGE="${DOCKER_IMAGE:-docker.internal.silassz.com/public/ubuntu:22.04}"
-
-# Container name
+# This is deliberately non-interactive. Existing containers are reused by
+# default; replacement only happens when the caller explicitly sets
+# RECREATE=true.
+DOCKER_IMAGE="${DOCKER_IMAGE:-ubuntu:22.04}"
 CONTAINER_NAME="${CONTAINER_NAME:-streamvln-container}"
+RECREATE="${RECREATE:-false}"
+ATTACH="${ATTACH:-false}"
+DRY_RUN="${DRY_RUN:-false}"
 
-# Host paths (NFS mounted from 98 server)
-# Keep all paths identical between host and container for compatibility
-HOST_WORKSPACE="/mnt/data1/home/jiangjiajun/workspace"
-HOST_CONDA="/mnt/data1/home/jiangjiajun/miniconda3"
-HOST_DATA="/mnt/data3/jiangjiajun/dataset"
-HOST_CACHE="/mnt/data1/home/jiangjiajun/.cache"
-HOST_CUDA="/usr/local/cuda-13.0"  # CUDA installation on host
+HOST_WORKSPACE="${HOST_WORKSPACE:-/mnt/data1/home/jiangjiajun/workspace}"
+HOST_CONDA="${HOST_CONDA:-/mnt/data1/home/jiangjiajun/miniconda3}"
+HOST_DATA="${HOST_DATA:-/mnt/data3/jiangjiajun/dataset}"
+HOST_CACHE="${HOST_CACHE:-/mnt/data1/home/jiangjiajun/.cache}"
+HOST_CUDA="${HOST_CUDA:-/usr/local/cuda-13.0}"
 
-# Container paths (SAME as host paths for NFS compatibility)
-# This ensures all hardcoded paths in scripts work correctly
-CONTAINER_WORKSPACE="/mnt/data1/home/jiangjiajun/workspace"
-CONTAINER_CONDA="/mnt/data1/home/jiangjiajun/miniconda3"
-CONTAINER_DATA="/mnt/data3/jiangjiajun/dataset"
-CONTAINER_CACHE="/mnt/data1/home/jiangjiajun/.cache"
-CONTAINER_CUDA="/usr/local/cuda-13.0"
-
-# Working directory inside container
+CONTAINER_WORKSPACE="${CONTAINER_WORKSPACE:-${HOST_WORKSPACE}}"
+CONTAINER_CONDA="${CONTAINER_CONDA:-${HOST_CONDA}}"
+CONTAINER_DATA="${CONTAINER_DATA:-${HOST_DATA}}"
+CONTAINER_CACHE="${CONTAINER_CACHE:-${HOST_CACHE}}"
+CONTAINER_CUDA="${CONTAINER_CUDA:-/usr/local/cuda-13.0}"
 CONTAINER_WORKDIR="${CONTAINER_WORKDIR:-${CONTAINER_WORKSPACE}/SwiftVLN}"
 
-# GPU configuration
-# Note: Use specific GPU IDs (e.g., "0,1,2,3,4,5,6,7") or "all" for --gpus flag
-CUDA_DEVICES="${CUDA_DEVICES:-all}"
 USE_GPU="${USE_GPU:-true}"
-
-# Network mode (host mode for NFS access)
+CUDA_DEVICES="${CUDA_DEVICES:-all}"
 NETWORK_MODE="${NETWORK_MODE:-host}"
 
-# ============================================================================
-# Check if container already exists
-# ============================================================================
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    echo "[INFO] Container '${CONTAINER_NAME}' already exists"
-    read -p "Do you want to remove it and create a new one? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "[INFO] Stopping and removing existing container..."
-        docker stop "${CONTAINER_NAME}" 2>/dev/null || true
-        docker rm "${CONTAINER_NAME}" 2>/dev/null || true
+require_bool() {
+    local name="$1"
+    local value="$2"
+    if [[ "${value}" != "true" && "${value}" != "false" ]]; then
+        echo "[ERROR] ${name} must be true or false, got: ${value}" >&2
+        exit 2
+    fi
+}
+
+print_command() {
+    printf '[DRY-RUN]'
+    printf ' %q' "$@"
+    printf '\n'
+}
+
+attach_if_requested() {
+    if [[ "${ATTACH}" == "true" ]]; then
+        exec docker exec -it "${CONTAINER_NAME}" /bin/bash
+    fi
+    echo "[INFO] Enter with: docker exec -it ${CONTAINER_NAME} /bin/bash"
+}
+
+require_bool RECREATE "${RECREATE}"
+require_bool ATTACH "${ATTACH}"
+require_bool DRY_RUN "${DRY_RUN}"
+require_bool USE_GPU "${USE_GPU}"
+
+gpu_request="${CUDA_DEVICES}"
+if [[ "${CUDA_DEVICES}" != "all" ]]; then
+    gpu_request="device=${CUDA_DEVICES}"
+fi
+
+docker_args=(
+    run --detach
+    --name "${CONTAINER_NAME}"
+    --hostname "${CONTAINER_NAME}"
+    --restart unless-stopped
+    --network "${NETWORK_MODE}"
+    --workdir "${CONTAINER_WORKDIR}"
+    --ipc host
+    --ulimit memlock=-1
+    --ulimit stack=67108864
+    --label swiftvln.role=server17-runtime
+    --volume "${HOST_WORKSPACE}:${CONTAINER_WORKSPACE}"
+    --volume "${HOST_CONDA}:${CONTAINER_CONDA}"
+    --volume "${HOST_DATA}:${CONTAINER_DATA}"
+    --volume "${HOST_CACHE}:${CONTAINER_CACHE}"
+    --volume "${HOST_CUDA}:${CONTAINER_CUDA}:ro"
+    --env "CUDA_HOME=${CONTAINER_CUDA}"
+    --env "LD_LIBRARY_PATH=${CONTAINER_CUDA}/lib64:${CONTAINER_CUDA}/lib:/usr/lib64:/usr/lib"
+    --env "PATH=${CONTAINER_CUDA}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    --env PYTORCH_ALLOC_CONF=expandable_segments:True
+    --env NCCL_DEBUG=ERROR
+    --env NCCL_TIMEOUT=1800
+    --env 'NCCL_SOCKET_IFNAME=^docker0,lo'
+    --env NCCL_BUFFSIZE=2097152
+    --env NCCL_MAX_NCHANNELS=4
+    --env "MODELSCOPE_CACHE=${CONTAINER_CACHE}/modelscope"
+    --env PYTHONUNBUFFERED=1
+)
+
+if [[ "${USE_GPU}" == "true" ]]; then
+    docker_args+=(--gpus "${gpu_request}" --env "NVIDIA_VISIBLE_DEVICES=${CUDA_DEVICES}")
+fi
+if [[ "${CUDA_DEVICES}" != "all" ]]; then
+    docker_args+=(--env "CUDA_VISIBLE_DEVICES=${CUDA_DEVICES}")
+fi
+
+conda_source="source ${CONTAINER_CONDA}/etc/profile.d/conda.sh"
+printf -v container_cuda_q '%q' "${CONTAINER_CUDA}"
+printf -v conda_source_q '%q' "${conda_source}"
+init_command="ln -sfn ${container_cuda_q} /usr/local/cuda; grep -Fqx ${conda_source_q} /root/.bashrc 2>/dev/null || printf '%s\\n' ${conda_source_q} >> /root/.bashrc; exec sleep infinity"
+docker_args+=("${DOCKER_IMAGE}" bash -lc "${init_command}")
+
+echo "=========================================="
+echo "SwiftVLN server-17 container bootstrap"
+echo "=========================================="
+echo "Image:      ${DOCKER_IMAGE}"
+echo "Container:  ${CONTAINER_NAME}"
+echo "Workdir:    ${CONTAINER_WORKDIR}"
+echo "GPU:        ${USE_GPU} (${CUDA_DEVICES})"
+echo "Network:    ${NETWORK_MODE}"
+echo "Recreate:   ${RECREATE}"
+echo "Dry run:    ${DRY_RUN}"
+
+if [[ "${DRY_RUN}" == "true" ]]; then
+    print_command docker "${docker_args[@]}"
+    exit 0
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo "[ERROR] docker is not available; run this script on server 17." >&2
+    exit 1
+fi
+
+for host_path in \
+    "${HOST_WORKSPACE}" \
+    "${HOST_CONDA}" \
+    "${HOST_DATA}" \
+    "${HOST_CACHE}" \
+    "${HOST_CUDA}"; do
+    if [[ ! -e "${host_path}" ]]; then
+        echo "[ERROR] Required server-17 mount does not exist: ${host_path}" >&2
+        exit 1
+    fi
+done
+
+if docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+    if [[ "${RECREATE}" == "true" ]]; then
+        echo "[INFO] Explicitly recreating ${CONTAINER_NAME}"
+        docker container rm --force "${CONTAINER_NAME}"
     else
-        echo "[INFO] Starting existing container..."
-        docker start "${CONTAINER_NAME}" 2>/dev/null || true
-        docker exec -it "${CONTAINER_NAME}" /bin/bash
+        if [[ "$(docker container inspect --format '{{.State.Running}}' "${CONTAINER_NAME}")" != "true" ]]; then
+            echo "[INFO] Starting existing container ${CONTAINER_NAME}"
+            docker container start "${CONTAINER_NAME}" >/dev/null
+        else
+            echo "[INFO] Reusing running container ${CONTAINER_NAME}"
+        fi
+        attach_if_requested
         exit 0
     fi
 fi
 
-# ============================================================================
-# Build docker run command
-# ============================================================================
-DOCKER_RUN_ARGS=(
-    --name "${CONTAINER_NAME}"
-    --rm
-    --network "${NETWORK_MODE}"
-    --hostname "${CONTAINER_NAME}"
-    --workdir "${CONTAINER_WORKDIR}"
-    --ipc=host
-    --ulimit memlock=-1
-    --ulimit stack=67108864
-)
-
-# GPU support
-if [ "$USE_GPU" = "true" ]; then
-    DOCKER_RUN_ARGS+=(
-        --gpus "${CUDA_DEVICES}"
-        -e NVIDIA_VISIBLE_DEVICES="${CUDA_DEVICES}"
-    )
-fi
-
-# Mount volumes
-DOCKER_RUN_ARGS+=(
-    -v "${HOST_WORKSPACE}:${CONTAINER_WORKSPACE}"
-    -v "${HOST_CONDA}:${CONTAINER_CONDA}"
-    -v "${HOST_DATA}:${CONTAINER_DATA}"
-    -v "${HOST_CACHE}:${CONTAINER_CACHE}"
-    -v "${HOST_CUDA}:${CONTAINER_CUDA}:ro"  # Mount CUDA libraries (read-only)
-)
-
-# Environment variables
-# Note: Don't set CUDA_VISIBLE_DEVICES when using --gpus all (let nvidia-docker handle it)
-DOCKER_RUN_ARGS+=(
-    -e CUDA_HOME="${CONTAINER_CUDA}"
-    -e LD_LIBRARY_PATH="${CONTAINER_CUDA}/lib64:${CONTAINER_CUDA}/lib:/usr/lib64:/usr/lib"
-    -e PATH="${CONTAINER_CUDA}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-    -e PYTORCH_ALLOC_CONF=expandable_segments:True
-    -e NCCL_DEBUG=ERROR
-    -e NCCL_TIMEOUT=1800
-    -e NCCL_SOCKET_IFNAME=^docker0,lo
-    -e NCCL_BUFFSIZE=2097152
-    -e NCCL_MAX_NCHANNELS=4
-    -e MODELSCOPE_CACHE="${CONTAINER_CACHE}/modelscope"
-    -e PYTHONUNBUFFERED=1
-)
-
-# Only set CUDA_VISIBLE_DEVICES if specific GPUs are requested (not "all")
-if [ "${CUDA_DEVICES}" != "all" ]; then
-    DOCKER_RUN_ARGS+=(-e CUDA_VISIBLE_DEVICES="${CUDA_DEVICES}")
-fi
-
-# ============================================================================
-# Print configuration
-# ============================================================================
-echo "=========================================="
-echo "StreamVLN Docker Container Startup"
-echo "=========================================="
-echo "Image:           ${DOCKER_IMAGE}"
-echo "Container:      ${CONTAINER_NAME}"
-echo "Network:        ${NETWORK_MODE}"
-echo "GPU:            ${USE_GPU} (${CUDA_DEVICES})"
-echo "Workdir:        ${CONTAINER_WORKDIR}"
-echo "------------------------------------------"
-echo "Mounts (same path mapping for NFS compatibility):"
-echo "  Workspace:    ${HOST_WORKSPACE} -> ${CONTAINER_WORKSPACE}"
-echo "  Conda:        ${HOST_CONDA} -> ${CONTAINER_CONDA}"
-echo "  Data:         ${HOST_DATA} -> ${CONTAINER_DATA}"
-echo "  Cache:        ${HOST_CACHE} -> ${CONTAINER_CACHE}"
-echo "  CUDA:         ${HOST_CUDA} -> ${CONTAINER_CUDA} (read-only)"
-echo "------------------------------------------"
-echo "Note: All paths are identical to host for script compatibility"
-echo "=========================================="
-
-# ============================================================================
-# Run container
-# ============================================================================
-echo "[INFO] Starting container..."
-# Create CUDA symlink, setup conda in .bashrc, and start bash
-docker run -it "${DOCKER_RUN_ARGS[@]}" "${DOCKER_IMAGE}" \
-    bash -c "if [ ! -L /usr/local/cuda ]; then ln -sf /usr/local/cuda-13.0 /usr/local/cuda; fi && \
-             if ! grep -q 'source.*conda.sh' ~/.bashrc 2>/dev/null; then \
-                 echo 'source ${CONTAINER_CONDA}/etc/profile.d/conda.sh' >> ~/.bashrc; \
-             fi && \
-             exec /bin/bash"
-
-echo "[INFO] Container execution completed."
+echo "[INFO] Creating persistent container ${CONTAINER_NAME}"
+docker "${docker_args[@]}" >/dev/null
+echo "[INFO] Container ${CONTAINER_NAME} is running"
+attach_if_requested
