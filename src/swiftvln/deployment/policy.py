@@ -95,11 +95,6 @@ class SwiftVLNBaselinePolicy:
             torch.cuda.manual_seed(DEFAULT_DEPLOY_SEED)
             torch.cuda.manual_seed_all(DEFAULT_DEPLOY_SEED)
 
-        if hasattr(self.model, "reset"):
-            self.model.reset(env_num=1)
-        elif hasattr(self.model, "reset_for_env"):
-            self.model.reset_for_env(0)
-
         self.history_cache: List[Tuple[torch.Tensor, Optional[List[float]]]] = []
         self.initial_features: Optional[torch.Tensor] = None
         self.overlap_context: Optional[OverlapContext] = None

@@ -327,11 +327,6 @@ class BaseVLNEval(ABC):
                 if self.is_main:
                     print(f"[{self.model_description}] Template compress_stride set to {self.args.compress_stride}")
     
-    def initialize_model(self, model):
-        """Initialize model state. Override if needed."""
-        if hasattr(model, 'reset'):
-            model.reset(env_num=1)
-    
     def resolve_config_path(self) -> str:
         """Resolve config path based on environment type."""
         if self.args.env_type == "habitat":
@@ -646,7 +641,6 @@ class BaseVLNEval(ABC):
         model, processor = self.load_model()
         template = self.load_template(processor)
         self.configure_template(template)
-        self.initialize_model(model)
         
         # Create evaluator
         config_path = self.resolve_config_path()
