@@ -205,6 +205,12 @@ Eval 队列文件固定为：
 - `runtime/eval_queue/eval_failed_todo.txt`
 - per-host 状态：`runtime/eval_queue/eval_queue_last_run_<hostname>.json`
 
+`eval_queue.sh` 只从 `eval_todo.txt` 读取模型；新增任务统一使用
+`enqueue_eval.sh`，不再支持位置参数模型列表或交互式向导。`DYNAMIC_TODO=true`
+会在每轮后刷新 todo，`WAIT_FOR_NEW_TASKS=true` 需要动态模式并在空队列时常驻；
+`AUTO_TODO=true` 为旧启动器保留，并会启用动态模式。可用 `--check-queue`
+校验队列中的 ExperimentSpec 模型名而不启动评测。
+
 ## Baseline Conventions
 
 | Baseline | 训练入口 | 评测入口 | Conda 环境 |

@@ -1,27 +1,18 @@
 #!/bin/bash
 # ============================================================================
-# VLN 串行评估脚本 - 交互式配置
+# SwiftVLN file-backed serial evaluation queue
 # ============================================================================
 #
 # 功能:
 #   - 支持从 eval_todo.txt 读取待评估模型
-#   - 交互式输入多个模型名称（分号分隔）
 #   - 串行执行评估，避免资源竞争
 #   - 自动记录评估结果和错误
 #   - 评估完成后显示汇总表格（包含结果路径）
-#   - 【动态模式】每次评估完成后重新读取 todo 文件，支持运行期间追加新任务
+#   - 动态模式下持续消费运行期间追加的新任务
 #
 # 使用方法:
-#   bash src/swiftvln/scripts/eval/eval_queue.sh
-#
-# 也支持非交互模式:
-#   bash src/swiftvln/scripts/eval/eval_queue.sh "model1;model2;model3"
-#
-# 动态模式使用说明:
-#   1. 交互式启动脚本时，选择使用 eval_todo.txt
-#   2. 启用"动态读取 todo 文件"选项
-#   3. 脚本运行期间，可以随时向 eval_todo.txt 文件追加新的模型名称
-#   4. 脚本会在每次评估完成后自动检测并添加新任务到队列
+#   DYNAMIC_TODO=true WAIT_FOR_NEW_TASKS=true \
+#     bash src/swiftvln/scripts/eval/eval_queue.sh
 #
 # 环境变量:
 #   EVAL_SPLIT   - SatNav 默认 val_seen / Habitat 默认 val_unseen (可手动覆盖)
@@ -29,8 +20,8 @@
 #   SAVE_VIDEO   - 保存视频 (true/false)
 #   MAX_EPISODES - 限制episode数量 (用于调试)
 #   EVAL_QUEUE_DIR - 评测队列状态目录 (default: ${SWIFTVLN_ROOT}/runtime/eval_queue)
-#   DYNAMIC_TODO - 启用动态模式 (true/false, 非交互模式下使用)
-#   AUTO_TODO    - 无交互从 eval_todo.txt 启动 (true/false)
+#   DYNAMIC_TODO - 启用动态模式 (true/false)
+#   AUTO_TODO    - 兼容旧启动器；true 时同时启用 DYNAMIC_TODO
 #   WAIT_FOR_NEW_TASKS - 动态模式下队列空时持续等待新任务 (true/false)
 #   TODO_POLL_INTERVAL - 空队列轮询间隔秒数 (default: 60)
 #
@@ -47,7 +38,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
 NC='\033[0m'
 BOLD='\033[1m'
 
@@ -72,8 +62,10 @@ DONE_FILE="${EVAL_QUEUE_DIR}/eval_done.txt"
 FAILED_FILE="${EVAL_QUEUE_DIR}/eval_failed_todo.txt"
 TODO_LOCK_FILE="${TODO_FILE}.lock"
 
-mkdir -p "$EVAL_QUEUE_DIR"
-touch "$TODO_FILE" "$DONE_FILE" "$FAILED_FILE"
+initialize_queue_files() {
+    mkdir -p "$EVAL_QUEUE_DIR"
+    touch "$TODO_FILE" "$DONE_FILE" "$FAILED_FILE"
+}
 
 # ============================================================================
 # 全局变量
@@ -84,8 +76,8 @@ declare -a EXP_RESULTS=()      # 评估结果
 declare -a EXP_ERRORS=()       # 错误记录
 declare -a RESULT_PATHS=()     # 结果路径
 SLEEP_BETWEEN_EVALS=30         # 评估间隔（秒）
-DYNAMIC_TODO=false             # 是否动态读取 todo 文件
-WAIT_FOR_NEW_TASKS=false       # 动态模式下空队列是否持续等待
+DYNAMIC_TODO="${DYNAMIC_TODO:-false}"
+WAIT_FOR_NEW_TASKS="${WAIT_FOR_NEW_TASKS:-false}"
 TODO_POLL_INTERVAL="${TODO_POLL_INTERVAL:-60}"
 
 # ============================================================================
@@ -163,24 +155,6 @@ read_models_from_todo() {
     return 0
 }
 
-# 显示 TODO 文件中的模型
-show_todo_models() {
-    echo ""
-    echo -e "${BOLD}eval_todo.txt 中的模型列表:${NC}"
-    echo "┌────┬────────────────────────────────────────────────────────────────────────────────────────────┐"
-    echo "│ #  │ 模型名称                                                                                   │"
-    echo "├────┼────────────────────────────────────────────────────────────────────────────────────────────┤"
-    
-    local idx=1
-    for model in "${MODELS[@]}"; do
-        printf "│ %-2d │ %-90s │\n" "$idx" "${model:0:90}"
-        idx=$((idx + 1))
-    done
-    
-    echo "└────┴────────────────────────────────────────────────────────────────────────────────────────────┘"
-    echo ""
-}
-
 # ============================================================================
 # 检查模型是否已评估
 # ============================================================================
@@ -234,186 +208,57 @@ refresh_models_from_todo() {
 }
 
 # ============================================================================
-# 交互式配置
+# File-backed queue protocol
 # ============================================================================
-interactive_setup() {
-    print_header "╔══════════════════════════════════════════════════════════════╗"
-    echo -e "         ${BOLD}VLN 串行评估配置向导${NC}"
-    print_header "╚══════════════════════════════════════════════════════════════╝"
-    
-    # 0. 检查是否要使用 eval_todo.txt
-    local use_todo=false
-    if [ -f "$TODO_FILE" ]; then
-        # 检查 TODO 文件是否有内容
-        if read_models_from_todo; then
-            echo ""
-            echo -e "${CYAN}检测到 eval_todo.txt 文件，包含 ${#MODELS[@]} 个待评估模型${NC}"
-            show_todo_models
-            
-            read -p "是否使用 eval_todo.txt 中的模型列表? [Y/n]: " use_todo_input
-            if [[ "$use_todo_input" =~ ^[Yy]?$ ]]; then
-                use_todo=true
-                print_success "将使用 eval_todo.txt 中的 ${#MODELS[@]} 个模型"
-                
-                # 询问是否启用动态读取
-                echo ""
-                echo -e "${CYAN}提示: 动态模式下，脚本会在每次评估完成后重新读取 todo 文件${NC}"
-                echo -e "${CYAN}      你可以在脚本运行期间向 eval_todo.txt 追加新的模型名称${NC}"
-                echo -e "${CYAN}      所有模型评估完成后将自动退出${NC}"
-                read -p "是否启用动态读取 todo 文件? [Y/n]: " dynamic_input
-                if [[ "$dynamic_input" =~ ^[Yy]|^[Yy][Ee][Ss]|^$ ]]; then
-                    DYNAMIC_TODO=true
-                    print_success "已启用动态读取模式"
-                else
-                    print_info "动态模式未启用"
-                fi
-            else
-                MODELS=()  # 清空，让用户手动输入
-            fi
-        fi
+show_usage() {
+    cat <<EOF
+Usage:
+  [DYNAMIC_TODO=true] [WAIT_FOR_NEW_TASKS=true] \\
+    bash src/swiftvln/scripts/eval/eval_queue.sh [--check-queue]
+
+Models are read only from:
+  $TODO_FILE
+
+Use enqueue_eval.sh to add validated model names. Positional model lists and the
+interactive wizard are no longer supported.
+EOF
+}
+
+configure_queue() {
+    if [[ "${AUTO_TODO:-false}" == "true" ]]; then
+        DYNAMIC_TODO=true
     fi
-    
-    # 1. 输入模型名称 (如果没有使用 todo 文件)
-    if [ "$use_todo" = false ]; then
-        print_header "📝 Step 1: 输入待评估的模型名称"
-        echo "格式: 多个模型名用分号(;)分隔"
-        echo ""
-        echo "示例:"
-        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-123456"
-        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2-noembed-bs64-lr2e-5-123456  # per_frame, random"
-        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-123456  # per_frame, no embed"
-        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2-initial-pose-bs64-lr2e-5-123456  # initial + pose"
-        echo "  swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b2.0-tome-s2-pose-bs64-lr2e-5-123456  # pose"
-        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512-noembed-bs64-lr2e-5-123456  # GTC, no embed"
-        echo "  swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512-noembed-bs64-lr2e-5-123456  # SegmentGTC"
-        echo ""
-        read -p "请输入模型名称: " model_input
-        
-        if [[ -z "$model_input" ]]; then
-            print_error "未输入任何模型名称!"
-            exit 1
-        fi
-        
-        # 解析模型列表
-        IFS=';' read -ra MODELS <<< "$model_input"
-        
-        # 去除首尾空格
-        for i in "${!MODELS[@]}"; do
-            MODELS[$i]=$(echo "${MODELS[$i]}" | xargs)
-        done
-        
-        # 过滤空项
-        local temp_models=()
-        for model in "${MODELS[@]}"; do
-            if [[ -n "$model" ]]; then
-                temp_models+=("$model")
-            fi
-        done
-        MODELS=("${temp_models[@]}")
-        
-        if [[ ${#MODELS[@]} -eq 0 ]]; then
-            print_error "未输入任何有效的模型名称!"
-            exit 1
-        fi
-        
-        print_success "已添加 ${#MODELS[@]} 个模型"
-    fi
-    
-    # 2. 显示模型解析结果（env_type 自动从模型名解析）
-    print_header "🔍 Step 2: 模型环境类型解析结果"
-    
-    # 解析每个模型的 env_type
-    declare -a MODEL_ENV_TYPES=()
-    local habitat_count=0
-    local satnav_count=0
-    
-    echo "┌────┬──────────────────────────────────────────────────────────────────────────────┬──────────┬────────────────┐"
-    echo "│ #  │ 模型名称                                                                     │ 环境类型 │ Embed          │"
-    echo "├────┼──────────────────────────────────────────────────────────────────────────────┼──────────┼────────────────┤"
-    
-    local idx=1
-    for model in "${MODELS[@]}"; do
-        local env_type=$(parse_env_type_from_model "$model")
-        local embed_slot=$(parse_embed_slot_from_model "$model")
-        MODEL_ENV_TYPES+=("$env_type")
-        
-        if [[ "$env_type" == "habitat" ]]; then
-            ((habitat_count++))
-        else
-            ((satnav_count++))
-        fi
-        
-        printf "│ %-2d │ %-76s │ %-8s │ %-14s │\n" "$idx" "${model:0:76}" "$env_type" "$embed_slot"
-        ((idx++))
-    done
-    
-    echo "└────┴──────────────────────────────────────────────────────────────────────────────┴──────────┴────────────────┘"
-    echo ""
-    
-    # 显示汇总
-    if [[ $habitat_count -gt 0 && $satnav_count -gt 0 ]]; then
-        print_warning "注意：模型列表包含不同环境类型 (habitat: $habitat_count, satnav: $satnav_count)"
-        echo "每个模型将使用其对应的环境类型进行评估"
-    elif [[ $habitat_count -gt 0 ]]; then
-        print_info "所有模型使用 habitat 环境评估"
+    unset ENV_TYPE
+    if [[ -n "${EVAL_SPLIT:-}" ]]; then
+        export EVAL_SPLIT
     else
-        print_info "所有模型使用 satnav 环境评估"
+        unset EVAL_SPLIT
     fi
-    echo ""
-    
-    read -p "解析结果是否正确? [Y/n]: " confirm_parse
-    if [[ ! "$confirm_parse" =~ ^[Yy]?$ ]]; then
-        print_warning "请检查模型名称格式或手动设置 ENV_TYPE 环境变量后重新运行"
-        exit 0
-    fi
-    
-    # 3. 其他评估配置
-    print_header "⚙️  Step 3: 其他评估配置"
-    echo "当前配置:"
-    echo "  EVAL_SPLIT:   ${EVAL_SPLIT:-auto (SatNav: val_seen+val_unseen, Habitat: val_unseen)}"
-    echo "  CUDA_DEVICES: ${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
-    echo "  SAVE_VIDEO:   ${SAVE_VIDEO:-false}"
-    echo ""
-    read -p "是否修改配置? [y/N]: " modify_env
-    
-    if [[ "$modify_env" =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "EVAL_SPLIT 留空 = auto (SatNav 跑 val_seen+val_unseen, Habitat 跑 val_unseen)"
-        read -p "EVAL_SPLIT [${EVAL_SPLIT:-}]: " new_eval_split
-        EVAL_SPLIT="${new_eval_split:-${EVAL_SPLIT:-}}"
-        
-        read -p "CUDA_DEVICES [${CUDA_DEVICES:-0,1,2,3,4,5,6,7}]: " new_cuda_devices
-        CUDA_DEVICES=${new_cuda_devices:-${CUDA_DEVICES:-0,1,2,3,4,5,6,7}}
-        
-        read -p "SAVE_VIDEO [${SAVE_VIDEO:-false}]: " new_save_video
-        SAVE_VIDEO=${new_save_video:-${SAVE_VIDEO:-false}}
-    fi
-    
-    # 导出环境变量 (不再导出 ENV_TYPE，让 eval_by_name.sh 自动从模型名解析)
-    unset ENV_TYPE  # 确保不覆盖模型名中的 env_type
-    # EVAL_SPLIT 留空时由 eval_by_name.sh 决定 (SatNav: 两个 split; Habitat: val_unseen)
-    [ -n "${EVAL_SPLIT}" ] && export EVAL_SPLIT || unset EVAL_SPLIT
     export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
     export SAVE_VIDEO="${SAVE_VIDEO:-false}"
-    
-    # 如果保存视频，自动启用视频压缩
     if [[ "$SAVE_VIDEO" == "true" ]]; then
-        export VIDEO_COMPRESSION="true"
-        print_info "SAVE_VIDEO=true, 自动启用视频压缩 (VIDEO_COMPRESSION=true)"
+        export VIDEO_COMPRESSION=true
     else
-        export VIDEO_COMPRESSION="false"
+        export VIDEO_COMPRESSION=false
     fi
-    
-    # 4. 显示汇总
-    show_summary
-    
-    # 4. 确认执行
-    echo ""
-    read -p "是否开始评估? [Y/n]: " confirm
-    if [[ ! "$confirm" =~ ^[Yy]?$ ]]; then
-        print_warning "已取消评估"
-        exit 0
+
+    if ! read_models_from_todo; then
+        MODELS=()
     fi
+
+    local model
+    for model in "${MODELS[@]}"; do
+        if ! python -m swiftvln.experiment parse-name "$model" >/dev/null; then
+            print_error "Invalid SwiftVLN model name in $TODO_FILE: $model"
+            return 1
+        fi
+    done
+
+    if [[ "$WAIT_FOR_NEW_TASKS" == "true" && "$DYNAMIC_TODO" != "true" ]]; then
+        print_error "WAIT_FOR_NEW_TASKS=true requires DYNAMIC_TODO=true"
+        return 1
+    fi
+    print_success "Validated ${#MODELS[@]} queued models"
 }
 
 # ============================================================================
@@ -731,6 +576,31 @@ show_final_results() {
 # 主函数
 # ============================================================================
 main() {
+    local validate_only="${EVAL_QUEUE_VALIDATE_ONLY:-false}"
+    case "${1:-}" in
+        --help|-h)
+            show_usage
+            return 0
+            ;;
+        --check-queue)
+            validate_only=true
+            ;;
+        "") ;;
+        *)
+            print_error "Unknown argument: $1"
+            show_usage
+            return 2
+            ;;
+    esac
+
+    initialize_queue_files
+    configure_queue || return 1
+    show_summary
+    if [[ "$validate_only" == "true" ]]; then
+        print_success "Queue check passed; no evaluation was launched."
+        return 0
+    fi
+
     echo ""
     echo -e "${BOLD}${CYAN}"
     echo "  ╦  ╦╦  ╔╗╔  ╔═╗┬  ┬┌─┐┬    ╔═╗ ┬ ┬┌─┐┬ ┬┌─┐"
@@ -738,94 +608,17 @@ main() {
     echo "   ╚╝ ╩═╝╝╚╝  ╚═╝ └┘ ┴ ┴┴─┘  ╚═╝╚└─┘└─┘└─┘└─┘"
     echo -e "${NC}"
     echo ""
-    
-    # AUTO_TODO: 无交互从 eval_todo.txt 启动（适合作为常驻 worker）
-    if [[ "${AUTO_TODO:-false}" == "true" ]]; then
-        print_info "AUTO_TODO 模式: 从 eval_todo.txt 读取模型列表"
-        if read_models_from_todo; then
-            print_success "从 todo 文件加载 ${#MODELS[@]} 个模型"
-        else
-            MODELS=()
-            print_warning "todo 文件当前为空，将等待新任务"
-        fi
 
-        unset ENV_TYPE
-        # 若用户未显式设置 EVAL_SPLIT，留空由 eval_by_name.sh 决定（SatNav: 两个 split；Habitat: val_unseen）
-        [ -n "${EVAL_SPLIT}" ] && export EVAL_SPLIT
-        export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
-        export SAVE_VIDEO="${SAVE_VIDEO:-false}"
-        if [[ "$SAVE_VIDEO" == "true" ]]; then
-            export VIDEO_COMPRESSION="true"
-            print_info "SAVE_VIDEO=true, 自动启用视频压缩"
-        else
-            export VIDEO_COMPRESSION="false"
-        fi
-
-        DYNAMIC_TODO=true
-        if [[ "${WAIT_FOR_NEW_TASKS:-false}" == "true" ]]; then
-            WAIT_FOR_NEW_TASKS=true
-            print_info "WAIT_FOR_NEW_TASKS 已启用，空队列将持续轮询"
-        fi
-        print_info "TODO_POLL_INTERVAL=${TODO_POLL_INTERVAL}s"
-        show_summary
-
-    # 检查是否有命令行参数（非交互模式）
-    elif [[ $# -ge 1 && -n "$1" ]]; then
-        print_info "非交互模式: 使用命令行参数"
-        IFS=';' read -ra MODELS <<< "$1"
-        
-        # 去除首尾空格并过滤空项
-        local temp_models=()
-        for model in "${MODELS[@]}"; do
-            model=$(echo "$model" | xargs)
-            if [[ -n "$model" ]]; then
-                temp_models+=("$model")
-            fi
-        done
-        MODELS=("${temp_models[@]}")
-        
-        if [[ ${#MODELS[@]} -eq 0 ]]; then
-            print_error "未提供任何有效的模型名称!"
-            exit 1
-        fi
-        
-        # 导出环境变量 (不再导出 ENV_TYPE，让 eval_by_name.sh 自动从模型名解析)
-        unset ENV_TYPE  # 确保不覆盖模型名中的 env_type
-        # 若用户未显式设置 EVAL_SPLIT，留空由 eval_by_name.sh 决定（SatNav: 两个 split；Habitat: val_unseen）
-        [ -n "${EVAL_SPLIT}" ] && export EVAL_SPLIT
-        export CUDA_DEVICES="${CUDA_DEVICES:-0,1,2,3,4,5,6,7}"
-        export SAVE_VIDEO="${SAVE_VIDEO:-false}"
-        
-        # 如果保存视频，自动启用视频压缩
-        if [[ "$SAVE_VIDEO" == "true" ]]; then
-            export VIDEO_COMPRESSION="true"
-            print_info "SAVE_VIDEO=true, 自动启用视频压缩"
-        else
-            export VIDEO_COMPRESSION="false"
-        fi
-        
-        # 非交互模式下支持 DYNAMIC_TODO 环境变量
-        if [[ "${DYNAMIC_TODO}" == "true" ]]; then
-            DYNAMIC_TODO=true
-            print_info "动态模式已通过环境变量启用"
-        fi
-        if [[ "${WAIT_FOR_NEW_TASKS:-false}" == "true" ]]; then
-            WAIT_FOR_NEW_TASKS=true
-            print_info "空队列等待模式已启用"
-        fi
-        
-        show_summary
-    else
-        # 交互式配置
-        interactive_setup
-    fi
-    
     # 开始评估
     print_header "🏃 开始串行评估"
     
     if [ "$DYNAMIC_TODO" = true ]; then
         print_info "动态模式已启用 - 脚本会在每次评估后检查 todo 文件中的新模型"
-        print_info "注意: 所有模型评估完成后将自动退出"
+        if [ "$WAIT_FOR_NEW_TASKS" = true ]; then
+            print_info "队列为空时将每 ${TODO_POLL_INTERVAL}s 检查新任务"
+        else
+            print_info "所有模型评估完成后将自动退出"
+        fi
     else
         print_info "串行模式 - 将依次评估 ${#MODELS[@]} 个模型"
     fi
