@@ -43,6 +43,21 @@ skills/tests 交叉核对。85 个 Python 文件均通过 AST 解析，12 个 sh
 已在仓库规定的 `swift-vln-eval-update` 环境运行完整 contract suite：59 项通过。
 后续清理落地后仍需追加一次 train→eval smoke。
 
+## 变更前 SatNav train→eval smoke 基线
+
+按 `.codex/skills/swiftvln-smoke-test/SKILL.md` 的固定入口，在任何 P0/P1 清理落地前完成
+了 2-GPU 训练与评测基线。训练使用 `MAX_SAMPLES=16`、`SAVE_STEPS=1`、
+`SAVE_TOTAL_LIMIT=1`、`USE_SWANLAB=false`、`TRAIN_NUM_GPUS=2`、
+`EMBEDDING_MODE=none`；评测使用 `MAX_EPISODES=10`、`ENV_TYPE=satnav`、
+`CUDA_DEVICES=0,1`，并覆盖 `val_seen`、`val_unseen`。
+
+- 训练入口：`src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh`。
+- 模型名：`swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-210207`。
+- checkpoint：`output/swiftvln/swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs16-lr2e-5-210207/v0-20260805-210217/checkpoint-1`；配置和 2 个 safetensors shard 完整，训练 loss 为 `1.29994798`。
+- `val_seen`：10 episodes，SR `0.00%`、SPL `0.0000`、OS `0.00%`、NE `209.67844198863096m`、平均 `170.0` steps；摘要位于 `results/eval/swiftvln/<模型名>/val_seen/20260805_210539/evaluation_summary.json`。
+- `val_unseen`：10 episodes，SR `0.00%`、SPL `0.0000`、OS `0.00%`、NE `19.665423601546554m`、平均 `16.5` steps；摘要位于 `results/eval/swiftvln/<模型名>/val_unseen/20260805_210856/evaluation_summary.json`。
+- 日志：`/tmp/smoke_swiftvln_pre_p0p1_train_20260805.log`、`/tmp/smoke_swiftvln_pre_p0p1_eval_20260805.log`。smoke 产物按 skill 约定保留，供变更后对照。
+
 ## 功能总览
 
 ```text
