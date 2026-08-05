@@ -16,7 +16,6 @@ from omegaconf import OmegaConf
 
 from ..constants import DEFAULT_ACTION_MAP
 from ..env.base import EnvWrapper
-from ..utils.error_analyzer import ErrorAnalyzer, TrajectoryRecorder
 from ..utils.image_utils import append_text_to_image
 
 DEFAULT_EVAL_SEED = 42
@@ -143,46 +142,6 @@ class EvaluationEnvironment:
         action_patterns = "|".join(re.escape(action) for action in self.actions2idx)
         matches = re.findall(action_patterns, output)
         return [self.actions2idx[match] for match in matches]
-
-    def analyze_trajectory_errors(
-        self,
-        trajectory_recorder: TrajectoryRecorder,
-        episode: Any,
-        metrics: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Classify Habitat trajectory deviation and recovery patterns."""
-        trajectory = trajectory_recorder.get_trajectory()
-        path_lengths = trajectory_recorder.get_path_lengths()
-        if not trajectory:
-            return {
-                "error_tags": [],
-                "had_deviation": False,
-                "deviation_recovered": False,
-            }
-
-        ground_truth_path = None
-        if getattr(episode, "reference_path", None) is not None:
-            ground_truth_path = [
-                np.array(position) for position in episode.reference_path
-            ]
-
-        goal_position = None
-        if getattr(episode, "goals", None):
-            goal_position = np.array(episode.goals[0].position)
-        elif hasattr(episode, "goal_position"):
-            goal_position = np.array(episode.goal_position)
-        if goal_position is None:
-            goal_position = trajectory[-1]
-
-        analyzer = ErrorAnalyzer()
-        return analyzer.analyze(
-            trajectory=trajectory,
-            path_lengths=path_lengths,
-            gt_path=ground_truth_path,
-            goal_position=goal_position,
-            final_distance=metrics.get("distance_to_goal", float("inf")),
-            oracle_success=metrics.get("oracle_success", 0.0) > 0.5,
-        )
 
     def save_habitat_video(
         self,

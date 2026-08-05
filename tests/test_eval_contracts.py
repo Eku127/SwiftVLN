@@ -174,7 +174,12 @@ class EvalJsonlContractTest(unittest.TestCase):
         self.assertEqual(result["scene_id"], "scene")
         self.assertEqual(result["success"], 0.0)
         self.assertEqual(result["error"], "expected failure")
-        self.assertEqual(result["error_tags"], [])
+        for removed_field in (
+            "error_tags",
+            "had_deviation",
+            "deviation_recovered",
+        ):
+            self.assertNotIn(removed_field, result)
 
 
 class EvalWindowContractTest(unittest.TestCase):

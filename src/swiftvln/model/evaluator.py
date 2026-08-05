@@ -18,7 +18,6 @@ from PIL import Image
 
 from swiftvln.common.env.base import EnvWrapper
 from swiftvln.common.eval.environment import EvaluationEnvironment
-from swiftvln.common.utils.error_analyzer import TrajectoryRecorder
 from swiftvln.model.diagnostics import DiagnosticsObserver
 from swiftvln.model.inference import SwiftVLNInferenceSession
 
@@ -37,8 +36,6 @@ def _new_timing_stats() -> Dict[str, float]:
         "visualization": 0.0,
         "env_step": 0.0,
         "satnav_topdown": 0.0,
-        "trajectory_record": 0.0,
-        "error_analysis": 0.0,
         "video_save": 0.0,
     }
 
@@ -75,7 +72,6 @@ class EnvironmentEpisodeLoop:
         rgb_list: List[Image.Image] = []
         action_sequence: List[int] = []
         step_id = 0
-        trajectory_recorder = TrajectoryRecorder()
         vis_frames = []
         rgb_frames = []
         topdown_frames = []
@@ -164,26 +160,7 @@ class EnvironmentEpisodeLoop:
                     )
                     timing_stats["satnav_topdown"] += time.time() - topdown_start
 
-                if environment.env_type == "habitat":
-                    record_start = time.time()
-                    try:
-                        agent_state = env_wrapper.env.sim.get_agent_state()
-                        trajectory_recorder.add_step(agent_state.position)
-                    except Exception:
-                        pass
-                    timing_stats["trajectory_record"] += time.time() - record_start
-
             metrics = env_wrapper.get_metrics()
-            if environment.env_type == "habitat":
-                analysis_start = time.time()
-                metrics.update(
-                    environment.analyze_trajectory_errors(
-                        trajectory_recorder,
-                        episode,
-                        metrics,
-                    )
-                )
-                timing_stats["error_analysis"] = time.time() - analysis_start
         except Exception as exc:
             metrics = self._failure_metrics(env_wrapper, exc)
         finally:

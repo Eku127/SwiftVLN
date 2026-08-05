@@ -155,6 +155,7 @@ reset/predict/step 状态机，以及按需收集可视化帧；环境差异由 
 
 `SAVE_VIDEO=true` 时，Habitat 输出 observation/top-down 可视化，SatNav 输出 RGB 与
 top-down 组合视频；`VIDEO_COMPRESSION=true` 控制压缩。视频能力与指标汇总互不依赖。
+评测只持久化标准导航指标及真实运行异常的 `error` 字段，不再执行事后失败分类。
 
 ## S2R
 

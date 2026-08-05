@@ -201,6 +201,8 @@ GPU 选择：
   `EnvironmentEpisodeLoop`；新增 history/inference 能力不要重新塞回 episode loop。
 - `evaluation_summary.json` 顶层指标是当前 split 全 episode 的直接平均；
   `by_trajectory_type` 只提供细分，不做重加权。
+- 评测保留标准导航指标和真实运行异常的 `error` 字段，不再采样 Habitat 轨迹做
+  事后失败分类；Habitat 环境支持和 Habitat/SatNav 视频可视化仍是正式能力。
 
 Eval 队列文件固定为：
 

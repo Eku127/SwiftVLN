@@ -17,8 +17,10 @@
 - 已完成文档收口：`model/doc/OVERVIEW.md` 已按当前架构重写，独立
   `model/doc/pose_embed.md` 的有效内容并入后删除。
 - 不应作为“死代码”删除：history/map/pose/UAV、Habitat 支持、诊断、视频、
-  error analysis、S2R Stage-A，以及当前 train/eval/data queue。它们都有入口、
+  S2R Stage-A，以及当前 train/eval/data queue。它们都有入口、
   已保留模型、结果协议或仓库技能依赖。
+- 按产品范围决定，评测失败分类已从实现、结果 schema 和测试中删除；标准导航指标、
+  真实运行异常的 `error` 字段、Habitat 路径和视频可视化均保持。
 
 在不取消现有能力的前提下，P0 清理预计可从安装包移出或删除约 200–300 行代码，
 并压缩 600 行以上过时文档；完成 P1 合并后，预计还可净减约 500–700 行重复代码。
@@ -104,16 +106,16 @@ embedding，并显式拒绝不兼容组合。
 | --- | --- |
 | `model/eval.py` | 评测 CLI 参数和 `EvalRunner` 启动。 |
 | `model/eval_runner.py` | 模型加载、分布式初始化、scene 稳定切分、rank 恢复、episode 编排、最终结果汇总。 |
-| `model/evaluator.py` | 组合环境、诊断和 inference；执行 episode state machine、动作 step、视频与失败兜底。 |
+| `model/evaluator.py` | 组合环境、诊断和 inference；执行 episode state machine、动作 step、视频与运行异常兜底。 |
 | `model/inference.py` | 视觉特征缓存、history/map 构造、多轮 prompt、window/overlap 状态、action generation。 |
 | `model/diagnostics.py` | `SWIFTVLN_DEBUG` 下的 map、initial-view、token 注入和 timing 诊断。 |
 | `common/eval/results.py` | 追加式 `result.jsonl`、去重/恢复、rank 完成标记、最终 summary 与压缩触发。 |
 | `common/eval/reporting.py` | 总体/trajectory-type/timing 指标和 SwanLab 报告。 |
-| `common/eval/environment.py` | 加载配置、创建 wrapper、动作解析、视频/俯视图、失败分析。 |
+| `common/eval/environment.py` | 加载配置、创建 wrapper、动作解析、视频与俯视图。 |
 | `model/script/eval/*.sh`, `scripts/eval/*.sh` | 分布式评测、按模型名解析、入队、队列消费和常驻 worker。 |
 
 评测不是简单的一次性脚本：它支持 Habitat/SatNav、单机多卡、确定性 scene 分配、
-中断续跑、跨 rank 去重、持久化完成标记、视频、trajectory type 分组和失败标签。
+中断续跑、跨 rank 去重、持久化完成标记、视频和 trajectory type 分组。
 
 ### 4. History、地图与 embedding
 
@@ -194,7 +196,7 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 | 能力切片 | 相关文件 | 删除代价 |
 | --- | --- | --- |
 | 深度诊断 | `model/diagnostics.py`（326 行）及 map debug 分支 | 失去 `SWIFTVLN_DEBUG` 下的 token/map/initial/timing 定位能力。 |
-| 失败分类 | `common/utils/error_analyzer.py`（263 行） | 失去 STUCK/LOOPING/DEVIATION/STOP/EARLY 标签，且要迁移 result schema/tests。 |
+| 失败分类 | **已完成**：删除 `common/utils/error_analyzer.py` 及 Habitat 轨迹采样、分析和结果透传。 | 三个派生分类字段不再写入结果；真实 episode 异常仍以 `error` 持久化，标准指标不变。结构契约同时固定 Habitat wrapper/config/extensions 和两类视频入口必须保留；定向测试 9/9、完整 contract suite 73/73、Ruff 均通过。 |
 | 视频与可视化 | `video_utils.py`、部分 `image_utils.py`、evaluator/environment 分支 | 失去 `--save_video`、压缩和俯视图输出。 |
 | Habitat 支持 | `common/env/habitat.py`、`habitat_extensions/`、`vln_r2r*.yaml` | 项目变成 SatNav-only；需同步 experiment codec、CLI、tests 和文档。 |
 | S2R 数据生产 | `s2r/data_generation/` | 只能在数据/manifest 已冻结且接受不可从原始集复现时删除；更合理的是从推理部署包排除。 |
@@ -216,7 +218,7 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 3. 先为 preview/recrop/merge 写统一实现与等价性测试，再逐项切 registry 和 pipeline。
 4. 在正确项目环境运行全部 contract tests、train smoke、eval smoke；路径变化同步
    `.codex/CODEX_CONTEXT.md`。
-5. 只有产品明确宣布 SatNav-only、无视频或无 S2R 重建需求时，才执行 P2 删除。
+5. 失败分类已按产品决定删除；Habitat、视频和 S2R 数据重建能力仍按当前产品边界保留。
 
 判定原则：shell 入口、动态 registry 和可复现工具不能只靠 Python 静态引用计数判死；
 “无内部引用”也不代表没有仓库外 notebook/manual consumer。因此 P0 中涉及 public facade

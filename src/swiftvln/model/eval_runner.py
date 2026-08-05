@@ -215,16 +215,6 @@ class SwiftVLNEvaluationRunner:
                 )
             if "_error" in metrics:
                 result["error"] = metrics["_error"]
-            if "error_tags" in metrics:
-                result.update(
-                    {
-                        "error_tags": metrics.get("error_tags", []),
-                        "had_deviation": metrics.get("had_deviation", False),
-                        "deviation_recovered": metrics.get(
-                            "deviation_recovered", False
-                        ),
-                    }
-                )
             if self.world_size > 1:
                 result["rank"] = self.rank
         except Exception as exc:
@@ -244,14 +234,6 @@ class SwiftVLNEvaluationRunner:
             }
             if trajectory_type is not None:
                 result["trajectory_type"] = trajectory_type
-            if self.args.env_type == "habitat":
-                result.update(
-                    {
-                        "error_tags": [],
-                        "had_deviation": False,
-                        "deviation_recovered": False,
-                    }
-                )
 
         _debug_log(self.rank, f"evaluate_episode() finished for {episode.episode_id}")
         return result

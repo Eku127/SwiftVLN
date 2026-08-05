@@ -176,7 +176,7 @@ CLI 中的 `swiftvln train`、`swiftvln eval`、`swiftvln queue` 没有出现在
 推荐目标：
 
 - 如果未来 6–12 个月没有第二个主线模型进入 `src/swiftvln`，删除 registry 的动态性；
-- 将真正共享的报告、环境包装、视频和错误分析保留为组合组件；
+- 将真正共享的报告、环境包装和视频保留为组合组件；
 - 将只有一个实现的 Base 类并回具体 SwiftVLN 类；
 - 入口 shell 路径可先保留，内部实现逐步变薄，避免破坏技能和已有自动化。
 
