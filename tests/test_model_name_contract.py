@@ -31,6 +31,11 @@ MODEL_NAME_CASES = {
         "HISTORY_PROCESSOR_TYPE: gtc",
         "GTC_OUTPUT_TOKENS: 512",
     ),
+    "swiftvln-satnav-3b-1ep-f32s4-overlap0-gtc-k256-t0.2-i2-noembed": (
+        "GTC_OUTPUT_TOKENS: 256",
+        "GTC_TEMPERATURE: 0.2",
+        "GTC_NUM_ITERATIONS: 2",
+    ),
     "swiftvln-satnav-3b-1ep-f32s4-overlap0-sgtc-k512-noembed": (
         "HISTORY_PROCESSOR_TYPE: segment_gtc",
         "SGTC_OUTPUT_TOKENS: 512",
@@ -48,6 +53,10 @@ MODEL_NAME_CASES = {
     "swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-posefilm": (
         "USE_POSE_EMBED: true",
         "POSE_FUSION_METHOD: film",
+    ),
+    "swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-uav": (
+        "EMBEDDING_MODE: uav",
+        "USE_UAV_ADAPTER: true",
     ),
     "swiftvln-satnav-3b-1ep-f32s4-overlap4-pf-h8-pool-s2-noembed": (
         "NUM_OVERLAP:    4",
@@ -111,6 +120,25 @@ class ModelNameShellContractTest(unittest.TestCase):
         )
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("swiftvln-", proc.stdout + proc.stderr)
+
+    def test_removed_combined_embedding_name_is_rejected(self):
+        env = os.environ.copy()
+        env["DRY_RUN"] = "true"
+        proc = subprocess.run(
+            [
+                "bash",
+                str(EVAL_BY_NAME),
+                "swiftvln-satnav-3b-1ep-f32s4-overlap0-"
+                "pf-h8-pool-s2-pose+uav",
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("no longer supported", proc.stdout + proc.stderr)
 
 
 if __name__ == "__main__":

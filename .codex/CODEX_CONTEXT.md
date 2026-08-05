@@ -33,6 +33,7 @@
 
 - `src/swiftvln/model/`：SwiftVLN 主线模型、训练和评测实现
 - `src/swiftvln/cli.py`：单模型 CLI，直接分发 SwiftVLN 与 queue；无 model registry/runner 中间层
+- `src/swiftvln/experiment.py`：train/eval 共用的 ExperimentSpec、约束和模型名 codec
 - `src/swiftvln/common/training/`：arguments / base SFT / dataset 公共层
 - `src/swiftvln/common/eval/`：runner / evaluator / reporting 公共层
 - `src/swiftvln/common/env/`：Habitat / SatNav 环境抽象
@@ -154,23 +155,26 @@ GPU 选择：
 - no-memory 的唯一支持配置是 `HISTORY_PROCESSOR_TYPE=per_frame` 且
   `NUM_HISTORY=0`；没有独立 `USE_MEMORY=false`。
 - `NUM_OVERLAP>0` 固定使用 `stride = NUM_FRAMES - NUM_OVERLAP`，尾窗不回挪；
-  `NUM_OVERLAP=0` 保持完整尾窗覆盖。
+  `NUM_OVERLAP=0` 保持完整尾窗覆盖；overlap 必须小于窗口且按
+  `NUM_FUTURE_STEPS` 对齐。
 - `MEMORY_METHOD=map` 会替换历史 RGB frame，只支持 SatNav + per-frame，要求
   `USE_TOME=false`、`USE_POSE_EMBED=false`、`USE_UAV_ADAPTER=false`。
 - map render cache 默认推导为 `{dataset_root}/map_cache`；用
   `SWIFTVLN_MAP_CACHE_DIR=<path>` 覆盖，或用 `off|false|none|0|disable|disabled|no`
   关闭。
 - `USE_UAV_ADAPTER` 当前仅支持 `UAV_ADAPTER_APPLY_SCOPE=all_images`。
+- 对外 embedding mode 只有 `none|pose|posefilm|uav`；pose 与 UAV 不允许组合。
 
-模型命名和更多参数语义按需查看 `src/swiftvln/model/doc/OVERVIEW.md` 及入口脚本，
-不要把所有参数复制回启动上下文。
+模型命名、解析和跨字段校验以 `src/swiftvln/experiment.py` 为唯一事实源；
+非默认 GTC temperature/iterations 会编码进名称。更多参数语义按需查看
+`src/swiftvln/model/doc/OVERVIEW.md`，不要把所有参数复制回启动上下文。
 
 ## Mainline Evaluation Conventions
 
 - 默认 Conda 环境：`swift-vln-eval-update`。
 - SatNav 主线配置：`src/swiftvln/configs/satnav_task.yaml`。
-- `eval_by_name.sh` 只接受 `swiftvln-*` 模型名，并从名称解析 family、窗口、
-  overlap、history、memory 和 embed 配置。
+- `eval_by_name.sh` 只接受 ExperimentSpec 可验证的 `swiftvln-*` 模型名，并从名称
+  解析 family、窗口、overlap、history、memory 和 embed 配置。
 - 模型解析优先级：
   1. 显式 `MODEL_PATH`
   2. `output/swiftvln/<model>/v*/checkpoint-*` 或 `checkpoint-*`

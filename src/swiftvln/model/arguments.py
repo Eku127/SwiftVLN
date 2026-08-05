@@ -8,6 +8,7 @@ Extends StreamVLN training arguments with overlap and compression parameters.
 from dataclasses import dataclass, field
 
 from swiftvln.common.training.arguments import BaseVLNTrainArguments
+from swiftvln.experiment import SwiftVLNExperimentSpec
 
 
 @dataclass
@@ -37,7 +38,8 @@ class SwiftVLNTrainArguments(BaseVLNTrainArguments):
         metadata={
             "help": "Type of history information processor. Options: "
                     "'per_frame' (default): Per-frame compression with flexible sampling. "
-                    "'gtc': Global Token Clustering, cross-frame clustering to fixed tokens."
+                    "'gtc': Global Token Clustering across all history frames. "
+                    "'segment_gtc': chronological segment-wise token clustering."
         }
     )
     
@@ -223,3 +225,35 @@ class SwiftVLNTrainArguments(BaseVLNTrainArguments):
                     "Only affects delta_forward/delta_right. Default: 100.0."
         }
     )
+
+    def __post_init__(self) -> None:
+        SwiftVLNExperimentSpec.from_runtime_flags(
+            env_type=self.vln_env_type,
+            model_family=(
+                "qwen3_vl"
+                if self.model_type == "swiftvln_qwen3_vl"
+                else "qwen2_5_vl"
+            ),
+            num_frames=self.num_frames,
+            num_future_steps=self.num_future_steps,
+            num_overlap=self.num_overlap,
+            memory_method=self.memory_method,
+            history_processor_type=self.history_processor_type,
+            num_history=self.num_history,
+            log_base=self.log_base,
+            use_random=self.use_random,
+            compress_stride=self.compress_stride,
+            use_tome=self.use_tome,
+            gtc_output_tokens=self.gtc_output_tokens,
+            gtc_temperature=self.gtc_temperature,
+            gtc_num_iterations=self.gtc_num_iterations,
+            map_global_side_m=self.map_global_side_m,
+            map_local_side_m=self.map_local_side_m,
+            map_render_px=self.map_render_px,
+            map_mask_method=self.map_mask_method,
+            system_prompt_setting=self.system_prompt_setting,
+            use_pose_embed=self.use_pose_embed,
+            use_uav_adapter=self.use_uav_adapter,
+            pose_fusion_method=self.pose_fusion_method,
+        )
+        super().__post_init__()

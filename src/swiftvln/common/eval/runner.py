@@ -285,6 +285,10 @@ class BaseVLNEval(ABC):
     def register_module(self):
         """Override to import/register model module."""
         pass
+
+    def validate_args(self):
+        """Override to validate parsed model-specific arguments."""
+        pass
     
     def load_model(self):
         """Load model and processor."""
@@ -605,6 +609,10 @@ class BaseVLNEval(ABC):
         # Parse arguments
         parser = self.create_parser()
         self.args = parser.parse_args()
+        try:
+            self.validate_args()
+        except ValueError as exc:
+            parser.error(str(exc))
         
         # Set random seeds for reproducibility
         self.set_seed(DEFAULT_EVAL_SEED)

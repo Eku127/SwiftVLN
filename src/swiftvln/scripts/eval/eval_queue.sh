@@ -139,26 +139,6 @@ if [ ! -f "$COLLECT_SCRIPT" ]; then
 fi
 
 # ============================================================================
-# 从模型名解析 embedding 增强开关（和 swiftvln exp_name 保持一致）
-# ============================================================================
-parse_embed_slot_from_model() {
-    local name="$1"
-    if [[ "$name" != swiftvln-* ]]; then
-        echo "-"
-        return
-    fi
-    if [[ "$name" == *"-posefilm-"* ]]; then
-        echo "posefilm"
-    elif [[ "$name" == *"-pose-"* ]]; then
-        echo "pose"
-    elif [[ "$name" == *"-noembed-"* ]]; then
-        echo "noembed"
-    else
-        echo "noembed"
-    fi
-}
-
-# ============================================================================
 # 从 TODO 文件读取模型列表
 # ============================================================================
 read_models_from_todo() {

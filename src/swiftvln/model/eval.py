@@ -35,6 +35,7 @@ import importlib
 import torch
 
 from swiftvln.common import BaseVLNEval
+from swiftvln.experiment import SwiftVLNExperimentSpec
 
 
 class SwiftVLNEval(BaseVLNEval):
@@ -151,7 +152,11 @@ class SwiftVLNEval(BaseVLNEval):
 
         # Add processor-specific fields
         if history_type in ('gtc', 'segment_gtc'):
-            for field_name in ('gtc_output_tokens', 'gtc_temperature'):
+            for field_name in (
+                'gtc_output_tokens',
+                'gtc_temperature',
+                'gtc_num_iterations',
+            ):
                 if hasattr(self.args, field_name):
                     extras[field_name] = getattr(self.args, field_name)
         else:
@@ -160,6 +165,38 @@ class SwiftVLNEval(BaseVLNEval):
                 if hasattr(self.args, field_name):
                     extras[field_name] = getattr(self.args, field_name)
         return extras
+
+    def validate_args(self):
+        """Apply the same cross-field rules used by train and name parsing."""
+        SwiftVLNExperimentSpec.from_runtime_flags(
+            env_type=self.args.env_type,
+            model_family=(
+                "qwen3_vl"
+                if self.args.model_type == "swiftvln_qwen3_vl"
+                else "qwen2_5_vl"
+            ),
+            num_frames=self.args.num_frames,
+            num_future_steps=self.args.num_future_steps,
+            num_overlap=self.args.num_overlap,
+            memory_method=self.args.memory_method,
+            history_processor_type=self.args.history_processor_type,
+            num_history=self.args.num_history,
+            log_base=self.args.log_base,
+            use_random=self.args.use_random,
+            compress_stride=self.args.compress_stride,
+            use_tome=self.args.use_tome,
+            gtc_output_tokens=self.args.gtc_output_tokens,
+            gtc_temperature=self.args.gtc_temperature,
+            gtc_num_iterations=self.args.gtc_num_iterations,
+            map_global_side_m=self.args.map_global_side_m,
+            map_local_side_m=self.args.map_local_side_m,
+            map_render_px=self.args.map_render_px,
+            map_mask_method=self.args.map_mask_method,
+            system_prompt_setting=self.args.system_prompt_setting,
+            use_pose_embed=self.args.use_pose_embed,
+            use_uav_adapter=self.args.use_uav_adapter,
+            pose_fusion_method=self.args.pose_fusion_method,
+        )
     
     def register_module(self):
         """Import SwiftVLN module to register model."""

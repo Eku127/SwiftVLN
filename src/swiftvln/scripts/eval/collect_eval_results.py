@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
+from swiftvln.experiment import ExperimentNameError, parse_model_name
+
 
 def pct(v: Any) -> str:
     if isinstance(v, (int, float)):
@@ -45,36 +47,39 @@ def parse_model_type(model_name: str) -> str:
     return "unknown"
 
 
+def parse_swiftvln_spec(model_name: str):
+    try:
+        return parse_model_name(model_name)
+    except ExperimentNameError:
+        return None
+
+
 def infer_plan(model_name: str, model_type: str) -> str:
     if model_type == "swiftvln":
-        # History processor type determines the base method
-        if "-sgtc-k" in model_name:
-            m = re.search(r"-sgtc-k(\d+)", model_name)
-            base = f"baseline + sgtc-k{m.group(1)}" if m else "baseline + sgtc"
-        elif "-gtc-k" in model_name:
-            m = re.search(r"-gtc-k(\d+)", model_name)
-            base = f"baseline + gtc-k{m.group(1)}" if m else "baseline + gtc"
+        spec = parse_swiftvln_spec(model_name)
+        if spec is None:
+            return "swiftvln run"
+        if spec.memory_method == "map":
+            base = "baseline + map"
+        elif spec.history_processor_type == "segment_gtc":
+            base = f"baseline + sgtc-k{spec.gtc_output_tokens}"
+        elif spec.history_processor_type == "gtc":
+            base = f"baseline + gtc-k{spec.gtc_output_tokens}"
         else:
-            # per_frame naming format: -pf-h{H}[-random]-b{B}-(pool|tome)-s{S}-
-            m_log = re.search(r"-b([0-9]+\.[0-9]+)-", model_name)
-            log_base = m_log.group(1) if m_log else "1.0"
-            m_stride = re.search(r"-(?:pool|tome)-s(\d+)", model_name)
-            stride = m_stride.group(1) if m_stride else "2"
             modifiers: List[str] = []
-            if "-random-" in model_name:
+            if spec.use_random:
                 modifiers.append("random")
-            if re.search(r"-tome-s\d+", model_name):
+            if spec.use_tome:
                 modifiers.append("tome")
-            if log_base not in ("1.0", "1"):
-                modifiers.append(f"log{log_base}")
-            if stride != "2":
-                modifiers.append(f"s{stride}")
+            if spec.log_base != 1.0:
+                modifiers.append(f"log{spec.log_base:g}")
+            if spec.compress_stride != 2:
+                modifiers.append(f"s{spec.compress_stride}")
             base = "baseline"
             if modifiers:
                 base += " + " + " + ".join(modifiers)
 
-        # Additive modifiers stacked on top of the base method
-        if "-initial-" in model_name:
+        if spec.system_prompt_setting == "initial":
             base += " + initial"
         return base
 
@@ -94,6 +99,7 @@ def plan_rank(plan: str) -> int:
         "baseline + log2.0": 30,
         "baseline + log3.0": 32,
         "baseline + initial": 35,
+        "baseline + map": 50,
         "baseline + gtc-k256": 55,
         "baseline + gtc-k512": 60,
         "baseline + gtc": 62,
@@ -116,37 +122,46 @@ def strip_run_timestamp(model_name: str) -> str:
 
 def overlap_variant_rank(model_name: str) -> int:
     # Keep baseline first inside the same setting group; higher = later in table.
-    if "-sgtc-k" in model_name:
+    spec = parse_swiftvln_spec(model_name)
+    if spec is None:
+        return 999
+    if spec.history_processor_type == "segment_gtc":
         return 70
-    if "-gtc-k" in model_name:
+    if spec.history_processor_type == "gtc":
         return 60
-    if "-initial-" in model_name:
+    if spec.memory_method == "map":
+        return 50
+    if spec.system_prompt_setting == "initial":
         return 40
-    if re.search(r"-tome-s\d+", model_name):
+    if spec.use_tome:
         return 30
-    if "-random-" in model_name:
+    if spec.use_random:
         return 25
-    # Non-default log_base (e.g. -b2.0-)
-    m_log = re.search(r"-b([0-9]+\.[0-9]+)-", model_name)
-    if m_log and m_log.group(1) not in ("1.0", "1"):
+    if spec.log_base != 1.0:
         return 20
-    # Non-default stride (e.g. -pool-s4-)
-    m_stride = re.search(r"-pool-s(\d+)", model_name)
-    if m_stride and m_stride.group(1) != "2":
+    if spec.compress_stride != 2:
         return 15
     return 10  # baseline: pool + b1.0 + s2
 
 
 def normalize_overlap_setting_key(model_name: str) -> str:
-    key = strip_run_timestamp(model_name)
-    # Remove variant markers so experiments with the same base config are grouped.
-    key = re.sub(r"-sgtc-k\d+", "", key)
-    key = re.sub(r"-gtc-k\d+", "", key)
-    key = key.replace("-initial", "")
-    # Normalize method slot: -tome-s{N} and -pool-s{N} both → -s{N}
-    key = re.sub(r"-(tome|pool)-s(\d+)", r"-s\2", key)
-    key = re.sub(r"--+", "-", key).strip("-")
-    return key
+    spec = parse_swiftvln_spec(model_name)
+    if spec is None:
+        return strip_run_timestamp(model_name)
+    return "|".join(
+        (
+            spec.env_type,
+            spec.model_family,
+            spec.model_size,
+            str(spec.num_epochs),
+            str(spec.num_frames),
+            str(spec.num_future_steps),
+            str(spec.num_overlap),
+            spec.embedding,
+            str(spec.effective_batch_size or ""),
+            spec.learning_rate or "",
+        )
+    )
 
 
 def sort_key(row: Dict[str, str]) -> tuple:

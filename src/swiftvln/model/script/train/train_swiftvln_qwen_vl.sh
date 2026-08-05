@@ -16,6 +16,10 @@ source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 SWIFTVLN_TRAIN_CONDA_ENV="${SWIFTVLN_TRAIN_CONDA_ENV:-swift-vln-train-update}"
 conda activate "$SWIFTVLN_TRAIN_CONDA_ENV"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
+
 # ============================================================================
 # GPU Configuration
 # ============================================================================
@@ -132,13 +136,11 @@ case "$MODEL_FAMILY" in
         MODEL_FAMILY="qwen2_5_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen2_5_vl"
         DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
-        MODEL_FAMILY_NAME_TAG=""
         ;;
     qwen3_vl|qwen3)
         MODEL_FAMILY="qwen3_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen3_vl"
         DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct"
-        MODEL_FAMILY_NAME_TAG="qwen3vl-"
         ;;
     *)
         echo "[ERROR] Unknown MODEL_FAMILY: $MODEL_FAMILY. Available: qwen2_5_vl, qwen3_vl."
@@ -341,89 +343,38 @@ TIMESTAMP=$(date +%H%M%S)
 EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM_STEPS * GPUS_PER_NODE))
 WINDOW_STRIDE=$((NUM_FRAMES - NUM_OVERLAP))
 
-if [ "$MEMORY_METHOD" = "map" ]; then
-    if [ "$VLN_ENV_TYPE" != "satnav" ]; then
-        echo "[ERROR] MEMORY_METHOD=map currently supports only VLN_ENV_TYPE=satnav."
-        exit 1
-    fi
-    if [ "$HISTORY_PROCESSOR_TYPE" != "per_frame" ]; then
-        echo "[ERROR] MEMORY_METHOD=map currently requires HISTORY_PROCESSOR_TYPE=per_frame."
-        exit 1
-    fi
-    if [ "$USE_TOME" = true ] || [ "$USE_TOME" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map currently requires USE_TOME=false."
-        exit 1
-    fi
-    # Map images are synthesized top-down views, so RGB-frame embed
-    # enhancements (pose / uav_adapter) are not meaningful and must
-    # stay disabled to avoid silent semantic mismatches.
-    if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
-        exit 1
-    fi
-    if [ "$USE_UAV_ADAPTER" = true ] || [ "$USE_UAV_ADAPTER" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_UAV_ADAPTER=false."
-        exit 1
-    fi
-fi
-
-# Build experiment name based on memory method
-MEMORY_SUFFIX=""
-if [ "$MEMORY_METHOD" = "map" ]; then
-    MAP_GLOBAL_TAG=$(printf '%g' "$MAP_GLOBAL_SIDE_M")
-    MAP_LOCAL_TAG=$(printf '%g' "$MAP_LOCAL_SIDE_M")
-    MAP_MASK_TAG="$MAP_MASK_METHOD"
-    if [[ "$MAP_MASK_METHOD" =~ ^dilate([0-9]+([.][0-9]+)?)$ ]]; then
-        MAP_MASK_TAG="d$(printf '%g' "${BASH_REMATCH[1]}")"
-    fi
-    MEMORY_SUFFIX="map-g${MAP_GLOBAL_TAG}-l${MAP_LOCAL_TAG}-r${MAP_RENDER_PX}-${MAP_MASK_TAG}-s${COMPRESS_STRIDE}"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
-    # Per-frame: include history count, log_base, method, stride.
-    # NUM_HISTORY=0 is the supported no-memory configuration:
-    # the dataset will sample zero history frames and omit <history_memory>.
-    COMPRESS_METHOD="pool"
-    [ "$USE_TOME" = true ] && COMPRESS_METHOD="tome"
-    NO_MEMORY_SUFFIX=""
-    RANDOM_SUFFIX=""
-    if [ "$NUM_HISTORY" = "0" ]; then
-        NO_MEMORY_SUFFIX="-nomem"
-    elif [ "$USE_RANDOM" = true ] || [ "$USE_RANDOM" = "true" ]; then
-        # Only tag random when it actually changes per-frame history sampling.
-        RANDOM_SUFFIX="-random"
-    fi
-    MEMORY_SUFFIX="pf-h${NUM_HISTORY}${NO_MEMORY_SUFFIX}${RANDOM_SUFFIX}-b${LOG_BASE}-${COMPRESS_METHOD}-s${COMPRESS_STRIDE}"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
-    # GTC: include output tokens
-    MEMORY_SUFFIX="gtc-k${GTC_OUTPUT_TOKENS}"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
-    # Segment GTC: include output tokens (8 segments, chronological order by default)
-    MEMORY_SUFFIX="sgtc-k${GTC_OUTPUT_TOKENS}"
-fi
-
-# Add system prompt setting suffix (vanilla = no suffix, others = -<setting>)
-PROMPT_SUFFIX=""
-if [ "$SYSTEM_PROMPT_SETTING" != "vanilla" ]; then
-    PROMPT_SUFFIX="-${SYSTEM_PROMPT_SETTING}"
-fi
-
-# Embedding enhancement suffix
-EMBED_SUFFIX="-noembed"
-_EMBED_PARTS=()
-if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
-    if [ "$POSE_FUSION_METHOD" = "film" ]; then
-        _EMBED_PARTS+=("posefilm")
-    else
-        _EMBED_PARTS+=("pose")
-    fi
-fi
-if [ "$USE_UAV_ADAPTER" = true ] || [ "$USE_UAV_ADAPTER" = "true" ]; then
-    _EMBED_PARTS+=("uav")
-fi
-if [ ${#_EMBED_PARTS[@]} -gt 0 ]; then
-    EMBED_SUFFIX="-$(IFS='+'; echo "${_EMBED_PARTS[*]}")"
-fi
-
-EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+# Name generation and cross-field validation share the same Python schema as eval.
+EXP_NAME=$(
+    python -m swiftvln.experiment build-name \
+        --env-type "$VLN_ENV_TYPE" \
+        --model-family "$MODEL_FAMILY" \
+        --model-size "$MODEL_SIZE" \
+        --num-epochs "$NUM_EPOCHS" \
+        --num-frames "$NUM_FRAMES" \
+        --num-future-steps "$NUM_FUTURE_STEPS" \
+        --num-overlap "$NUM_OVERLAP" \
+        --memory-method "$MEMORY_METHOD" \
+        --history-processor-type "$HISTORY_PROCESSOR_TYPE" \
+        --num-history "$NUM_HISTORY" \
+        --log-base "$LOG_BASE" \
+        --use-random "$USE_RANDOM" \
+        --compress-stride "$COMPRESS_STRIDE" \
+        --use-tome "$USE_TOME" \
+        --gtc-output-tokens "$GTC_OUTPUT_TOKENS" \
+        --gtc-temperature "$GTC_TEMPERATURE" \
+        --gtc-num-iterations "$GTC_NUM_ITERATIONS" \
+        --map-global-side-m "$MAP_GLOBAL_SIDE_M" \
+        --map-local-side-m "$MAP_LOCAL_SIDE_M" \
+        --map-render-px "$MAP_RENDER_PX" \
+        --map-mask-method "$MAP_MASK_METHOD" \
+        --system-prompt-setting "$SYSTEM_PROMPT_SETTING" \
+        --use-pose-embed "$USE_POSE_EMBED" \
+        --use-uav-adapter "$USE_UAV_ADAPTER" \
+        --pose-fusion-method "$POSE_FUSION_METHOD" \
+        --effective-batch-size "$EFFECTIVE_BATCH_SIZE" \
+        --learning-rate "$LEARNING_RATE" \
+        --timestamp "$TIMESTAMP"
+)
 OUTPUT_DIR="output/swiftvln/${EXP_NAME}"
 if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
     OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
@@ -561,9 +512,6 @@ echo "=========================================="
 # ============================================================================
 # Build Arguments
 # ============================================================================
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
-export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
 
 unset_proxy_for_swanlab() {

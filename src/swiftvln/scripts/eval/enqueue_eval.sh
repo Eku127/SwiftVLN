@@ -43,15 +43,6 @@ if [[ "$MODEL_NAME" == */* ]]; then
     MODEL_NAME="$(basename "$MODEL_NAME")"
 fi
 
-parse_model_arch() {
-    local name="$1"
-    if [[ "$name" == swiftvln-* ]]; then
-        echo "swiftvln"
-    else
-        echo ""
-    fi
-}
-
 find_latest_checkpoint() {
     local model_dir="$1"
     local latest=""
@@ -70,11 +61,11 @@ find_latest_checkpoint() {
     echo "$latest"
 }
 
-MODEL_ARCH="$(parse_model_arch "$MODEL_NAME")"
-if [[ -z "$MODEL_ARCH" ]]; then
-    print_err "Cannot parse model architecture from: $MODEL_NAME"
+if ! python -m swiftvln.experiment parse-name "$MODEL_NAME" >/dev/null; then
+    print_err "Invalid SwiftVLN model name: $MODEL_NAME"
     exit 2
 fi
+MODEL_ARCH="swiftvln"
 
 if [[ "$SKIP_CHECKPOINT" != "true" ]]; then
     MODEL_DIR="${SWIFTVLN_ROOT}/output/${MODEL_ARCH}/${MODEL_NAME}"
