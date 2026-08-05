@@ -63,7 +63,6 @@
 | 实验计划 | `runtime/plans/` |
 | S2R 数据生产 | `swiftvln s2r-data ...` / `src/swiftvln/s2r/data_generation/` |
 | S2R Stage-A 训练/评测 | `src/swiftvln/s2r/trainer.py` / `src/swiftvln/s2r/eval.py` |
-| 本地 deploy | `swiftvln deploy` / `src/swiftvln/deployment/` |
 | 安装说明 | `docs/installation.md` |
 
 优先使用上述入口和对应 repo skill，不拼装一次性替代流程。
@@ -292,18 +291,6 @@ TRAIN_EXPERIMENTS_FILE=/path/to/experiments.sh \
   PCD/3DGS rebuttal 已不再需要。
 
 指标、数据源分布和可复现性细节只维护在 `reports/s2r_rebuttal.md`。
-
-## Local Deployment Limitation
-
-当前 deploy 代码仍只搜索：
-`output/swiftvln/<model_name>/.../checkpoint-*`。
-
-但当前工作区的 `output/swiftvln/` 已清理，默认 deploy 模型名对应目录也不存在；
-model resolver 尚未支持直接加载 model zoo HF 目录。因此不要把当前默认 deploy
-视为可用状态。恢复 deploy 需要先完成以下任一项并验证：
-
-1. 让 resolver 支持显式 HF/model-zoo 路径；或
-2. 生成符合现有命名和 `checkpoint-*` 结构的新训练输出。
 
 ## Smoke Tests and Tests
 

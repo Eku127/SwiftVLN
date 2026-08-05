@@ -33,6 +33,7 @@ class CliContractTest(unittest.TestCase):
         output = self._run_help("--help")
         for command in ("train", "eval", "queue", "s2r-data"):
             self.assertIn(command, output)
+        self.assertNotIn("deploy", output)
 
     def test_train_eval_and_queue_help_are_available(self):
         self.assertIn("usage:", self._run_help("train", "--help").lower())
