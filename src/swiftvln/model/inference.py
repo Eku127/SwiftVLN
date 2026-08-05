@@ -217,15 +217,10 @@ class SwiftVLNInferenceSession:
                     "SwiftVLN memory_method=map currently requires use_tome=false."
                 )
             # Map images are synthesized top-down views, not real camera frames,
-            # so pose / uav_adapter embed enhancements are not meaningful
-            # and must stay disabled to match the training-time constraint.
-            if getattr(self.args, "use_pose_embed", False):
+            # so embedding enhancement must stay disabled to match training.
+            if getattr(self.args, "embedding_mode", "none") != "none":
                 raise ValueError(
-                    "SwiftVLN memory_method=map requires use_pose_embed=false."
-                )
-            if getattr(self.args, "use_uav_adapter", False):
-                raise ValueError(
-                    "SwiftVLN memory_method=map requires use_uav_adapter=false."
+                    "SwiftVLN memory_method=map requires embedding_mode=none."
                 )
             # Derive cache dir from DATA_PATH so any dataset root name, such as
             # SatNav-v0.1 or a custom abcd directory, maps to {root}/map_cache.

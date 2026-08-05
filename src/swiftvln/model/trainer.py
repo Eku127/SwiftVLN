@@ -15,6 +15,7 @@ from swift.dataset import LazyLLMDataset
 from swift.pipelines.train.sft import SwiftSft
 from swift.utils import get_logger
 
+from swiftvln.experiment import embedding_uses_pose
 from swiftvln.model.arguments import SwiftVLNTrainArguments
 from swiftvln.model.dataset import SwiftVLNDataset
 
@@ -176,17 +177,13 @@ class SwiftVLNSft(SwiftSft):
             )
 
         # Configure embedding enhancement pipeline
-        use_pose_embed = getattr(self.args, "use_pose_embed", False)
-        use_uav_adapter = getattr(self.args, "use_uav_adapter", False)
+        embedding_mode = self.args.embedding_mode
         uav_adapter_path = getattr(self.args, "uav_adapter_path", "")
         uav_adapter_type = getattr(self.args, "uav_adapter_type", "transformer_v1")
         uav_adapter_apply_scope = getattr(
             self.args, "uav_adapter_apply_scope", "all_images"
         )
-        pose_fusion_method = getattr(self.args, "pose_fusion_method", "additive")
         pose_norm_scale = getattr(self.args, "pose_norm_scale", 100.0)
-        self.template.use_pose_embed = use_pose_embed
-        self.template.use_uav_adapter = use_uav_adapter
 
         model = getattr(self, "model", None)
         if model is not None:
@@ -196,14 +193,11 @@ class SwiftVLNSft(SwiftSft):
 
             configure_embedding_enhancement(
                 model,
-                use_pose_embed=use_pose_embed,
-                use_uav_adapter=use_uav_adapter,
+                embedding_mode=embedding_mode,
                 uav_adapter_path=uav_adapter_path,
                 uav_adapter_type=uav_adapter_type,
                 uav_adapter_apply_scope=uav_adapter_apply_scope,
-                pose_fusion_method=pose_fusion_method,
                 pose_norm_scale=pose_norm_scale,
-                clear_disabled_aliases=False,
                 logger=logger,
             )
 
@@ -220,7 +214,7 @@ class SwiftVLNSft(SwiftSft):
             "history_processor_type": self.args.history_processor_type,
             "log_base": self.args.log_base,
             "system_prompt_setting": self.args.system_prompt_setting,
-            "need_frame_poses": self.args.use_pose_embed,
+            "need_frame_poses": embedding_uses_pose(self.args.embedding_mode),
             "memory_method": self.args.memory_method,
             "map_global_side_m": self.args.map_global_side_m,
             "map_local_side_m": self.args.map_local_side_m,

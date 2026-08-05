@@ -268,23 +268,29 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 # Only has effect when MEMORY_METHOD=map.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
-# Pose embedding enhancement (MLP, per-image pose injection)
-# - false: disable (default)
-# - true: enable and train pose embedding module
-USE_POSE_EMBED="${USE_POSE_EMBED:-false}"
+# Embedding enhancement is one mutually-exclusive choice:
+# none | pose (additive) | posefilm (FiLM) | uav (Stage-A adapter)
+for legacy_embedding_var in USE_POSE_EMBED USE_UAV_ADAPTER POSE_FUSION_METHOD; do
+    if [[ -v "$legacy_embedding_var" ]]; then
+        echo "[ERROR] $legacy_embedding_var was removed. Set EMBEDDING_MODE=none|pose|posefilm|uav instead."
+        exit 2
+    fi
+done
+EMBEDDING_MODE="${EMBEDDING_MODE:-none}"
+case "$EMBEDDING_MODE" in
+    none|pose|posefilm|uav) ;;
+    *)
+        echo "[ERROR] Invalid EMBEDDING_MODE=$EMBEDDING_MODE. Expected none|pose|posefilm|uav."
+        exit 2
+        ;;
+esac
 
-# Stage-A UAV adapter enhancement
-# - false: disable (default)
-# - true: enable and optionally load from an external s2r checkpoint
-USE_UAV_ADAPTER="${USE_UAV_ADAPTER:-false}"
+# Stage-A UAV adapter options (used only when EMBEDDING_MODE=uav)
 UAV_ADAPTER_PATH="${UAV_ADAPTER_PATH:-}"
 UAV_ADAPTER_TYPE="${UAV_ADAPTER_TYPE:-transformer_v1}"
 UAV_ADAPTER_APPLY_SCOPE="${UAV_ADAPTER_APPLY_SCOPE:-all_images}"
 
-# Pose fusion method: "additive" (default) or "film"
-POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
-
-# Pose normalization scale for tanh(pos/scale), default 100.0
+# Pose normalization scale (used only for pose/posefilm)
 POSE_NORM_SCALE="${POSE_NORM_SCALE:-100.0}"
 
 # ============================================================================
@@ -368,9 +374,7 @@ EXP_NAME=$(
         --map-render-px "$MAP_RENDER_PX" \
         --map-mask-method "$MAP_MASK_METHOD" \
         --system-prompt-setting "$SYSTEM_PROMPT_SETTING" \
-        --use-pose-embed "$USE_POSE_EMBED" \
-        --use-uav-adapter "$USE_UAV_ADAPTER" \
-        --pose-fusion-method "$POSE_FUSION_METHOD" \
+        --embedding-mode "$EMBEDDING_MODE" \
         --effective-batch-size "$EFFECTIVE_BATCH_SIZE" \
         --learning-rate "$LEARNING_RATE" \
         --timestamp "$TIMESTAMP"
@@ -492,9 +496,13 @@ fi
 echo "Overlap: num_overlap=$NUM_OVERLAP, window_stride=$WINDOW_STRIDE"
 echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with start_idx > 0"
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
-echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
-echo "UAV Adapter: $USE_UAV_ADAPTER (type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE)"
-[ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
+echo "Embedding Mode: $EMBEDDING_MODE"
+if [[ "$EMBEDDING_MODE" == "pose" || "$EMBEDDING_MODE" == "posefilm" ]]; then
+    echo "  Pose norm scale: $POSE_NORM_SCALE"
+elif [[ "$EMBEDDING_MODE" == "uav" ]]; then
+    echo "  UAV Adapter: type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE"
+    [ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
+fi
 if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
     echo "Resume: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
 fi
@@ -631,12 +639,10 @@ torchrun \
     --num_overlap $NUM_OVERLAP \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
     $MEMORY_ARGS \
-    --use_pose_embed $USE_POSE_EMBED \
-    --use_uav_adapter $USE_UAV_ADAPTER \
+    --embedding_mode $EMBEDDING_MODE \
     --uav_adapter_path "$UAV_ADAPTER_PATH" \
     --uav_adapter_type $UAV_ADAPTER_TYPE \
     --uav_adapter_apply_scope $UAV_ADAPTER_APPLY_SCOPE \
-    --pose_fusion_method $POSE_FUSION_METHOD \
     --pose_norm_scale $POSE_NORM_SCALE \
     --use_tome $USE_TOME \
     --tf32 $TF32 \

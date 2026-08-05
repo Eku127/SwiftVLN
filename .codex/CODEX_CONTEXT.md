@@ -164,13 +164,17 @@ GPU 选择：
   `NUM_OVERLAP=0` 保持完整尾窗覆盖；overlap 必须小于窗口且按
   `NUM_FUTURE_STEPS` 对齐。
 - `MEMORY_METHOD=map` 会替换历史 RGB frame，只支持 SatNav + per-frame，要求
-  `USE_TOME=false`、`USE_POSE_EMBED=false`、`USE_UAV_ADAPTER=false`。
+  `USE_TOME=false`、`EMBEDDING_MODE=none`。
 - map render cache 默认推导为 `{dataset_root}/map_cache`；用
   `SWIFTVLN_MAP_CACHE_DIR=<path>` 覆盖，或用 `off|false|none|0|disable|disabled|no`
   关闭。
-- `USE_UAV_ADAPTER` 当前仅支持 `UAV_ADAPTER_APPLY_SCOPE=all_images`。
-- 对外 embedding mode 只有 `none|pose|posefilm|uav`；pose 与 UAV 不允许组合，
-  ExperimentSpec、模型 loader、运行时配置和底层 factory 都执行同一约束。
+- `EMBEDDING_MODE` 是唯一 embedding 开关，且必须四选一：
+  `none|pose|posefilm|uav`；旧 `USE_POSE_EMBED`、`USE_UAV_ADAPTER`、
+  `POSE_FUSION_METHOD` 入口已移除并会 fail fast。
+- `EMBEDDING_MODE=uav` 当前仅支持
+  `UAV_ADAPTER_APPLY_SCOPE=all_images`。
+- ExperimentSpec、train/eval CLI、模型 loader、运行时配置和底层 factory
+  都直接接收同一个 mode；内部只派生 pose 数据需求和具体 fusion，不再组合布尔开关。
 
 模型命名、解析和跨字段校验以 `src/swiftvln/experiment.py` 为唯一事实源；
 非默认 GTC temperature/iterations 会编码进名称。更多参数语义按需查看

@@ -79,8 +79,6 @@ class SwiftVLNTemplateMixin:
     # History processor
     history_processor: Optional[HistoryProcessor] = None
     
-    use_uav_adapter: bool = False
-    
     def __init__(
         self, 
         *args, 
@@ -535,7 +533,7 @@ class SwiftVLNTemplateMixin:
             all_image_embeds = visual_res
         
         # --- Embedding Enhancement Pipeline ---
-        # Apply embedding enhancements to ALL images
+        # Apply the selected embedding enhancement to ALL images
         # This must happen BEFORE history compression so both history and current
         # images benefit from the learned enhancements
         if hasattr(model, 'embed_enhance') and not model.embed_enhance.is_empty:
@@ -552,7 +550,7 @@ class SwiftVLNTemplateMixin:
                 img_embed = all_image_embeds[offset:offset + n_tokens]
                 pose_i = flat_frame_poses[i] if i < len(flat_frame_poses) else None
                 
-                # Apply all enhancements via pipeline
+                # Apply the selected enhancement via the checkpoint-compatible container
                 img_embed = model.embed_enhance(img_embed, h_m, w_m, pose=pose_i)
                 
                 enhanced.append(img_embed)

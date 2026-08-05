@@ -66,12 +66,10 @@ def _run_case(module, checkpoint_path: str):
     module._attach_embedding_enhancement(
         model,
         model_dir='dummy',
-        use_pose_embed=False,
-        use_uav_adapter=True,
+        embedding_mode='uav',
         uav_adapter_path=resolved_path,
         uav_adapter_type='transformer_v1',
         uav_adapter_apply_scope='all_images',
-        pose_fusion_method='additive',
         pose_norm_scale=100.0,
     )
     return model, resolved_path
@@ -91,16 +89,16 @@ def main():
             checkpoint_path = _write_temp_stagea_checkpoint(Path(tmp) / 'best.pt')
             loaded_model, resolved_path = _run_case(module, checkpoint_path)
             _assert_loaded_model(loaded_model, resolved_path)
-            print('PASS: use_uav_adapter/uav_adapter_path are propagated to SwiftVLN model loader.')
+            print('PASS: embedding_mode=uav and its checkpoint are propagated to the model loader.')
             return
 
     loaded_model, resolved_path = _run_case(module, checkpoint_path)
     _assert_loaded_model(loaded_model, resolved_path)
-    print('PASS: use_uav_adapter/uav_adapter_path are propagated to SwiftVLN model loader.')
+    print('PASS: embedding_mode=uav and its checkpoint are propagated to the model loader.')
 
 
 def _assert_loaded_model(loaded_model, resolved_path: str):
-    assert loaded_model.uav_adapter is not None, 'uav_adapter should be attached when use_uav_adapter=True'
+    assert loaded_model.uav_adapter is not None, 'uav_adapter should be attached in uav mode'
     assert hasattr(loaded_model, 'embed_enhance') and 'uav' in loaded_model.embed_enhance.enhancements
     assert loaded_model.uav_adapter.loaded_checkpoint_path == resolved_path
 

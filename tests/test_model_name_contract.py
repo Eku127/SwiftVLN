@@ -51,12 +51,10 @@ MODEL_NAME_CASES = {
         "SYSTEM_PROMPT:  initial",
     ),
     "swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-posefilm": (
-        "USE_POSE_EMBED: true",
-        "POSE_FUSION_METHOD: film",
+        "EMBEDDING_MODE: posefilm",
     ),
     "swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-uav": (
         "EMBEDDING_MODE: uav",
-        "USE_UAV_ADAPTER: true",
     ),
     "swiftvln-satnav-3b-1ep-f32s4-overlap4-pf-h8-pool-s2-noembed": (
         "NUM_OVERLAP:    4",

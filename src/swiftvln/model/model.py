@@ -26,7 +26,7 @@ from transformers import (
 )
 
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
-from swiftvln.experiment import embedding_from_flags
+from swiftvln.experiment import normalize_embedding_mode
 
 # Special tokens (must match dataset.py and template.py)
 SWIFTVLN_SPECIAL_TOKENS = [HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
@@ -188,24 +188,31 @@ AutoModelForCausalLM.register(
 
 
 def _pop_embedding_options(kwargs):
+    legacy_options = {
+        'use_pose_embed',
+        'use_uav_adapter',
+        'pose_fusion_method',
+    }
+    present_legacy = sorted(legacy_options.intersection(kwargs))
+    if present_legacy:
+        raise TypeError(
+            "Legacy embedding options are no longer supported: "
+            f"{', '.join(present_legacy)}. Use embedding_mode="
+            "none|pose|posefilm|uav."
+        )
     return {
-        'use_pose_embed': kwargs.pop('use_pose_embed', False),
-        'use_uav_adapter': kwargs.pop('use_uav_adapter', False),
+        'embedding_mode': normalize_embedding_mode(
+            kwargs.pop('embedding_mode', 'none')
+        ),
         'uav_adapter_path': kwargs.pop('uav_adapter_path', ''),
         'uav_adapter_type': kwargs.pop('uav_adapter_type', 'transformer_v1'),
         'uav_adapter_apply_scope': kwargs.pop('uav_adapter_apply_scope', 'all_images'),
-        'pose_fusion_method': kwargs.pop('pose_fusion_method', 'additive'),
         'pose_norm_scale': kwargs.pop('pose_norm_scale', 100.0),
     }
 
 
 def _prepare_loader_kwargs(kwargs):
     embedding_options = _pop_embedding_options(kwargs)
-    embedding_from_flags(
-        embedding_options['use_pose_embed'],
-        embedding_options['use_uav_adapter'],
-        embedding_options['pose_fusion_method'],
-    )
     new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
     for token in SWIFTVLN_SPECIAL_TOKENS:
         if token not in new_special_tokens:
@@ -231,7 +238,6 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
         **options,
         force_rebuild=True,
         restore_callback=_restore_if_available,
-        clear_disabled_aliases=True,
         log_embed_dim=True,
         log_train_save_note=True,
     )

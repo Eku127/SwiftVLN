@@ -4,7 +4,18 @@
 
 Pose Embedding 将智能体的位姿信息（位置 + 朝向）注入到 ViT 视觉特征中，使模型在处理每一帧图像时能感知自身在空间中的位置和方向。
 
-该模块作为 `EmbeddingEnhancementPipeline` 的一个插件，在 ViT 编码之后、历史压缩之前对所有图像特征进行增强。
+该模块作为互斥 embedding mode 之一，在 ViT 编码之后、历史压缩之前对所有图像特征进行增强。
+
+统一入口 `embedding_mode` 只能四选一：
+
+| mode | 行为 |
+| --- | --- |
+| `none` | 不启用 embedding enhancement |
+| `pose` | PoseEmbedding + additive 融合 |
+| `posefilm` | PoseEmbedding + FiLM 融合 |
+| `uav` | Stage-A UAV adapter |
+
+不存在 pose 与 UAV 叠加模式。
 
 ## Pose 表示
 
@@ -34,7 +45,7 @@ Action 到运动的映射：
 
 ## 融合方式
 
-支持两种融合方式，通过 `pose_fusion_method` 参数切换：
+Pose 融合方式直接由 `embedding_mode` 决定，不再设置第二个 fusion 参数：
 
 **Additive（默认）**
 
@@ -77,14 +88,13 @@ MLP 最后一层权重和偏置 **零初始化**，确保训练开始时 pose em
 
 ## 默认参数
 
-| 参数                | 默认值      | 说明                          |
-|--------------------|------------|-------------------------------|
-| `use_pose_embed`   | `False`    | 是否启用 pose embedding         |
-| `pose_fusion_method` | `additive` | 融合方式：`additive` 或 `film`  |
-| `pose_norm_scale`  | `100.0`    | tanh 归一化的缩放因子            |
-| `pose_dim`         | `4`        | pose 向量维度                   |
-| `pose_hidden_dim`  | `256`      | MLP 隐藏层维度                  |
-| `pose_beta`        | `1.0`      | 融合缩放系数                    |
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `embedding_mode` | `none` | `none|pose|posefilm|uav` 四选一 |
+| `pose_norm_scale` | `100.0` | tanh 归一化的缩放因子 |
+| `pose_dim` | `4` | pose 向量维度 |
+| `pose_hidden_dim` | `256` | MLP 隐藏层维度 |
+| `pose_beta` | `1.0` | 融合缩放系数 |
 
 ## 涉及文件
 
@@ -93,21 +103,28 @@ MLP 最后一层权重和偏置 **零初始化**，确保训练开始时 pose em
 | `common/embedding_enhancement/pose_embed.py` | PoseEmbedding 模块（MLP + 融合） |
 | `common/embedding_enhancement/pose_utils.py` | action 积分重建 pose |
 | `common/embedding_enhancement/__init__.py` | pipeline 工厂函数 |
-| `swiftvln/arguments.py` | 训练参数定义 |
-| `swiftvln/model.py` | 模型加载时创建 pipeline |
-| `swiftvln/dataset.py` | 训练数据中重建 per-frame pose |
-| `swiftvln/template.py` | 将 pose 传递到 pipeline |
-| `swiftvln/trainer.py` | 确保 pipeline 正确初始化 |
-| `swiftvln/evaluator.py` | 推理时计算并传递 pose |
+| `model/arguments.py` | 训练参数定义 |
+| `model/model.py` | 模型加载时创建 enhancement container |
+| `model/dataset.py` | 训练数据中重建 per-frame pose |
+| `model/template.py` | 将 pose 传递到 enhancement module |
+| `model/trainer.py` | 确保 enhancement 正确初始化 |
+| `model/inference.py` | 推理时计算并传递 pose |
 
 ## 启用方式
 
-在训练脚本中添加：
+通过 shell 入口选择其中一个 mode：
 
 ```bash
---use_pose_embed true
---pose_fusion_method additive   # 或 film
---pose_norm_scale 100.0
+# additive pose
+EMBEDDING_MODE=pose POSE_NORM_SCALE=100 \
+  bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
+
+# FiLM pose
+EMBEDDING_MODE=posefilm POSE_NORM_SCALE=100 \
+  bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
 ```
+
+直接调用 Python 训练/评测 CLI 时使用 `--embedding_mode pose` 或
+`--embedding_mode posefilm`。旧布尔参数会被拒绝，避免产生组合状态。
 
 Pose embedding 的权重会自动随 checkpoint 保存和恢复，无需额外配置。

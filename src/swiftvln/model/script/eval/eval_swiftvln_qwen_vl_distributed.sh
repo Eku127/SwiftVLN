@@ -133,13 +133,24 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 # {off,false,none,0,disable,disabled,no} to disable caching.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
-# Embedding enhancement (must match training checkpoint setup)
-USE_POSE_EMBED="${USE_POSE_EMBED:-false}"
-USE_UAV_ADAPTER="${USE_UAV_ADAPTER:-false}"
+# Embedding enhancement must match training and is one exclusive choice.
+for legacy_embedding_var in USE_POSE_EMBED USE_UAV_ADAPTER POSE_FUSION_METHOD; do
+    if [[ -v "$legacy_embedding_var" ]]; then
+        echo "[ERROR] $legacy_embedding_var was removed. Set EMBEDDING_MODE=none|pose|posefilm|uav instead."
+        exit 2
+    fi
+done
+EMBEDDING_MODE="${EMBEDDING_MODE:-none}"
+case "$EMBEDDING_MODE" in
+    none|pose|posefilm|uav) ;;
+    *)
+        echo "[ERROR] Invalid EMBEDDING_MODE=$EMBEDDING_MODE. Expected none|pose|posefilm|uav."
+        exit 2
+        ;;
+esac
 UAV_ADAPTER_PATH="${UAV_ADAPTER_PATH:-}"
 UAV_ADAPTER_TYPE="${UAV_ADAPTER_TYPE:-transformer_v1}"
 UAV_ADAPTER_APPLY_SCOPE="${UAV_ADAPTER_APPLY_SCOPE:-all_images}"
-POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
 POSE_NORM_SCALE="${POSE_NORM_SCALE:-100.0}"
 
 # ============================================================================
@@ -316,8 +327,12 @@ elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc
     echo "  Num Segments: 8 (fixed)"
 fi
 echo "System Prompt:   ${SYSTEM_PROMPT_SETTING}"
-echo "Pose Embed:      ${USE_POSE_EMBED} (fusion=${POSE_FUSION_METHOD}, norm_scale=${POSE_NORM_SCALE})"
-echo "UAV Adapter:     ${USE_UAV_ADAPTER} (path=${UAV_ADAPTER_PATH:-<none>}, type=${UAV_ADAPTER_TYPE}, scope=${UAV_ADAPTER_APPLY_SCOPE})"
+echo "Embedding Mode:  ${EMBEDDING_MODE}"
+if [[ "$EMBEDDING_MODE" == "pose" || "$EMBEDDING_MODE" == "posefilm" ]]; then
+    echo "  Pose norm scale: ${POSE_NORM_SCALE}"
+elif [[ "$EMBEDDING_MODE" == "uav" ]]; then
+    echo "  UAV Adapter: path=${UAV_ADAPTER_PATH:-<none>}, type=${UAV_ADAPTER_TYPE}, scope=${UAV_ADAPTER_APPLY_SCOPE}"
+fi
 echo "Save Video:      ${SAVE_VIDEO}"
 echo "=============================================="
 
@@ -348,15 +363,10 @@ if [ "$MEMORY_METHOD" = "map" ]; then
         echo "[ERROR] MEMORY_METHOD=map currently requires USE_TOME=false."
         exit 1
     fi
-    # Map images are synthesized top-down views, so RGB-frame embed
-    # enhancements (pose / uav_adapter) are not meaningful and must
-    # match the training-time constraint of staying disabled.
-    if [ "$USE_POSE_EMBED" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
-        exit 1
-    fi
-    if [ "$USE_UAV_ADAPTER" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_UAV_ADAPTER=false."
+    # Map images are synthesized top-down views, so RGB-frame embedding
+    # enhancement must stay disabled.
+    if [ "$EMBEDDING_MODE" != "none" ]; then
+        echo "[ERROR] MEMORY_METHOD=map requires EMBEDDING_MODE=none."
         exit 1
     fi
 fi
@@ -429,13 +439,13 @@ EVAL_CMD=(
     --map_local_side_m "${MAP_LOCAL_SIDE_M}"
     --map_render_px "${MAP_RENDER_PX}"
     --map_mask_method "${MAP_MASK_METHOD}"
+    --embedding_mode "${EMBEDDING_MODE}"
 )
 
-if [ "$USE_POSE_EMBED" = "true" ]; then
-    EVAL_CMD+=(--use_pose_embed --pose_fusion_method "${POSE_FUSION_METHOD}" --pose_norm_scale "${POSE_NORM_SCALE}")
-fi
-if [ "$USE_UAV_ADAPTER" = "true" ]; then
-    EVAL_CMD+=(--use_uav_adapter --uav_adapter_type "${UAV_ADAPTER_TYPE}" --uav_adapter_apply_scope "${UAV_ADAPTER_APPLY_SCOPE}")
+if [[ "$EMBEDDING_MODE" == "pose" || "$EMBEDDING_MODE" == "posefilm" ]]; then
+    EVAL_CMD+=(--pose_norm_scale "${POSE_NORM_SCALE}")
+elif [ "$EMBEDDING_MODE" = "uav" ]; then
+    EVAL_CMD+=(--uav_adapter_type "${UAV_ADAPTER_TYPE}" --uav_adapter_apply_scope "${UAV_ADAPTER_APPLY_SCOPE}")
     if [ -n "$UAV_ADAPTER_PATH" ]; then
         EVAL_CMD+=(--uav_adapter_path "${UAV_ADAPTER_PATH}")
     fi

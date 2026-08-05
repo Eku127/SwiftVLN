@@ -6,7 +6,7 @@ from typing import Optional
 
 from swift.arguments import SftArguments as TrainArguments
 
-from swiftvln.experiment import SwiftVLNExperimentSpec
+from swiftvln.experiment import EMBEDDING_MODES, SwiftVLNExperimentSpec
 
 
 @dataclass
@@ -188,20 +188,12 @@ class SwiftVLNTrainArguments(TrainArguments):
     # ==========================================================================
     # Embedding Enhancement
     # ==========================================================================
-    use_pose_embed: bool = field(
-        default=False,
+    embedding_mode: str = field(
+        default="none",
         metadata={
-            "help": "Enable pose embedding enhancement. "
-            "Injects per-image pose [delta_forward, delta_right, sin(dh), cos(dh)] "
-            "into ViT features after visual encoding. Default: False."
-        },
-    )
-
-    use_uav_adapter: bool = field(
-        default=False,
-        metadata={
-            "help": "Enable Stage-A UAV adapter enhancement. "
-            "Applies the sim-to-real token adapter inside embed_enhance. Default: False."
+            "help": "Exactly one embedding enhancement mode: "
+            "'none', 'pose' (additive), 'posefilm' (FiLM), or 'uav'.",
+            "choices": EMBEDDING_MODES,
         },
     )
 
@@ -226,14 +218,6 @@ class SwiftVLNTrainArguments(TrainArguments):
         },
     )
 
-    pose_fusion_method: str = field(
-        default="additive",
-        metadata={
-            "help": "Pose embedding fusion method: 'additive' or 'film'. "
-            "Default: additive."
-        },
-    )
-
     pose_norm_scale: float = field(
         default=100.0,
         metadata={
@@ -243,7 +227,7 @@ class SwiftVLNTrainArguments(TrainArguments):
     )
 
     def __post_init__(self) -> None:
-        SwiftVLNExperimentSpec.from_runtime_flags(
+        SwiftVLNExperimentSpec(
             env_type=self.vln_env_type,
             model_family=(
                 "qwen3_vl" if self.model_type == "swiftvln_qwen3_vl" else "qwen2_5_vl"
@@ -266,8 +250,6 @@ class SwiftVLNTrainArguments(TrainArguments):
             map_render_px=self.map_render_px,
             map_mask_method=self.map_mask_method,
             system_prompt_setting=self.system_prompt_setting,
-            use_pose_embed=self.use_pose_embed,
-            use_uav_adapter=self.use_uav_adapter,
-            pose_fusion_method=self.pose_fusion_method,
+            embedding=self.embedding_mode,
         )
         super().__post_init__()

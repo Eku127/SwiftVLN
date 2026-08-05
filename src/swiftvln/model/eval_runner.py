@@ -133,12 +133,10 @@ class SwiftVLNEvaluationRunner:
             torch_dtype=torch.bfloat16,
             device_map=device_map,
             attn_impl="flash_attn",
-            use_pose_embed=self.args.use_pose_embed,
-            use_uav_adapter=self.args.use_uav_adapter,
+            embedding_mode=self.args.embedding_mode,
             uav_adapter_path=self.args.uav_adapter_path,
             uav_adapter_type=self.args.uav_adapter_type,
             uav_adapter_apply_scope=self.args.uav_adapter_apply_scope,
-            pose_fusion_method=self.args.pose_fusion_method,
             pose_norm_scale=self.args.pose_norm_scale,
         )
 

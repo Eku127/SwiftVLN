@@ -14,7 +14,7 @@ os.environ.setdefault(
 import argparse
 from typing import Any
 
-from swiftvln.experiment import SwiftVLNExperimentSpec
+from swiftvln.experiment import EMBEDDING_MODES, SwiftVLNExperimentSpec
 from swiftvln.model.eval_runner import SwiftVLNEvaluationRunner
 
 DEFAULT_MODEL_TYPE = "swiftvln_qwen2_5_vl"
@@ -102,16 +102,16 @@ def create_eval_parser() -> argparse.ArgumentParser:
     map_group.add_argument("--map_mask_method", default="dilate20")
 
     embedding = parser.add_argument_group("embedding enhancement")
-    embedding.add_argument("--use_pose_embed", action="store_true")
-    embedding.add_argument("--use_uav_adapter", action="store_true")
+    embedding.add_argument(
+        "--embedding_mode",
+        "--embedding-mode",
+        default="none",
+        choices=EMBEDDING_MODES,
+        help="Exactly one of none, pose, posefilm, or uav",
+    )
     embedding.add_argument("--uav_adapter_path", default="")
     embedding.add_argument("--uav_adapter_type", default="transformer_v1")
     embedding.add_argument("--uav_adapter_apply_scope", default="all_images")
-    embedding.add_argument(
-        "--pose_fusion_method",
-        default="additive",
-        choices=["additive", "film"],
-    )
     embedding.add_argument("--pose_norm_scale", type=float, default=100.0)
 
     output = parser.add_argument_group("output and execution")
@@ -130,7 +130,7 @@ def create_eval_parser() -> argparse.ArgumentParser:
 
 def validate_eval_args(args: argparse.Namespace) -> None:
     """Apply the shared train/name/eval cross-field rules."""
-    SwiftVLNExperimentSpec.from_runtime_flags(
+    SwiftVLNExperimentSpec(
         env_type=args.env_type,
         model_family=(
             "qwen3_vl" if args.model_type == "swiftvln_qwen3_vl" else "qwen2_5_vl"
@@ -153,9 +153,7 @@ def validate_eval_args(args: argparse.Namespace) -> None:
         map_render_px=args.map_render_px,
         map_mask_method=args.map_mask_method,
         system_prompt_setting=args.system_prompt_setting,
-        use_pose_embed=args.use_pose_embed,
-        use_uav_adapter=args.use_uav_adapter,
-        pose_fusion_method=args.pose_fusion_method,
+        embedding=args.embedding_mode,
     )
 
 
@@ -170,12 +168,7 @@ def build_summary_extras(args: Any) -> dict[str, Any]:
         "history_processor_type",
         "system_prompt_setting",
         "memory_method",
-        "use_pose_embed",
-        "use_uav_adapter",
-        "uav_adapter_type",
-        "uav_adapter_apply_scope",
-        "pose_fusion_method",
-        "pose_norm_scale",
+        "embedding_mode",
     )
     extras = {field: getattr(args, field) for field in fields}
     if args.memory_method == "map":
@@ -187,8 +180,17 @@ def build_summary_extras(args: Any) -> dict[str, Any]:
                 "map_mask_method": args.map_mask_method,
             }
         )
-    if args.uav_adapter_path:
-        extras["uav_adapter_path"] = args.uav_adapter_path
+    if args.embedding_mode in {"pose", "posefilm"}:
+        extras["pose_norm_scale"] = args.pose_norm_scale
+    elif args.embedding_mode == "uav":
+        extras.update(
+            {
+                "uav_adapter_type": args.uav_adapter_type,
+                "uav_adapter_apply_scope": args.uav_adapter_apply_scope,
+            }
+        )
+        if args.uav_adapter_path:
+            extras["uav_adapter_path"] = args.uav_adapter_path
     if args.history_processor_type in {"gtc", "segment_gtc"}:
         extras.update(
             {

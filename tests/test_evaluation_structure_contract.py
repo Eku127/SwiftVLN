@@ -58,8 +58,37 @@ class EvaluationStructureContractTest(unittest.TestCase):
         self.assertEqual(args.num_frames, 32)
         self.assertEqual(args.num_history, 8)
         self.assertEqual(args.compress_stride, 2)
+        self.assertEqual(args.embedding_mode, "none")
+        self.assertEqual(extras["embedding_mode"], "none")
         self.assertEqual(extras["history_processor_type"], "per_frame")
         self.assertEqual(extras["log_base"], 1.0)
+
+    def test_eval_cli_accepts_exactly_one_embedding_mode(self):
+        for mode in ("none", "pose", "posefilm", "uav"):
+            with self.subTest(mode=mode):
+                args = parse_eval_args(
+                    [
+                        "--model_path",
+                        "/model",
+                        "--env-type",
+                        "satnav",
+                        "--embedding_mode",
+                        mode,
+                    ]
+                )
+                self.assertEqual(args.embedding_mode, mode)
+
+        with self.assertRaises(SystemExit):
+            parse_eval_args(
+                [
+                    "--model_path",
+                    "/model",
+                    "--env-type",
+                    "satnav",
+                    "--embedding_mode",
+                    "pose+uav",
+                ]
+            )
 
     def test_episode_distribution_is_global_and_balanced(self):
         episodes = [

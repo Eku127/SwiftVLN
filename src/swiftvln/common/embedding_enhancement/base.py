@@ -18,8 +18,8 @@ class BaseEmbeddingEnhancement(nn.Module, ABC):
     Each enhancement takes ViT features and augments them with additional
     information (spatial coordinates, pose, temporal position, etc.).
     
-    The interface is designed so all enhancements can be composed in a
-    pipeline via EmbeddingEnhancementPipeline.
+    The interface lets one selected enhancement run through the historical
+    EmbeddingEnhancementPipeline checkpoint container.
     
     Args (forward):
         embed: Tensor of shape [N, D] where N = t * H * W

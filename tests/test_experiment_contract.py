@@ -6,8 +6,11 @@ from dataclasses import replace
 from swiftvln.experiment import (
     ExperimentNameError,
     SwiftVLNExperimentSpec,
-    embedding_from_flags,
+    embedding_uses_pose,
+    embedding_uses_uav,
+    normalize_embedding_mode,
     parse_model_name,
+    pose_fusion_for_embedding_mode,
 )
 from tests.test_model_name_contract import MODEL_NAME_CASES
 
@@ -56,12 +59,22 @@ class ExperimentNameContractTest(unittest.TestCase):
         )
 
     def test_public_embedding_mode_is_mutually_exclusive(self):
-        self.assertEqual(embedding_from_flags(False, False), "none")
-        self.assertEqual(embedding_from_flags(True, False), "pose")
-        self.assertEqual(embedding_from_flags(True, False, "film"), "posefilm")
-        self.assertEqual(embedding_from_flags(False, True), "uav")
-        with self.assertRaisesRegex(ExperimentNameError, "mutually exclusive"):
-            embedding_from_flags(True, True)
+        for mode in ("none", "pose", "posefilm", "uav"):
+            with self.subTest(mode=mode):
+                spec = SwiftVLNExperimentSpec(env_type="satnav", embedding=mode)
+                self.assertEqual(spec.embedding, mode)
+
+        self.assertEqual(normalize_embedding_mode("UAV"), "uav")
+        self.assertFalse(embedding_uses_pose("none"))
+        self.assertTrue(embedding_uses_pose("pose"))
+        self.assertTrue(embedding_uses_pose("posefilm"))
+        self.assertTrue(embedding_uses_uav("uav"))
+        self.assertEqual(pose_fusion_for_embedding_mode("pose"), "additive")
+        self.assertEqual(pose_fusion_for_embedding_mode("posefilm"), "film")
+        with self.assertRaisesRegex(ExperimentNameError, "exactly one"):
+            SwiftVLNExperimentSpec(env_type="satnav", embedding="pose+uav")
+        with self.assertRaisesRegex(ExperimentNameError, "exactly one"):
+            SwiftVLNExperimentSpec(env_type="satnav", embedding=None)
         with self.assertRaisesRegex(ExperimentNameError, "no longer supported"):
             parse_model_name(
                 "swiftvln-satnav-3b-1ep-f32s4-overlap0-"

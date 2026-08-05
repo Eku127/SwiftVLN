@@ -2,7 +2,12 @@
 
 import torch
 
-from swiftvln.experiment import embedding_from_flags
+from swiftvln.experiment import (
+    embedding_uses_pose,
+    embedding_uses_uav,
+    normalize_embedding_mode,
+    pose_fusion_for_embedding_mode,
+)
 
 
 def _emit(logger, message: str) -> None:
@@ -20,26 +25,25 @@ def _set_alias(model, alias_name: str, value) -> None:
     model.__dict__[alias_name] = value
 
 
-def _desired_enhancements(use_pose_embed: bool, use_uav_adapter: bool):
-    desired = []
-    if use_pose_embed:
-        desired.append("pose")
-    if use_uav_adapter:
-        desired.append("uav")
-    return desired
+def _desired_enhancements(embedding_mode: str):
+    if embedding_uses_pose(embedding_mode):
+        return ["pose"]
+    if embedding_uses_uav(embedding_mode):
+        return ["uav"]
+    return []
 
 
-def _needs_rebuild_pipeline(model, desired_enhancements) -> bool:
+def _needs_rebuild_pipeline(model, embedding_mode: str) -> bool:
     if not hasattr(model, "embed_enhance") or model.embed_enhance is None:
         return True
-    if len(desired_enhancements) == 0:
-        return False
-    if model.embed_enhance.is_empty:
+    desired_enhancements = _desired_enhancements(embedding_mode)
+    current = list(getattr(model.embed_enhance, "enhancements", {}))
+    if current != desired_enhancements:
         return True
-    return any(
-        name not in getattr(model.embed_enhance, "enhancements", {})
-        for name in desired_enhancements
-    )
+    if embedding_uses_pose(embedding_mode):
+        pose_module = model.embed_enhance.enhancements["pose"]
+        return pose_module.fusion != pose_fusion_for_embedding_mode(embedding_mode)
+    return False
 
 
 def _move_pipeline_to_model_device(model) -> None:
@@ -66,58 +70,48 @@ def _move_pipeline_to_model_device(model) -> None:
 def set_embedding_enhancement_aliases(
     model,
     *,
-    use_pose_embed: bool,
-    use_uav_adapter: bool,
-    clear_disabled_aliases: bool = True,
+    embedding_mode: str,
 ) -> None:
+    embedding_mode = normalize_embedding_mode(embedding_mode)
     enhancements = getattr(getattr(model, "embed_enhance", None), "enhancements", {})
 
-    if use_pose_embed and "pose" in enhancements:
+    if embedding_uses_pose(embedding_mode) and "pose" in enhancements:
         _set_alias(model, "pose_embed", enhancements["pose"])
-    elif clear_disabled_aliases or not hasattr(model, "pose_embed"):
+    else:
         _set_alias(model, "pose_embed", None)
 
-    if use_uav_adapter and "uav" in enhancements:
+    if embedding_uses_uav(embedding_mode) and "uav" in enhancements:
         _set_alias(model, "uav_adapter", enhancements["uav"])
-    elif clear_disabled_aliases or not hasattr(model, "uav_adapter"):
+    else:
         _set_alias(model, "uav_adapter", None)
 
 
 def configure_embedding_enhancement(
     model,
     *,
-    use_pose_embed: bool,
-    use_uav_adapter: bool,
+    embedding_mode: str,
     uav_adapter_path: str,
     uav_adapter_type: str,
     uav_adapter_apply_scope: str,
-    pose_fusion_method: str,
     pose_norm_scale: float,
     force_rebuild: bool = False,
     restore_callback=None,
-    clear_disabled_aliases: bool = True,
     logger=None,
     log_embed_dim: bool = False,
     log_train_save_note: bool = False,
 ) -> None:
-    embedding_from_flags(
-        use_pose_embed,
-        use_uav_adapter,
-        pose_fusion_method,
-    )
+    embedding_mode = normalize_embedding_mode(embedding_mode)
     if model is None:
         return
+    model.config.embedding_mode = embedding_mode
 
     from swiftvln.common.embedding_enhancement import create_embedding_pipeline
 
-    desired_enhancements = _desired_enhancements(use_pose_embed, use_uav_adapter)
-    if force_rebuild or _needs_rebuild_pipeline(model, desired_enhancements):
+    if force_rebuild or _needs_rebuild_pipeline(model, embedding_mode):
         embed_dim = model.config.hidden_size
         model.embed_enhance = create_embedding_pipeline(
             embed_dim=embed_dim,
-            use_pose_embed=use_pose_embed,
-            use_uav_adapter=use_uav_adapter,
-            pose_fusion=pose_fusion_method,
+            embedding_mode=embedding_mode,
             pose_norm_scale=pose_norm_scale,
             uav_adapter_path=uav_adapter_path,
             uav_adapter_type=uav_adapter_type,
@@ -131,16 +125,14 @@ def configure_embedding_enhancement(
     if not hasattr(model, "embed_enhance") or model.embed_enhance is None:
         set_embedding_enhancement_aliases(
             model,
-            use_pose_embed=use_pose_embed,
-            use_uav_adapter=use_uav_adapter,
-            clear_disabled_aliases=clear_disabled_aliases,
+            embedding_mode=embedding_mode,
         )
         return
 
     if not model.embed_enhance.is_empty and restore_callback is not None:
         restore_callback(model)
 
-    if use_uav_adapter and uav_adapter_path and "uav" in model.embed_enhance.enhancements:
+    if embedding_uses_uav(embedding_mode) and uav_adapter_path:
         resolved_path = model.embed_enhance.enhancements["uav"].load_external_checkpoint(
             uav_adapter_path,
             strict=True,
@@ -157,7 +149,5 @@ def configure_embedding_enhancement(
 
     set_embedding_enhancement_aliases(
         model,
-        use_pose_embed=use_pose_embed,
-        use_uav_adapter=use_uav_adapter,
-        clear_disabled_aliases=clear_disabled_aliases,
+        embedding_mode=embedding_mode,
     )

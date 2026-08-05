@@ -136,11 +136,6 @@ print_swiftvln_params() {
     fi
     echo "SYSTEM_PROMPT:  ${SYSTEM_PROMPT_SETTING:-vanilla}"
     echo "EMBEDDING_MODE: ${EMBEDDING_MODE:-none}"
-    echo "USE_POSE_EMBED: ${USE_POSE_EMBED:-false}"
-    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
-    fi
-    echo "USE_UAV_ADAPTER: ${USE_UAV_ADAPTER:-false}"
 }
 
 print_swiftvln_env_assignments() {
@@ -176,11 +171,8 @@ print_swiftvln_env_assignments() {
     if [ -n "${SYSTEM_PROMPT_SETTING:-}" ]; then
         echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
     fi
-    if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
-        echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
-    elif [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_UAV_ADAPTER:-false}" = "true" ]; then
-        echo "USE_UAV_ADAPTER=${USE_UAV_ADAPTER}"
+    if [ "$MODEL_ARCH" == "swiftvln" ]; then
+        echo "EMBEDDING_MODE=${EMBEDDING_MODE:-none}"
     fi
 }
 
@@ -542,11 +534,8 @@ fi
 if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
     export SYSTEM_PROMPT_SETTING
 fi
-if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-    export USE_POSE_EMBED
-    export POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
-elif [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_UAV_ADAPTER:-false}" = "true" ]; then
-    export USE_UAV_ADAPTER
+if [ "$MODEL_ARCH" == "swiftvln" ]; then
+    export EMBEDDING_MODE="${EMBEDDING_MODE:-none}"
 fi
 
 # ============================================================================

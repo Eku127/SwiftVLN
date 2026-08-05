@@ -83,28 +83,33 @@ def _parse_bool(value: str) -> bool:
     raise argparse.ArgumentTypeError(f"expected true/false, got {value!r}")
 
 
-def embedding_from_flags(
-    use_pose_embed: bool,
-    use_uav_adapter: bool,
-    pose_fusion_method: str = "additive",
-) -> str:
-    """Convert legacy runtime flags into one mutually exclusive public mode."""
-    if use_pose_embed and use_uav_adapter:
+def normalize_embedding_mode(value: str) -> str:
+    """Return the canonical mutually-exclusive embedding mode."""
+    if not isinstance(value, str):
         raise ExperimentNameError(
-            "pose embedding and UAV adapter are mutually exclusive; "
-            "choose one embedding mode"
+            f"embedding mode must be exactly one of {EMBEDDING_MODES}, got {value!r}"
         )
-    if use_pose_embed:
-        if pose_fusion_method == "additive":
-            return "pose"
-        if pose_fusion_method == "film":
-            return "posefilm"
+    mode = value.strip().lower()
+    if mode not in EMBEDDING_MODES:
         raise ExperimentNameError(
-            f"unsupported pose fusion method: {pose_fusion_method!r}"
+            f"embedding mode must be exactly one of {EMBEDDING_MODES}, got {value!r}"
         )
-    if use_uav_adapter:
-        return "uav"
-    return "none"
+    return mode
+
+
+def embedding_uses_pose(value: str) -> bool:
+    """Whether a mode requires pose metadata and a pose embedding module."""
+    return normalize_embedding_mode(value) in {"pose", "posefilm"}
+
+
+def embedding_uses_uav(value: str) -> bool:
+    """Whether a mode requires the Stage-A UAV adapter."""
+    return normalize_embedding_mode(value) == "uav"
+
+
+def pose_fusion_for_embedding_mode(value: str) -> str:
+    """Resolve the implementation-level pose fusion from the public mode."""
+    return "film" if normalize_embedding_mode(value) == "posefilm" else "additive"
 
 
 @dataclass(frozen=True)
@@ -144,26 +149,8 @@ class SwiftVLNExperimentSpec:
 
     _source_name: Optional[str] = field(default=None, repr=False, compare=False)
 
-    @classmethod
-    def from_runtime_flags(
-        cls,
-        *,
-        use_pose_embed: bool = False,
-        use_uav_adapter: bool = False,
-        pose_fusion_method: str = "additive",
-        **config: object,
-    ) -> "SwiftVLNExperimentSpec":
-        """Build a spec while translating the legacy internal boolean flags."""
-        return cls(
-            **config,
-            embedding=embedding_from_flags(
-                use_pose_embed,
-                use_uav_adapter,
-                pose_fusion_method,
-            ),
-        )
-
     def __post_init__(self) -> None:
+        object.__setattr__(self, "embedding", normalize_embedding_mode(self.embedding))
         if self.env_type not in ENV_TYPES:
             raise ExperimentNameError(
                 f"env_type must be one of {ENV_TYPES}, got {self.env_type!r}"
@@ -205,12 +192,6 @@ class SwiftVLNExperimentSpec:
             raise ExperimentNameError(
                 f"system_prompt_setting must be one of {SYSTEM_PROMPTS}"
             )
-        if self.embedding not in EMBEDDING_MODES:
-            raise ExperimentNameError(
-                f"embedding must be one of {EMBEDDING_MODES}, "
-                f"got {self.embedding!r}"
-            )
-
         if self.memory_method == "map":
             if self.env_type != "satnav":
                 raise ExperimentNameError("map memory is supported only for SatNav")
@@ -296,18 +277,6 @@ class SwiftVLNExperimentSpec:
                 "timestamp must be HHMMSS or YYYYMMDD-HHMMSS"
             )
 
-    @property
-    def use_pose_embed(self) -> bool:
-        return self.embedding in {"pose", "posefilm"}
-
-    @property
-    def use_uav_adapter(self) -> bool:
-        return self.embedding == "uav"
-
-    @property
-    def pose_fusion_method(self) -> str:
-        return "film" if self.embedding == "posefilm" else "additive"
-
     def _memory_name(self, *, include_default_log_base: bool) -> str:
         if self.memory_method == "map":
             mask = self.map_mask_method
@@ -374,13 +343,6 @@ class SwiftVLNExperimentSpec:
     def to_dict(self) -> Dict[str, object]:
         values = asdict(self)
         values.pop("_source_name", None)
-        values.update(
-            {
-                "use_pose_embed": self.use_pose_embed,
-                "use_uav_adapter": self.use_uav_adapter,
-                "pose_fusion_method": self.pose_fusion_method,
-            }
-        )
         return values
 
     def to_shell_assignments(self) -> Dict[str, str]:
@@ -434,9 +396,6 @@ class SwiftVLNExperimentSpec:
             ),
             "SYSTEM_PROMPT_SETTING": self.system_prompt_setting,
             "EMBEDDING_MODE": self.embedding,
-            "USE_POSE_EMBED": str(self.use_pose_embed).lower(),
-            "USE_UAV_ADAPTER": str(self.use_uav_adapter).lower(),
-            "POSE_FUSION_METHOD": self.pose_fusion_method,
             "BATCH_SIZE": (
                 str(self.effective_batch_size)
                 if self.effective_batch_size is not None
@@ -546,7 +505,7 @@ def parse_model_name(model_name: str) -> SwiftVLNExperimentSpec:
 
 
 def _build_spec(args: argparse.Namespace) -> SwiftVLNExperimentSpec:
-    return SwiftVLNExperimentSpec.from_runtime_flags(
+    return SwiftVLNExperimentSpec(
         env_type=args.env_type,
         model_family=args.model_family,
         model_size=args.model_size.lower(),
@@ -569,9 +528,7 @@ def _build_spec(args: argparse.Namespace) -> SwiftVLNExperimentSpec:
         map_render_px=args.map_render_px,
         map_mask_method=args.map_mask_method,
         system_prompt_setting=args.system_prompt_setting,
-        use_pose_embed=args.use_pose_embed,
-        use_uav_adapter=args.use_uav_adapter,
-        pose_fusion_method=args.pose_fusion_method,
+        embedding=args.embedding_mode,
         effective_batch_size=args.effective_batch_size,
         learning_rate=args.learning_rate,
         timestamp=args.timestamp,
@@ -616,10 +573,8 @@ def _create_parser() -> argparse.ArgumentParser:
     build_parser.add_argument(
         "--system-prompt-setting", required=True, choices=SYSTEM_PROMPTS
     )
-    build_parser.add_argument("--use-pose-embed", required=True, type=_parse_bool)
-    build_parser.add_argument("--use-uav-adapter", required=True, type=_parse_bool)
     build_parser.add_argument(
-        "--pose-fusion-method", required=True, choices=("additive", "film")
+        "--embedding-mode", required=True, choices=EMBEDDING_MODES
     )
     build_parser.add_argument("--effective-batch-size", required=True, type=int)
     build_parser.add_argument("--learning-rate", required=True)
