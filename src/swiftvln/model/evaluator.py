@@ -16,7 +16,9 @@ from typing import Any, Dict, List
 import torch
 from PIL import Image
 
-from swiftvln.common import BaseVLNEvaluator, EnvWrapper, TrajectoryRecorder
+from swiftvln.common.env.base import EnvWrapper
+from swiftvln.common.eval.environment import EvaluationEnvironment
+from swiftvln.common.utils.error_analyzer import TrajectoryRecorder
 from swiftvln.model.diagnostics import DiagnosticsObserver
 from swiftvln.model.inference import SwiftVLNInferenceSession
 
@@ -54,6 +56,7 @@ class EnvironmentEpisodeLoop:
         episode: Any,
     ) -> Dict[str, Any]:
         evaluator = self.evaluator
+        environment = evaluator.environment
         session = evaluator.inference
         diagnostics = evaluator.diagnostics
         timing_stats = _new_timing_stats()
@@ -61,7 +64,7 @@ class EnvironmentEpisodeLoop:
 
         init_start = time.time()
         evaluator.model.eval()
-        evaluator.set_eval_seed()
+        environment.set_seed()
         session.reset()
         observations = env_wrapper.reset(episode)
         instruction = env_wrapper.get_instruction(episode)
@@ -118,7 +121,7 @@ class EnvironmentEpisodeLoop:
                             current_image=current_image,
                             current_pose=current_pose,
                             step_id=step_id,
-                            parse_actions=evaluator.parse_actions,
+                            parse_actions=environment.parse_actions,
                             timing_stats=timing_stats,
                         )
                     except Exception as exc:
@@ -129,17 +132,17 @@ class EnvironmentEpisodeLoop:
                     if not action_sequence:
                         action_sequence = [0]
 
-                if evaluator.save_video:
+                if environment.save_video:
                     visualization_start = time.time()
-                    if evaluator.env_type == "habitat":
-                        frame = evaluator._collect_habitat_frame(
+                    if environment.env_type == "habitat":
+                        frame = environment.collect_habitat_frame(
                             observations,
                             instruction,
                             env_wrapper,
                         )
                         if frame is not None:
                             vis_frames.append(frame)
-                    elif evaluator.env_type == "satnav":
+                    elif environment.env_type == "satnav":
                         rgb_frames.append(rgb.copy())
                     timing_stats["visualization"] += time.time() - visualization_start
 
@@ -149,9 +152,9 @@ class EnvironmentEpisodeLoop:
                 session.record_action(action)
                 timing_stats["env_step"] += time.time() - step_start
                 step_id += 1
-                if evaluator.save_video and evaluator.env_type == "satnav":
+                if environment.save_video and environment.env_type == "satnav":
                     topdown_start = time.time()
-                    evaluator._collect_satnav_topdown(
+                    environment.collect_satnav_topdown(
                         env_wrapper,
                         episode,
                         action,
@@ -161,7 +164,7 @@ class EnvironmentEpisodeLoop:
                     )
                     timing_stats["satnav_topdown"] += time.time() - topdown_start
 
-                if evaluator.env_type == "habitat":
+                if environment.env_type == "habitat":
                     record_start = time.time()
                     try:
                         agent_state = env_wrapper.env.sim.get_agent_state()
@@ -171,10 +174,10 @@ class EnvironmentEpisodeLoop:
                     timing_stats["trajectory_record"] += time.time() - record_start
 
             metrics = env_wrapper.get_metrics()
-            if evaluator.env_type == "habitat":
+            if environment.env_type == "habitat":
                 analysis_start = time.time()
                 metrics.update(
-                    evaluator._analyze_trajectory_errors(
+                    environment.analyze_trajectory_errors(
                         trajectory_recorder,
                         episode,
                         metrics,
@@ -184,12 +187,12 @@ class EnvironmentEpisodeLoop:
         except Exception as exc:
             metrics = self._failure_metrics(env_wrapper, exc)
         finally:
-            if evaluator.save_video:
+            if environment.save_video:
                 video_start = time.time()
-                if evaluator.env_type == "habitat":
-                    evaluator._save_habitat_video(episode_id, vis_frames, metrics)
-                elif evaluator.env_type == "satnav":
-                    evaluator._save_satnav_video(
+                if environment.env_type == "habitat":
+                    environment.save_habitat_video(episode_id, vis_frames, metrics)
+                elif environment.env_type == "satnav":
+                    environment.save_satnav_video(
                         episode_id,
                         instruction,
                         rgb_frames,
@@ -238,25 +241,42 @@ class EnvironmentEpisodeLoop:
         return metrics
 
 
-class SwiftVLNEvaluator(BaseVLNEvaluator):
+class SwiftVLNEvaluator:
     """Compose environment services with SwiftVLN inference and episode flow."""
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
-        self.diagnostics = DiagnosticsObserver(self.args, self.output_path)
-        self.set_eval_seed()
+    def __init__(
+        self,
+        config_path: str,
+        model: Any,
+        processor: Any,
+        template: Any,
+        args: Any,
+        env_type: str = "habitat",
+    ):
+        self.args = args
+        self.model = model
+        self.processor = processor
+        self.template = template
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.environment = EvaluationEnvironment(config_path, args, env_type)
+        self.diagnostics = DiagnosticsObserver(args, self.environment.output_path)
+        self.environment.set_seed()
         self.inference = SwiftVLNInferenceSession(
-            model=self.model,
-            processor=self.processor,
-            args=self.args,
-            config=self.config,
-            env_type=self.env_type,
+            model=model,
+            processor=processor,
+            args=args,
+            config=self.environment.config,
+            env_type=env_type,
             device=self.device,
-            num_history=self.num_history,
-            num_future_steps=self.num_future_steps,
+            num_history=getattr(args, "num_history", 8),
+            num_future_steps=getattr(args, "num_future_steps", 4),
             diagnostics=self.diagnostics,
         )
         self.episode_loop = EnvironmentEpisodeLoop(self)
+
+    def create_environment(self) -> EnvWrapper:
+        """Construct the configured environment wrapper for this evaluator."""
+        return self.environment.create_wrapper()
 
     def eval_episode(
         self,

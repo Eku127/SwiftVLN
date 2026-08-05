@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """Evaluation-related common components."""
 
+from .environment import EvaluationEnvironment
 from .reporting import (
     clean_results_for_output,
     compute_trajectory_type_stats,
@@ -12,7 +13,6 @@ from .results import ResultRecorder
 
 _lazy_imports = {
     "BaseVLNEval": ".runner",
-    "BaseVLNEvaluator": ".evaluator",
 }
 
 
@@ -28,7 +28,7 @@ def __getattr__(name):
 
 __all__ = [
     "BaseVLNEval",
-    "BaseVLNEvaluator",
+    "EvaluationEnvironment",
     "ResultRecorder",
     "compute_trajectory_type_stats",
     "clean_results_for_output",

@@ -519,7 +519,7 @@ class BaseVLNEval(ABC):
         evaluator = self.create_evaluator(config_path, model, processor, template)
 
         # Setup environment
-        env_wrapper = evaluator.config_env()
+        env_wrapper = evaluator.create_environment()
         all_episodes = self.get_episodes(env_wrapper)
         my_episodes, scene_episode_dict = self.distribute_episodes(all_episodes)
 

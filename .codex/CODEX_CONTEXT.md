@@ -32,13 +32,16 @@
 ## Current Source Layout
 
 - `src/swiftvln/model/`：SwiftVLN 主线模型、训练和评测实现；评测职责分为
-  `evaluator.py`（环境 episode loop）、`inference.py`（frame/history/prompt/window）和
-  `diagnostics.py`（可选 map/initial/timing 诊断）；训练参数和 dataset hook 直接位于
+  `evaluator.py`（组合环境服务并运行 episode loop）、`inference.py`
+  （frame/history/prompt/window）和 `diagnostics.py`（可选 map/initial/timing 诊断）；
+  训练参数和 dataset hook 直接位于
   `arguments.py` / `trainer.py`，不经过仓库内单实现 Base 层
 - `src/swiftvln/cli.py`：单模型 CLI，直接分发 SwiftVLN 与 queue；无 model registry/runner 中间层
 - `src/swiftvln/experiment.py`：train/eval 共用的 ExperimentSpec、约束和模型名 codec
-- `src/swiftvln/common/eval/`：评测编排、环境能力与报告组件；`results.py` 的
-  `ResultRecorder` 独立负责 JSONL 恢复/去重、分布式完成标记和最终指标落盘
+- `src/swiftvln/common/eval/`：评测编排、环境能力与报告组件；
+  `EvaluationEnvironment` 组合 Habitat/SatNav 配置、wrapper、动作与可视化，
+  `ResultRecorder` 独立负责 JSONL 恢复/去重、分布式完成标记和最终指标落盘；
+  两者都不是单实现 Base 类
 - `src/swiftvln/common/env/`：Habitat / SatNav 环境抽象
 - `src/swiftvln/common/history_processors/`：history 压缩实现
 - `src/swiftvln/common/embedding_enhancement/`：pose / UAV adapter 增强
