@@ -36,13 +36,6 @@ def create_eval_parser() -> argparse.ArgumentParser:
         choices=["swiftvln_qwen2_5_vl", "swiftvln_qwen3_vl"],
         help="Registered SwiftVLN model type",
     )
-    parser.add_argument(
-        "--template_type",
-        default=DEFAULT_MODEL_TYPE,
-        choices=["swiftvln_qwen2_5_vl", "swiftvln_qwen3_vl"],
-        help="Registered SwiftVLN template type",
-    )
-
     environment = parser.add_argument_group("environment")
     environment.add_argument(
         "--env-type",
@@ -161,7 +154,6 @@ def build_summary_extras(args: Any) -> dict[str, Any]:
     """Select configuration fields persisted in ``evaluation_summary.json``."""
     fields = (
         "model_type",
-        "template_type",
         "num_frames",
         "compress_stride",
         "num_overlap",

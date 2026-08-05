@@ -249,14 +249,12 @@ class SwiftVLNEvaluator:
         config_path: str,
         model: Any,
         processor: Any,
-        template: Any,
         args: Any,
         env_type: str = "habitat",
     ):
         self.args = args
         self.model = model
         self.processor = processor
-        self.template = template
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.environment = EvaluationEnvironment(config_path, args, env_type)
         self.diagnostics = DiagnosticsObserver(args, self.environment.output_path)

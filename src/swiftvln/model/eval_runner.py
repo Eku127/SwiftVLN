@@ -140,24 +140,6 @@ class SwiftVLNEvaluationRunner:
             pose_norm_scale=self.args.pose_norm_scale,
         )
 
-    def load_template(self, processor: Any):
-        from swift.template import get_template
-
-        template = get_template(
-            template_type=self.args.template_type,
-            processor=processor,
-        )
-        if hasattr(template, "compress_stride"):
-            template.compress_stride = self.args.compress_stride
-            if hasattr(template, "compressor"):
-                template.compressor.stride = self.args.compress_stride
-            if self.is_main:
-                print(
-                    f"[{MODEL_DESCRIPTION}] Template compress_stride set to "
-                    f"{self.args.compress_stride}"
-                )
-        return template
-
     def resolve_config_path(self) -> str:
         configured_path = (
             self.args.habitat_config_path
@@ -174,14 +156,13 @@ class SwiftVLNEvaluationRunner:
             return str(package_path)
         return str(repo_path)
 
-    def create_evaluator(self, model: Any, processor: Any, template: Any):
+    def create_evaluator(self, model: Any, processor: Any):
         from swiftvln.model.evaluator import SwiftVLNEvaluator
 
         return SwiftVLNEvaluator(
             config_path=self.resolve_config_path(),
             model=model,
             processor=processor,
-            template=template,
             args=self.args,
             env_type=self.args.env_type,
         )
@@ -405,8 +386,7 @@ class SwiftVLNEvaluationRunner:
         if self.is_main:
             print(f"Loading model from {self.args.model_path}...")
         model, processor = self.load_model()
-        template = self.load_template(processor)
-        evaluator = self.create_evaluator(model, processor, template)
+        evaluator = self.create_evaluator(model, processor)
         env_wrapper = evaluator.create_environment()
         try:
             episodes = self.load_episodes(env_wrapper)

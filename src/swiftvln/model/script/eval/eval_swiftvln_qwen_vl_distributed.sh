@@ -42,12 +42,10 @@ case "$MODEL_FAMILY" in
     qwen2_5_vl|qwen25|qwen2.5)
         MODEL_FAMILY="qwen2_5_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen2_5_vl"
-        DEFAULT_TEMPLATE_TYPE="swiftvln_qwen2_5_vl"
         ;;
     qwen3_vl|qwen3)
         MODEL_FAMILY="qwen3_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen3_vl"
-        DEFAULT_TEMPLATE_TYPE="swiftvln_qwen3_vl"
         ;;
     *)
         echo "[ERROR] Unknown MODEL_FAMILY: $MODEL_FAMILY. Available: qwen2_5_vl, qwen3_vl."
@@ -55,7 +53,6 @@ case "$MODEL_FAMILY" in
         ;;
 esac
 MODEL_TYPE="${MODEL_TYPE:-$DEFAULT_MODEL_TYPE}"
-TEMPLATE_TYPE="${TEMPLATE_TYPE:-$DEFAULT_TEMPLATE_TYPE}"
 
 # ============================================================================
 # Environment Type Configuration
@@ -287,7 +284,6 @@ echo "=============================================="
 echo "Environment:     ${ENV_TYPE}"
 echo "Model Family:    ${MODEL_FAMILY}"
 echo "Model Type:      ${MODEL_TYPE}"
-echo "Template Type:   ${TEMPLATE_TYPE}"
 echo "Config Path:     ${RESOLVED_CONFIG_PATH}"
 echo "Model Path:      ${MODEL_PATH}"
 echo "Eval Split:      ${EVAL_SPLIT}"
@@ -424,7 +420,6 @@ EVAL_CMD=(
     -m swiftvln.model.eval
     --model_path "${MODEL_PATH}"
     --model_type "${MODEL_TYPE}"
-    --template_type "${TEMPLATE_TYPE}"
     --env-type "${ENV_TYPE}"
     --habitat_config_path "${RESOLVED_CONFIG_PATH}"
     --satnav-config "${RESOLVED_CONFIG_PATH}"

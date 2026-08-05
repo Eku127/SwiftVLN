@@ -171,7 +171,7 @@ Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B �
 | 对象 | 建议 | 证据与边界 |
 | --- | --- | --- |
 | `scripts/docker/docker_run.sh` | **已完成**：重写为 17 服务器的非交互、幂等常驻容器 bootstrap。 | 默认复用/启动 `streamvln-container`，使用 `--restart unless-stopped` 和 `sleep infinity`；不再使用 `--rm` 或交互询问，只有 `RECREATE=true` 才显式重建，另提供无副作用的 `DRY_RUN=true`。通过 `bash -n`、默认/指定 GPU dry-run 和非法布尔值拒绝测试。 |
-| eval-time template 链路 | 删除 `eval.py --template_type`、eval shell 的 `TEMPLATE_TYPE`、`EvalRunner.load_template()`、`create_evaluator(..., template)` 和 `SwiftVLNEvaluator.template`。 | template 在评测中只创建、传递、保存，从未读取；`inference.py` 已自行构造 prompt token 与视觉 embedding。**不要删除训练使用的 `model/template.py`。** |
+| eval-time template 链路 | **已完成**：删除 `eval.py --template_type`、eval shell 的 `TEMPLATE_TYPE`、`EvalRunner.load_template()`、`create_evaluator(..., template)`、`SwiftVLNEvaluator.template` 及 summary 冗余字段。 | template 在评测中只创建、传递、保存，从未读取；`inference.py` 自行构造 prompt token 与视觉 embedding。训练使用的 `model/template.py` 与模型注册保持不变；7 项结构 contract 通过，旧 CLI 参数被拒绝，现有 checkpoint 的 2-GPU `val_unseen` 单 episode 实测通过（摘要：`results/eval/swiftvln/<基线模型名>/val_unseen/20260805_211258/evaluation_summary.json`）。 |
 | `s2r/__init__.py`（47 行） | 保留最小 package marker，删除历史 lazy re-export 表和 `__getattr__`。 | 仓库内部全部显式导入 `swiftvln.s2r.dataset/model/losses`，没有顶层导出消费者。删除前仍需确认仓库外 notebook/API 用户。 |
 | `scripts/data_process/__init__.py`（40 行） | 缩成最小 marker/docstring。 | 无内部 import 消费；eager import 只扩大副作用，示例仍使用旧 `ver_260202`。实际脚本必须保留。 |
 | `model/script/test/test_uav_adapter_strategy.py`（114 行） | 迁移为 `tests/test_uav_adapter_strategy.py` 后从安装包删除。 | 它是有价值的 Stage-B smoke test，但测试代码不应位于运行时 package；当前 context 也要同步新路径。 |

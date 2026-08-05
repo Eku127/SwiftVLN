@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,7 +8,7 @@ from types import SimpleNamespace
 
 from swiftvln.common.eval.environment import EvaluationEnvironment
 from swiftvln.model.eval import build_summary_extras, parse_eval_args
-from swiftvln.model.eval_runner import distribute_episodes
+from swiftvln.model.eval_runner import SwiftVLNEvaluationRunner, distribute_episodes
 from swiftvln.model.evaluator import SwiftVLNEvaluator
 
 
@@ -54,7 +55,8 @@ class EvaluationStructureContractTest(unittest.TestCase):
         extras = build_summary_extras(args)
 
         self.assertEqual(args.model_type, "swiftvln_qwen2_5_vl")
-        self.assertEqual(args.template_type, "swiftvln_qwen2_5_vl")
+        self.assertFalse(hasattr(args, "template_type"))
+        self.assertNotIn("template_type", extras)
         self.assertEqual(args.num_frames, 32)
         self.assertEqual(args.num_history, 8)
         self.assertEqual(args.compress_stride, 2)
@@ -62,6 +64,22 @@ class EvaluationStructureContractTest(unittest.TestCase):
         self.assertEqual(extras["embedding_mode"], "none")
         self.assertEqual(extras["history_processor_type"], "per_frame")
         self.assertEqual(extras["log_base"], 1.0)
+
+    def test_eval_runtime_has_no_unused_template_chain(self):
+        self.assertFalse(hasattr(SwiftVLNEvaluationRunner, "load_template"))
+        self.assertEqual(
+            tuple(inspect.signature(SwiftVLNEvaluationRunner.create_evaluator).parameters),
+            ("self", "model", "processor"),
+        )
+        with self.assertRaises(SystemExit):
+            parse_eval_args(
+                [
+                    "--model_path",
+                    "/model",
+                    "--template_type",
+                    "swiftvln_qwen2_5_vl",
+                ]
+            )
 
     def test_eval_cli_accepts_exactly_one_embedding_mode(self):
         for mode in ("none", "pose", "posefilm", "uav"):
