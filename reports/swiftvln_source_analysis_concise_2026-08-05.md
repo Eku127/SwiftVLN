@@ -1,0 +1,208 @@
+# `src/swiftvln` 功能与精简审计
+
+日期：2026-08-05
+范围：当前工作树中的 `src/swiftvln/`；已处于删除状态的旧文件不计入本次快照。
+
+## 结论
+
+`src/swiftvln` 已经是一个围绕单一 SwiftVLN 主线组织的完整包，训练、评测、
+环境、历史压缩、S2R、数据处理和队列都仍有现实入口。当前最值得做的不是删除
+模型主线，而是重写失配的 Docker 初始化脚本、清理评测侧未使用的 template 链路、两个
+无内部消费者的导出 facade，以及合并 S2R 数据生产中的重复工具。
+
+- 可优先处理：把 `scripts/docker/docker_run.sh` 重写成 17 服务器 bootstrap、
+  清理 eval-time template 传递和两个 `__init__.py` facade；把包内 UAV 测试迁到顶层 `tests/`。
+- 应先合并再删除：4 个 `sample_preview.py`、2 个 `center_recrop_pairs.py`、
+  SUES 专用 variant merge。
+- 应重写而非保留原样：`model/doc/OVERVIEW.md` 和 `model/doc/pose_embed.md`；
+  前者仍写着旧数据版本、旧默认 overlap 和拆分前的 evaluator 职责。
+- 不应作为“死代码”删除：history/map/pose/UAV、Habitat 支持、诊断、视频、
+  error analysis、S2R Stage-A，以及当前 train/eval/data queue。它们都有入口、
+  已保留模型、结果协议或仓库技能依赖。
+
+在不取消现有能力的前提下，P0 清理预计可从安装包移出或删除约 200–300 行代码，
+并压缩 600 行以上过时文档；完成 P1 合并后，预计还可净减约 500–700 行重复代码。
+
+## 当前规模与核验方式
+
+| 区域 | 文件数 | 行数 | 主要职责 |
+| --- | ---: | ---: | --- |
+| 包根 | 4 | 709 | CLI、实验规格与模型名 codec |
+| `common/` | 28 | 3,703 | 环境、评测结果、history、embedding、工具 |
+| `configs/` | 5 | 303 | SatNav/Habitat 正式与 smoke 配置 |
+| `habitat_extensions/` | 2 | 59 | 自定义 Habitat measures |
+| `model/` | 17 | 8,067 | 模型、训练、推理、评测、诊断、文档与入口 |
+| `s2r/` | 35 | 6,949 | Stage-A/Stage-B 与四类数据转换 |
+| `scripts/` | 15 | 3,383 | 数据、同步、train/eval queue、Docker |
+| **合计** | **106** | **23,173** | 85 Python、12 shell、6 YAML、3 Markdown |
+
+检查依据：逐文件阅读入口与关键实现、全仓引用检索、动态注册表核对、当前 context/
+skills/tests 交叉核对。85 个 Python 文件均通过 AST 解析，12 个 shell 文件均通过
+`bash -n`，Ruff `F401/F841` 无告警。
+
+已在仓库规定的 `swift-vln-eval-update` 环境运行完整 contract suite：59 项通过。
+后续清理落地后仍需追加一次 train→eval smoke。
+
+## 功能总览
+
+```text
+swiftvln CLI
+├─ train ─> trainer ─> dataset + template ─> registered Qwen-VL model
+├─ eval  ─> eval_runner ─> evaluator ─> inference + environment ─> ResultRecorder
+├─ queue ─> train_queue / eval_queue ─> shell entrypoints
+└─ s2r-data ─> registry ─> dataset-specific pair builders and QA tools
+
+S2R Stage-A: raw datasets ─> manifest ─> teacher/adapter training ─> retrieval eval
+S2R Stage-B: Stage-A checkpoint ─> UAV adapter ─> SwiftVLN train/eval embedding path
+```
+
+### 1. 入口、实验约束与命名
+
+| 文件 | 已实现功能 |
+| --- | --- |
+| `cli.py`, `__main__.py` | 提供 `swiftvln train/eval/queue/s2r-data`，按需导入重依赖模块。 |
+| `experiment.py` | 定义 `SwiftVLNExperimentSpec`；统一校验环境、模型族、窗口、memory、embedding 和 map 约束；编码/解析当前及历史模型名；输出 shell/JSON。 |
+| `model/__init__.py` | 注册 Qwen2.5-VL/Qwen3-VL 的 SwiftVLN model 与 template。 |
+
+实验规格支持 Habitat/SatNav、Qwen2.5-VL/Qwen3-VL、history/map memory、
+per-frame/GTC/Segment-GTC、vanilla/initial prompt、none/pose/pose-FiLM/UAV
+embedding，并显式拒绝不兼容组合。
+
+### 2. 训练与模型
+
+| 文件 | 已实现功能 |
+| --- | --- |
+| `model/arguments.py` | ms-swift SFT 参数扩展；窗口、overlap、history、map、prompt、pose、UAV 等配置与校验。 |
+| `model/dataset.py` | 读取 trajectory data；把轨迹切成多轮窗口；采样历史帧；构造 action symbol、图像、pose/map memory；为 overlap 样本屏蔽重复动作 loss。 |
+| `model/template.py` | Qwen2.5/Qwen3 对话模板；把 `<history_memory>`/`<current_image>` 替换为真实视觉 embedding，并处理压缩后的 token 布局。 |
+| `model/model.py` | 注册 HF/ms-swift wrapper；扩展特殊 token；适配 Qwen3 `inputs_embeds`；挂载并恢复 pose/UAV embedding 模块。 |
+| `model/trainer.py` | 把自定义参数、dataset 和 template 接入 ms-swift SFT。 |
+| `model/script/train/*.sh` | 规范化单次多卡训练入口、环境变量默认值与训练元数据。 |
+
+训练主线已经实现：32-frame 窗口、未来动作分组、可选滑窗重叠与 loss mask、
+历史采样/压缩、首帧提示、地图记忆、pose additive/FiLM、Stage-A UAV adapter，
+以及 Qwen2.5/Qwen3 两个模型族。
+
+### 3. 推理与评测
+
+| 文件 | 已实现功能 |
+| --- | --- |
+| `model/eval.py` | 评测 CLI 参数和 `EvalRunner` 启动。 |
+| `model/eval_runner.py` | 模型加载、分布式初始化、scene 稳定切分、rank 恢复、episode 编排、最终结果汇总。 |
+| `model/evaluator.py` | 组合环境、诊断和 inference；执行 episode state machine、动作 step、视频与失败兜底。 |
+| `model/inference.py` | 视觉特征缓存、history/map 构造、多轮 prompt、window/overlap 状态、action generation。 |
+| `model/diagnostics.py` | `SWIFTVLN_DEBUG` 下的 map、initial-view、token 注入和 timing 诊断。 |
+| `common/eval/results.py` | 追加式 `result.jsonl`、去重/恢复、rank 完成标记、最终 summary 与压缩触发。 |
+| `common/eval/reporting.py` | 总体/trajectory-type/timing 指标和 SwanLab 报告。 |
+| `common/eval/environment.py` | 加载配置、创建 wrapper、动作解析、视频/俯视图、失败分析。 |
+| `model/script/eval/*.sh`, `scripts/eval/*.sh` | 分布式评测、按模型名解析、入队、队列消费和常驻 worker。 |
+
+评测不是简单的一次性脚本：它支持 Habitat/SatNav、单机多卡、确定性 scene 分配、
+中断续跑、跨 rank 去重、持久化完成标记、视频、trajectory type 分组和失败标签。
+
+### 4. History、地图与 embedding
+
+| 区域 | 已实现功能 |
+| --- | --- |
+| `common/history_processors/` | per-frame 历史选择，pooling/ToMe 压缩，Soft K-Means GTC，分段 Segment-GTC；统一 processor 接口。 |
+| `model/map_memory.py` | 根据 SatNav 轨迹位置渲染 global/local map memory，执行可见区域 mask、缓存与调试统计。 |
+| `common/embedding_enhancement/` | 可组合增强 pipeline；pose 归一化、additive/FiLM 融合；加载 Stage-A checkpoint 并执行 UAV adapter。 |
+| `common/constants.py` | action symbol、视觉占位 token 和 prompt 常量。 |
+
+这些并非未使用的研究残留。当前保留模型覆盖 vanilla、无历史、随机/log 历史、GTC、
+Segment-GTC、map、initial、pose-FiLM 和 overlap 变体；删除对应实现会破坏模型名语义、
+checkpoint 兼容或现有评测能力。
+
+### 5. 环境与配置
+
+| 区域 | 已实现功能 |
+| --- | --- |
+| `common/env/` | `EnvWrapper` 抽象，以及 Habitat/SatNav episode、observation、action、metrics 适配。 |
+| `habitat_extensions/` | `OracleNavigationError`、`OracleSuccess` 两个仍需自定义的 measure。 |
+| `configs/vln_r2r*.yaml` | Habitat R2R 正式与 smoke 配置。 |
+| `configs/satnav_task*.yaml` | SatNav 正式与 smoke 评测配置；当前默认数据为 `SatNav-v0.1`。 |
+| `configs/satnav_trajectory_generation.yaml` | SatNav trajectory generation 配置。 |
+
+### 6. S2R
+
+| 区域 | 已实现功能 |
+| --- | --- |
+| `s2r/dataset.py`, `split.py` | SatDronePair manifest、数据加载、去重和 split。 |
+| `s2r/model.py` | teacher vision tower、token adapter/projector、masked pooling。 |
+| `s2r/losses.py` | 双向对比损失、global cosine loss、retrieval metrics。 |
+| `s2r/trainer.py`, `eval.py`, `arguments.py` | Stage-A 训练、断点恢复、checkpoint/progress、检索评测和参数。 |
+| `s2r/data_generation/` | DenseUAV、GTA-UAV、SUES-200、UAV-VisLoc 转换；统一命令注册、配置启动、preview、recrop、variant merge 和 QA。 |
+
+Stage-A 的产物由 `common/embedding_enhancement/uav_adapter.py` 在 Stage-B 加载，
+因此不能把整个 `s2r/` 当作离线脚本删除。若只制作推理镜像，可以不打包
+`s2r/data_generation/`，但仓库仍应保留它以保证数据可复现。
+
+### 7. 数据与运维脚本
+
+| 区域 | 已实现功能 |
+| --- | --- |
+| `scripts/data_process/` | 检查 SatNav 版本/城市/trajectory type；从 canonical episodes 生成 train/eval split。 |
+| `scripts/data_sync/` | 跨服务器同步和校验 SatNav 数据。 |
+| `scripts/train/` | 训练队列、并发资源选择、任务状态与元数据写入。 |
+| `scripts/eval/` | 由模型名恢复实验规格，维护 eval queue 和 worker。 |
+
+这些脚本是 `.codex/CODEX_CONTEXT.md` 和仓库 skills 中声明的 canonical workflow，
+不应仅因没有 Python import 就判定为死代码。
+
+## 可精简项
+
+### P0：低风险，优先处理
+
+| 对象 | 建议 | 证据与边界 |
+| --- | --- | --- |
+| `scripts/docker/docker_run.sh`（156 行） | **保留并重写**为 17 服务器的幂等 bootstrap；在替代方案可复现前不要删除。 | 17 当前常驻 `streamvln-container` 的 image/mount/workdir 与脚本基本一致，说明它具有重建价值；但实际容器使用 `sleep infinity`，脚本却启动交互 bash，并设置 `--rm`，不适合作为当前事实源。日常 train/eval 仍只需 `docker exec`。 |
+| eval-time template 链路 | 删除 `eval.py --template_type`、eval shell 的 `TEMPLATE_TYPE`、`EvalRunner.load_template()`、`create_evaluator(..., template)` 和 `SwiftVLNEvaluator.template`。 | template 在评测中只创建、传递、保存，从未读取；`inference.py` 已自行构造 prompt token 与视觉 embedding。**不要删除训练使用的 `model/template.py`。** |
+| `s2r/__init__.py`（47 行） | 保留最小 package marker，删除历史 lazy re-export 表和 `__getattr__`。 | 仓库内部全部显式导入 `swiftvln.s2r.dataset/model/losses`，没有顶层导出消费者。删除前仍需确认仓库外 notebook/API 用户。 |
+| `scripts/data_process/__init__.py`（40 行） | 缩成最小 marker/docstring。 | 无内部 import 消费；eager import 只扩大副作用，示例仍使用旧 `ver_260202`。实际脚本必须保留。 |
+| `model/script/test/test_uav_adapter_strategy.py`（114 行） | 迁移为 `tests/test_uav_adapter_strategy.py` 后从安装包删除。 | 它是有价值的 Stage-B smoke test，但测试代码不应位于运行时 package；当前 context 也要同步新路径。 |
+| `model/doc/OVERVIEW.md`（727 行） | 用当前架构短文替换，删除历史结果和伪代码。 | 仍写 `ver_260206`、默认 `num_overlap=16`；当前默认是 `SatNav-v0.1`、overlap 0；还把已拆出的 inference/runner 职责归给单体 evaluator。 |
+| `model/doc/pose_embed.md`（113 行） | 更新后并入新 overview，或只保留参数参考。 | 功能仍有效，但路径写成不存在的 `swiftvln/arguments.py`，推理职责描述也已过时。 |
+
+### P1：先合并，验证后删除旧实现
+
+| 重复组 | 当前规模 | 合并方案 |
+| --- | ---: | --- |
+| 四个 `*/sample_preview.py` | 520 行 | 建立一个 schema-aware preview renderer，dataset adapter 只负责读取字段；迁移 registry、SUES pipeline、README/config 后删四个旧文件。 |
+| SUES/UAV-VisLoc `center_recrop_pairs.py` | 159 行 | 抽取统一 crop/image/manifest 写入逻辑，以 schema adapter 处理字段差异，再删两个 wrapper。 |
+| `sues/merge_variants_dense_style.py` 与通用 `merge_variants.py` | 226 + 274 行 | 给通用命令增加 one-root/variant-map 模式；迁移现有 SUES 命令和文档后删专用实现。 |
+
+这些文件都被 registry、README 或 SUES pipeline 使用，不能先删再补。它们是“重复实现”，
+不是“未使用文件”。
+
+### P2：只有明确缩减产品范围时才删
+
+| 能力切片 | 相关文件 | 删除代价 |
+| --- | --- | --- |
+| 深度诊断 | `model/diagnostics.py`（326 行）及 map debug 分支 | 失去 `SWIFTVLN_DEBUG` 下的 token/map/initial/timing 定位能力。 |
+| 失败分类 | `common/utils/error_analyzer.py`（263 行） | 失去 STUCK/LOOPING/DEVIATION/STOP/EARLY 标签，且要迁移 result schema/tests。 |
+| 视频与可视化 | `video_utils.py`、部分 `image_utils.py`、evaluator/environment 分支 | 失去 `--save_video`、压缩和俯视图输出。 |
+| Habitat 支持 | `common/env/habitat.py`、`habitat_extensions/`、`vln_r2r*.yaml` | 项目变成 SatNav-only；需同步 experiment codec、CLI、tests 和文档。 |
+| S2R 数据生产 | `s2r/data_generation/` | 只能在数据/manifest 已冻结且接受不可从原始集复现时删除；更合理的是从推理部署包排除。 |
+
+## 明确保留
+
+- `experiment.py`：train/eval 模型名与约束的单一事实来源。
+- `model/{arguments,dataset,template,model,trainer}.py`：训练闭环。
+- `model/{eval,eval_runner,evaluator,inference}.py` 与 `common/eval/`：可恢复的分布式评测闭环。
+- `common/history_processors/`、`model/map_memory.py`、pose/UAV embedding：现有模型变体和 checkpoint 所需。
+- Habitat/SatNav wrapper、正式/smoke configs、自定义 measures：两个受支持环境所需。
+- train/eval queue、data process/sync：当前 canonical operation 所需。
+- S2R Stage-A core 和四类数据 builder：Stage-B 权重来源与数据可复现性所需。
+
+## 推荐执行顺序
+
+1. 把 Docker 脚本改成可重建 17 常驻容器的 bootstrap；精简两个 facade；迁移 UAV test；重写两份过时文档。
+2. 删除 eval-time template 传递，并做一次模型名解析、单 episode eval smoke 和续跑测试。
+3. 先为 preview/recrop/merge 写统一实现与等价性测试，再逐项切 registry 和 pipeline。
+4. 在正确项目环境运行全部 contract tests、train smoke、eval smoke；路径变化同步
+   `.codex/CODEX_CONTEXT.md`。
+5. 只有产品明确宣布 SatNav-only、无视频或无 S2R 重建需求时，才执行 P2 删除。
+
+判定原则：shell 入口、动态 registry 和可复现工具不能只靠 Python 静态引用计数判死；
+“无内部引用”也不代表没有仓库外 notebook/manual consumer。因此 P0 中涉及 public facade
+和 Docker 的项，在真正删除前仍应做一次外部使用确认。
