@@ -2,6 +2,8 @@
 
 import torch
 
+from swiftvln.experiment import embedding_from_flags
+
 
 def _emit(logger, message: str) -> None:
     if logger is None:
@@ -98,6 +100,11 @@ def configure_embedding_enhancement(
     log_embed_dim: bool = False,
     log_train_save_note: bool = False,
 ) -> None:
+    embedding_from_flags(
+        use_pose_embed,
+        use_uav_adapter,
+        pose_fusion_method,
+    )
     if model is None:
         return
 

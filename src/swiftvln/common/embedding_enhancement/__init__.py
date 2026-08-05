@@ -24,6 +24,8 @@ Usage:
     )
 """
 
+from swiftvln.experiment import embedding_from_flags
+
 from .base import BaseEmbeddingEnhancement
 from .pipeline import EmbeddingEnhancementPipeline
 from .pose_embed import PoseEmbedding
@@ -75,6 +77,7 @@ def create_embedding_pipeline(
     Returns:
         Configured EmbeddingEnhancementPipeline instance
     """
+    embedding_from_flags(use_pose_embed, use_uav_adapter, pose_fusion)
     pipeline = EmbeddingEnhancementPipeline()
 
     if use_pose_embed:

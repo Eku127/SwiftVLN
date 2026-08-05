@@ -26,6 +26,7 @@ from transformers import (
 )
 
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
+from swiftvln.experiment import embedding_from_flags
 
 # Special tokens (must match dataset.py and template.py)
 SWIFTVLN_SPECIAL_TOKENS = [HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
@@ -200,6 +201,11 @@ def _pop_embedding_options(kwargs):
 
 def _prepare_loader_kwargs(kwargs):
     embedding_options = _pop_embedding_options(kwargs)
+    embedding_from_flags(
+        embedding_options['use_pose_embed'],
+        embedding_options['use_uav_adapter'],
+        embedding_options['pose_fusion_method'],
+    )
     new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
     for token in SWIFTVLN_SPECIAL_TOKENS:
         if token not in new_special_tokens:

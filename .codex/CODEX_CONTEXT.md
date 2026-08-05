@@ -172,7 +172,8 @@ GPU 选择：
   `SWIFTVLN_MAP_CACHE_DIR=<path>` 覆盖，或用 `off|false|none|0|disable|disabled|no`
   关闭。
 - `USE_UAV_ADAPTER` 当前仅支持 `UAV_ADAPTER_APPLY_SCOPE=all_images`。
-- 对外 embedding mode 只有 `none|pose|posefilm|uav`；pose 与 UAV 不允许组合。
+- 对外 embedding mode 只有 `none|pose|posefilm|uav`；pose 与 UAV 不允许组合，
+  ExperimentSpec、模型 loader、运行时配置和底层 factory 都执行同一约束。
 
 模型命名、解析和跨字段校验以 `src/swiftvln/experiment.py` 为唯一事实源；
 非默认 GTC temperature/iterations 会编码进名称。更多参数语义按需查看
