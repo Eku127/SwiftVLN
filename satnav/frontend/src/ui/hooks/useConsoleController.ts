@@ -38,6 +38,10 @@ import {
   computeStickProgressPercent,
   extractStickBackendData,
 } from "../utils/stickProgress";
+import {
+  AUTO_FLIGHT_FAILURE_TIMEOUT_MS,
+  useAutoFlightOrchestrator,
+} from "./useAutoFlightOrchestrator";
 
 export interface AircraftPose {
   latitude: number | null;
@@ -167,6 +171,20 @@ export function useConsoleController() {
   const [modelInputTick, setModelInputTick] = useState(0);
   const [logLines, setLogLines] = useState<LogLine[]>([]);
   const [autoScrollLogs, setAutoScrollLogs] = useState(true);
+  const [autoFlightEnabled, setAutoFlightEnabled] = useState(false);
+  const [autoFlightArmed, setAutoFlightArmed] = useState(false);
+  const [autoFlightPaused, setAutoFlightPaused] = useState(false);
+  const [autoFlightFailureModalOpen, setAutoFlightFailureModalOpen] = useState(false);
+  const [autoFlightInferenceFailModalOpen, setAutoFlightInferenceFailModalOpen] =
+    useState(false);
+  const [autoFlightFailureDeadlineAt, setAutoFlightFailureDeadlineAt] = useState<
+    number | null
+  >(null);
+  const [autoFlightCountdownSec, setAutoFlightCountdownSec] = useState<number | null>(
+    null,
+  );
+  const [autoFlightPrereqModalOpen, setAutoFlightPrereqModalOpen] = useState(false);
+  const autoFlightEnabledRef = useRef(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const logSeq = useRef(0);
   const modelLogCursor = useRef(0);
@@ -180,6 +198,10 @@ export function useConsoleController() {
   const lastStickStatusRef = useRef<string | null>(null);
   /** Show operator log path banner only once per tab. */
   const operatorLogBannerShownRef = useRef(false);
+
+  useEffect(() => {
+    autoFlightEnabledRef.current = autoFlightEnabled;
+  }, [autoFlightEnabled]);
 
   const appendToSessionLog = useCallback((line: LogLine) => {
     if (!sessionLogActiveRef.current) {
@@ -237,6 +259,46 @@ export function useConsoleController() {
     },
     [appendLog, logOperatorEvent],
   );
+
+  const clearAutoFlightPauseState = useCallback(() => {
+    setAutoFlightPaused(false);
+    setAutoFlightFailureModalOpen(false);
+    setAutoFlightFailureDeadlineAt(null);
+    setAutoFlightCountdownSec(null);
+  }, []);
+
+  const disableAutoFlight = useCallback(
+    (reason: string) => {
+      setAutoFlightEnabled(false);
+      setAutoFlightArmed(false);
+      clearAutoFlightPauseState();
+      appendLog("UI", reason);
+    },
+    [appendLog, clearAutoFlightPauseState],
+  );
+
+  const activateStopAndDisableAuto = useCallback(
+    (source: "model" | "manual") => {
+      activateStop(source);
+      setAutoFlightEnabled(false);
+      setAutoFlightArmed(false);
+      clearAutoFlightPauseState();
+    },
+    [activateStop, clearAutoFlightPauseState],
+  );
+
+  const handleAutoInferenceFailure = useCallback(() => {
+    disableAutoFlight("全自动飞控已关闭：推理失败");
+    setAutoFlightInferenceFailModalOpen(true);
+    setInferenceNextAction(0);
+    setStopEngaged(true);
+    setDrcInvalidated(true);
+    setFlightReady(false);
+    pendingManualStopRef.current = false;
+    logOperatorEvent("stop", { source: "manual", reason: "auto_inference_failed" });
+    appendLog("UI", "全自动推理失败，已触发应急 STOP", "warn");
+    setPhase("stopped");
+  }, [appendLog, disableAutoFlight, logOperatorEvent]);
 
   const refreshDeviceInfo = useCallback(async () => {
     try {
@@ -448,10 +510,10 @@ export function useConsoleController() {
         `actions=${JSON.stringify(result.actions)}, next_action=${result.next_action}, remaining_actions=${JSON.stringify(result.remaining_actions)}, performed_inference=${result.performed_inference}`,
       );
       if (result.next_action === 0) {
-        activateStop("model");
+        activateStopAndDisableAuto("model");
       }
     },
-    [activateStop, appendLog],
+    [activateStopAndDisableAuto, appendLog],
   );
 
   /** Whether Inference button is enabled (see actionQueue.canRunInference). */
@@ -498,48 +560,65 @@ export function useConsoleController() {
   );
 
   /** POST /api/satnav/model/inference only; does not trigger flight control. */
-  const onInference = useCallback(async () => {
-    sessionLogActiveRef.current = true;
-    const fileReady = await syncOperatorLogFromBackend();
-    if (fileReady && !operatorLogBannerShownRef.current) {
-      operatorLogBannerShownRef.current = true;
-      const logPath = getSessionLogPath();
-      appendLog("UI", logPath ? `操作日志写入 ${logPath}` : "操作日志已开启");
-    }
-    setInferenceBusy(true);
-    setPhase("inferring");
-    logOperatorEvent("inference_clicked", {
-      instruction: instruction.trim(),
-    });
-    try {
-      appendLog("UI", "推理");
-      const result = await runInferenceStep(instruction);
-      sessionIdRef.current = result.session_id;
-      applyInference(result);
-      logOperatorEvent("inference_done", {
-        instruction: result.instruction,
-        started_new_session: result.started_new_session,
-        performed_inference: result.performed_inference,
-        raw_action_text: result.raw_action_text,
-        actions: result.actions,
-        next_action: result.next_action,
-        remaining_actions: result.remaining_actions,
-        completed_action: result.completed_action,
-        deploy_state: result.deploy_state,
-        frame_sequence: result.frame_sequence,
-        image_path: result.image_path.split("/").pop() ?? result.image_path,
-        timing: result.timing,
-        timestamp: result.timestamp,
+  const onInference = useCallback(
+    async (options?: { fromAuto?: boolean }): Promise<boolean> => {
+      sessionLogActiveRef.current = true;
+      const fileReady = await syncOperatorLogFromBackend();
+      if (fileReady && !operatorLogBannerShownRef.current) {
+        operatorLogBannerShownRef.current = true;
+        const logPath = getSessionLogPath();
+        appendLog("UI", logPath ? `操作日志写入 ${logPath}` : "操作日志已开启");
+      }
+      setInferenceBusy(true);
+      setPhase("inferring");
+      logOperatorEvent("inference_clicked", {
+        instruction: instruction.trim(),
+        from_auto: Boolean(options?.fromAuto),
       });
-      setPhase("idle");
-    } catch (error) {
-      setPhase("error");
-      logOperatorEvent("inference_failed", { error: String(error) });
-      appendLog("INFER", String(error), "error");
-    } finally {
-      setInferenceBusy(false);
-    }
-  }, [appendLog, applyInference, instruction, logOperatorEvent]);
+      try {
+        appendLog("UI", options?.fromAuto ? "推理（全自动）" : "推理");
+        const result = await runInferenceStep(instruction);
+        sessionIdRef.current = result.session_id;
+        applyInference(result);
+        logOperatorEvent("inference_done", {
+          instruction: result.instruction,
+          started_new_session: result.started_new_session,
+          performed_inference: result.performed_inference,
+          raw_action_text: result.raw_action_text,
+          actions: result.actions,
+          next_action: result.next_action,
+          remaining_actions: result.remaining_actions,
+          completed_action: result.completed_action,
+          deploy_state: result.deploy_state,
+          frame_sequence: result.frame_sequence,
+          image_path: result.image_path.split("/").pop() ?? result.image_path,
+          timing: result.timing,
+          timestamp: result.timestamp,
+          from_auto: Boolean(options?.fromAuto),
+        });
+        setPhase("idle");
+        if (!options?.fromAuto && autoFlightEnabledRef.current) {
+          setAutoFlightArmed(true);
+          appendLog("UI", "全自动飞控已接管，将自动执行推理与飞控");
+        }
+        return true;
+      } catch (error) {
+        setPhase("error");
+        logOperatorEvent("inference_failed", {
+          error: String(error),
+          from_auto: Boolean(options?.fromAuto),
+        });
+        appendLog("INFER", String(error), "error");
+        if (options?.fromAuto) {
+          handleAutoInferenceFailure();
+        }
+        return false;
+      } finally {
+        setInferenceBusy(false);
+      }
+    },
+    [appendLog, applyInference, handleAutoInferenceFailure, instruction, logOperatorEvent],
+  );
 
   const onLoginFlightSystem = useCallback(
     async (form: { username: string; password: string; flag: number }) => {
@@ -795,7 +874,7 @@ export function useConsoleController() {
 
       /** If emergency STOP was queued during flight, activate STOP after this task ends. */
       if (pendingManualStopRef.current) {
-        activateStop("manual");
+        activateStopAndDisableAuto("manual");
         setPhase("stopped");
         return;
       }
@@ -814,7 +893,7 @@ export function useConsoleController() {
     }
   }, [
     actionQueue.currentIndex,
-    activateStop,
+    activateStopAndDisableAuto,
     appendLog,
     applyStickTaskUpdate,
     executeEnabled,
@@ -830,12 +909,15 @@ export function useConsoleController() {
   const onEmergencyStop = useCallback(() => {
     if (flightBusy) {
       pendingManualStopRef.current = true;
+      setAutoFlightEnabled(false);
+      setAutoFlightArmed(false);
+      clearAutoFlightPauseState();
       appendLog("UI", "应急 STOP 已登记，当前飞控任务完成后生效", "warn");
       return;
     }
-    activateStop("manual");
+    activateStopAndDisableAuto("manual");
     setPhase("stopped");
-  }, [activateStop, appendLog, flightBusy]);
+  }, [activateStopAndDisableAuto, appendLog, clearAutoFlightPauseState, flightBusy]);
 
   /** Mark the current slot as COMPLETED without re-running stick-task (unlock inference). */
   const onSkipCurrentStep = useCallback(() => {
@@ -902,6 +984,75 @@ export function useConsoleController() {
     setLogLines([]);
   }, []);
 
+  const onAutoFlightChange = useCallback(
+    (enabled: boolean) => {
+      if (enabled && !flightReady) {
+        setAutoFlightPrereqModalOpen(true);
+        appendLog("UI", "全自动飞控开启失败：尚未获取飞行控制");
+        return;
+      }
+      if (!enabled) {
+        disableAutoFlight("全自动飞控已关闭");
+        return;
+      }
+      setAutoFlightEnabled(true);
+      setAutoFlightArmed(false);
+      appendLog("UI", "全自动飞控已开启，请先手动点击一次推理");
+    },
+    [appendLog, disableAutoFlight, flightReady],
+  );
+
+  const dismissAutoFlightPrereqModal = useCallback(() => {
+    setAutoFlightPrereqModalOpen(false);
+    setAutoFlightEnabled(false);
+  }, []);
+
+  const onAutoFlightFailurePause = useCallback(() => {
+    setAutoFlightPaused(true);
+    setAutoFlightFailureModalOpen(true);
+    setAutoFlightFailureDeadlineAt(Date.now() + AUTO_FLIGHT_FAILURE_TIMEOUT_MS);
+    appendLog("UI", "全自动飞控已暂停：等待处理飞控失败", "warn");
+  }, [appendLog]);
+
+  const onAutoFlightFailureTimeout = useCallback(() => {
+    clearAutoFlightPauseState();
+    disableAutoFlight("全自动飞控已关闭：等待操作超时");
+  }, [clearAutoFlightPauseState, disableAutoFlight]);
+
+  const onAutoFlightFailureRetry = useCallback(() => {
+    clearAutoFlightPauseState();
+    void onRunOneStep();
+  }, [clearAutoFlightPauseState, onRunOneStep]);
+
+  const onAutoFlightFailureSkip = useCallback(() => {
+    onSkipCurrentStep();
+    clearAutoFlightPauseState();
+  }, [clearAutoFlightPauseState, onSkipCurrentStep]);
+
+  const dismissAutoFlightInferenceFailModal = useCallback(() => {
+    setAutoFlightInferenceFailModalOpen(false);
+  }, []);
+
+  useAutoFlightOrchestrator({
+    autoFlightEnabled,
+    autoFlightArmed,
+    autoFlightPaused,
+    autoFlightFailureDeadlineAt,
+    stopEngaged,
+    inferenceBusy,
+    flightBusy,
+    executeEnabled,
+    inferenceEnabled,
+    actionQueue,
+    latestStickTask,
+    onRunOneStep,
+    onInference,
+    onSkipCurrentStep,
+    onAutoFlightFailurePause,
+    onAutoFlightFailureTimeout,
+    setAutoFlightCountdownSec,
+  });
+
   return {
     instruction,
     setInstruction,
@@ -944,6 +1095,16 @@ export function useConsoleController() {
     autoScrollLogs,
     setAutoScrollLogs,
     clearLogs,
+    autoFlightEnabled,
+    onAutoFlightChange,
+    autoFlightCountdownSec,
+    autoFlightPrereqModalOpen,
+    dismissAutoFlightPrereqModal,
+    autoFlightFailureModalOpen,
+    onAutoFlightFailureRetry,
+    onAutoFlightFailureSkip,
+    autoFlightInferenceFailModalOpen,
+    dismissAutoFlightInferenceFailModal,
     settingsBusy,
     onRefreshRtmp,
     onInference,

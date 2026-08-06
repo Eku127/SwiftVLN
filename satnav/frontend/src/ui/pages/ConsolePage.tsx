@@ -92,6 +92,16 @@ export function ConsolePage() {
         onSkipCurrentStep={controller.onSkipCurrentStep}
         onRefreshStickTask={controller.onRefreshStickTask}
         onEmergencyStop={controller.onEmergencyStop}
+        autoFlightEnabled={controller.autoFlightEnabled}
+        onAutoFlightChange={controller.onAutoFlightChange}
+        autoFlightCountdownSec={controller.autoFlightCountdownSec}
+        autoFlightPrereqModalOpen={controller.autoFlightPrereqModalOpen}
+        onDismissAutoFlightPrereqModal={controller.dismissAutoFlightPrereqModal}
+        autoFlightFailureModalOpen={controller.autoFlightFailureModalOpen}
+        onAutoFlightFailureRetry={controller.onAutoFlightFailureRetry}
+        onAutoFlightFailureSkip={controller.onAutoFlightFailureSkip}
+        autoFlightInferenceFailModalOpen={controller.autoFlightInferenceFailModalOpen}
+        onDismissAutoFlightInferenceFailModal={controller.dismissAutoFlightInferenceFailModal}
       />
 
       <LogPanel

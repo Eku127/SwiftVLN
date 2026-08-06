@@ -28,6 +28,11 @@ interface ActionQueueProps {
   /** Whether to show STOP styling (model or manual). */
   stopActive: boolean;
   variant?: "default" | "sidebar";
+  /** Fully automatic flight control toggle (sidebar header). */
+  autoFlightEnabled?: boolean;
+  onAutoFlightChange?: (enabled: boolean) => void;
+  /** Countdown seconds shown only while auto-flight is paused on failure. */
+  autoFlightCountdownSec?: number | null;
 }
 
 /** Card visual state for border, icon, and status pill styling. */
@@ -125,6 +130,9 @@ export function ActionQueue({
   currentIndex,
   stopActive,
   variant = "default",
+  autoFlightEnabled = false,
+  onAutoFlightChange,
+  autoFlightCountdownSec = null,
 }: ActionQueueProps) {
   const iconSize = variant === "sidebar" ? 30 : 34;
   /** Pad to 4 entries so map never sees undefined. */
@@ -140,11 +148,37 @@ export function ActionQueue({
         variant === "default" ? " panel" : ""
       }`}
     >
-      <div className="action-queue__title">
-        <span className="action-queue__title-icon" aria-hidden="true">
-          ☰
-        </span>
-        Action 队列
+      <div className="action-queue__header">
+        <div className="action-queue__title">
+          <span className="action-queue__title-icon" aria-hidden="true">
+            ☰
+          </span>
+          Action 队列
+        </div>
+        {onAutoFlightChange && variant === "sidebar" ? (
+          <div className="action-queue__auto-flight">
+            <span className="action-queue__auto-flight-label">全自动飞控</span>
+            <button
+              type="button"
+              role="switch"
+              className={`action-queue__switch${
+                autoFlightEnabled ? " action-queue__switch--on" : ""
+              }`}
+              aria-checked={autoFlightEnabled}
+              aria-label="全自动飞控"
+              onClick={() => onAutoFlightChange(!autoFlightEnabled)}
+            >
+              <span className="action-queue__switch-track" aria-hidden="true">
+                <span className="action-queue__switch-thumb" />
+              </span>
+            </button>
+            {autoFlightCountdownSec !== null ? (
+              <span className="action-queue__auto-flight-countdown mono">
+                {autoFlightCountdownSec}s 后转手动
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div className={`action-queue__grid action-queue__grid--${variant}`}>
         {items.map((slot, index) => {
@@ -186,13 +220,81 @@ export function ActionQueue({
         .action-queue--sidebar {
           padding-top: 0.15rem;
         }
+        .action-queue__header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+          margin-bottom: 0.7rem;
+        }
         .action-queue__title {
           display: flex;
           align-items: center;
           gap: 0.4rem;
           font-weight: 600;
-          margin-bottom: 0.7rem;
           color: #e8f1f8;
+          min-width: 0;
+        }
+        .action-queue__auto-flight {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          flex-shrink: 0;
+        }
+        .action-queue__auto-flight-label {
+          font-size: inherit;
+          font-weight: 400;
+          color: #b8c9d6;
+          white-space: nowrap;
+          line-height: 1.25;
+        }
+        .action-queue__auto-flight-countdown {
+          font-size: 0.68rem;
+          font-weight: 400;
+          color: #6f8ea0;
+          white-space: nowrap;
+          line-height: 1.2;
+        }
+        .action-queue__switch {
+          border: none;
+          padding: 0;
+          background: transparent;
+          cursor: pointer;
+          line-height: 0;
+        }
+        .action-queue__switch-track {
+          display: block;
+          position: relative;
+          width: 2.35rem;
+          height: 1.25rem;
+          border-radius: 999px;
+          background: #1a2d3d;
+          border: 1px solid #2d4a60;
+          transition: background 0.2s ease, border-color 0.2s ease;
+        }
+        .action-queue__switch-thumb {
+          position: absolute;
+          top: 50%;
+          left: 0.12rem;
+          width: 0.92rem;
+          height: 0.92rem;
+          border-radius: 999px;
+          background: #8fa6b8;
+          transform: translateY(-50%);
+          transition: transform 0.2s ease, background 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+        }
+        .action-queue__switch--on .action-queue__switch-track {
+          background: linear-gradient(180deg, #2be98f, #17b86a);
+          border-color: rgba(46, 232, 154, 0.55);
+        }
+        .action-queue__switch--on .action-queue__switch-thumb {
+          transform: translate(1.05rem, -50%);
+          background: #042414;
+        }
+        .action-queue__switch:focus-visible .action-queue__switch-track {
+          outline: 2px solid rgba(53, 194, 255, 0.65);
+          outline-offset: 2px;
         }
         .action-queue__title-icon {
           color: #7fa0b8;

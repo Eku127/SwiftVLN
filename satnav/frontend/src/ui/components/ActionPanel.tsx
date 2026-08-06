@@ -4,6 +4,9 @@ import { ActionQueue, type ActionQueueSlotView } from "./ActionQueue";
 import { NAV_ACTION_LABEL } from "@/api";
 import { RefreshIcon } from "./RefreshIcon";
 import { StopNoticeModal } from "./StopNoticeModal";
+import { AutoFlightFailureModal } from "./AutoFlightFailureModal";
+import { AutoFlightInferenceFailModal } from "./AutoFlightInferenceFailModal";
+import { AutoFlightPrereqModal } from "./AutoFlightPrereqModal";
 import {
   buildStickProgressView,
   extractStickBackendData,
@@ -36,6 +39,15 @@ interface ActionPanelProps {
   /** Whether the STOP notice modal is open. */
   stopModalOpen: boolean;
   onDismissStopModal: () => void;
+  /** Whether the auto-flight prerequisite modal is open. */
+  autoFlightPrereqModalOpen: boolean;
+  onDismissAutoFlightPrereqModal: () => void;
+  autoFlightFailureModalOpen: boolean;
+  onAutoFlightFailureRetry: () => void;
+  onAutoFlightFailureSkip: () => void;
+  autoFlightInferenceFailModalOpen: boolean;
+  onDismissAutoFlightInferenceFailModal: () => void;
+  autoFlightCountdownSec: number | null;
   /** Current stick-task ID for manual refresh. */
   currentStickTaskId: string | null;
   stickRefreshBusy: boolean;
@@ -46,6 +58,9 @@ interface ActionPanelProps {
   onRefreshStickTask: () => void;
   /** Emergency STOP: defer if flight running, else immediate STOP. */
   onEmergencyStop: () => void;
+  /** Fully automatic flight control (frontend state only for now). */
+  autoFlightEnabled: boolean;
+  onAutoFlightChange: (enabled: boolean) => void;
   className?: string;
 }
 
@@ -63,6 +78,19 @@ export function ActionPanel(props: ActionPanelProps) {
       className={["panel", "action-panel", props.className].filter(Boolean).join(" ")}
     >
       <StopNoticeModal open={props.stopModalOpen} onClose={props.onDismissStopModal} />
+      <AutoFlightPrereqModal
+        open={props.autoFlightPrereqModalOpen}
+        onClose={props.onDismissAutoFlightPrereqModal}
+      />
+      <AutoFlightFailureModal
+        open={props.autoFlightFailureModalOpen}
+        onRetry={props.onAutoFlightFailureRetry}
+        onSkip={props.onAutoFlightFailureSkip}
+      />
+      <AutoFlightInferenceFailModal
+        open={props.autoFlightInferenceFailModalOpen}
+        onClose={props.onDismissAutoFlightInferenceFailModal}
+      />
 
       <ActionQueue
         slots={props.queueSlots}
@@ -70,6 +98,9 @@ export function ActionPanel(props: ActionPanelProps) {
         currentIndex={props.currentIndex}
         stopActive={props.stopEngaged && props.inferenceNextAction === 0}
         variant="sidebar"
+        autoFlightEnabled={props.autoFlightEnabled}
+        onAutoFlightChange={props.onAutoFlightChange}
+        autoFlightCountdownSec={props.autoFlightCountdownSec}
       />
 
       <div className="action-panel__controls">
