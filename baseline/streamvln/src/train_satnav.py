@@ -23,7 +23,9 @@ if os.environ.get("STREAMVLN_OFFLINE", "true").lower() in ("1", "true", "yes", "
 # The streamvln-baseline conda env already has a .pth pointing here,
 # but we add it explicitly for safety when running outside that env.
 # ---------------------------------------------------------------
-_STREAMVLN_ROOT = "/mnt/data1/home/jiangjiajun/workspace/StreamVLN"
+_STREAMVLN_ROOT = os.path.abspath(
+    os.path.expanduser(os.environ.get("STREAMVLN_REPO", "../StreamVLN"))
+)
 if _STREAMVLN_ROOT not in sys.path:
     sys.path.insert(0, _STREAMVLN_ROOT)
 

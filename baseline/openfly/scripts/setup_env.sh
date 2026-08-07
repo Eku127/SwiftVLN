@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONDA_ENV="openfly-baseline"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASELINE_DIR="$(dirname "${SCRIPT_DIR}")"
+SWIFTVLN_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${SWIFTVLN_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
+
+CONDA_ENV="${OPENFLY_CONDA_ENV:-openfly-baseline}"
 TORCH_INDEX="https://download.pytorch.org/whl/cu121"
 FLASH_ATTN_WHL="https://github.com/Dao-AILab/flash-attention/releases/download/v2.5.8/flash_attn-2.5.8+cu122torch2.3cxx11abiFALSE-cp310-cp310-linux_x86_64.whl"
 
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+swiftvln_init_conda
 
 conda create -n "${CONDA_ENV}" python=3.10 -y
 conda activate "${CONDA_ENV}"
@@ -36,7 +43,8 @@ pip install \
     packaging \
     ninja
 
-pip install -e /mnt/data1/home/jiangjiajun/workspace/SatNav
+SATNAV_REPO="${SWIFTVLN_SATNAV_REPO:-../SatNav}"
+pip install -e "${SATNAV_REPO}"
 
 echo "=========================================="
 echo "Env setup complete: ${CONDA_ENV}"

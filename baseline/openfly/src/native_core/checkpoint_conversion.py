@@ -20,7 +20,7 @@ from openfly_core import OpenVLAForActionPrediction, register_openfly_auto_class
 
 _STEP_RE = re.compile(r"step-(\d+)")
 _CACHE_COMPLETE_SENTINEL = ".cache_complete"
-_DEFAULT_NATIVE_HF_CACHE_ROOT = "/mnt/data4/jiangjiajun/openfly_native_hf_cache"
+_DEFAULT_NATIVE_HF_CACHE_ROOT = ""
 _CACHE_DISABLE_VALUES = {"", "0", "off", "false", "none", "disable", "disabled", "no"}
 
 
@@ -31,7 +31,10 @@ def _sort_key(path: Path) -> tuple[int, str]:
 
 
 def _resolve_native_hf_cache_root() -> Path | None:
-    env_value = os.getenv("OPENFLY_NATIVE_HF_CACHE_DIR", _DEFAULT_NATIVE_HF_CACHE_ROOT).strip()
+    env_value = os.getenv(
+        "OPENFLY_NATIVE_HF_CACHE_DIR",
+        os.getenv("OPENFLY_NATIVE_HF_CACHE_ROOT", _DEFAULT_NATIVE_HF_CACHE_ROOT),
+    ).strip()
     if env_value.lower() in _CACHE_DISABLE_VALUES:
         return None
     return Path(env_value).expanduser().resolve()

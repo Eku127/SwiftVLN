@@ -30,8 +30,11 @@ set -euo pipefail
 
 # ── Paths ──────────────────────────────────────────────────
 SWIFTVLN_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-UNINAVID_REPO="/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid"
 BASELINE_DIR="${SWIFTVLN_ROOT}/baseline/uninavid"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${SWIFTVLN_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
+UNINAVID_REPO="${UNINAVID_REPO:-../Uni-NaVid}"
 
 CONTINUE_MODEL="${BASELINE_DIR}/model/Uni-Navid"
 SCRATCH_MODEL="${BASELINE_DIR}/model/vicuna-7b-v1.5"
@@ -39,9 +42,9 @@ VISION_TOWER="${BASELINE_DIR}/model/eva_vit_g.pth"
 IMAGE_PROCESSOR="${UNINAVID_REPO}/uninavid/processor/clip-patch14-224"
 DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero1.json}"
 
-SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
-SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
-SATNAV_TRAIN_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}"
+SATNAV_DATA_ROOT="${SWIFTVLN_SATNAV_DATA_ROOT:-data/satnav}"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-${SWIFTVLN_SATNAV_DATASET:-SatNav-v0.1}}}"
+SATNAV_TRAIN_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SWIFTVLN_SATNAV_TRAIN_DATA_PATH:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}}"
 DATA_PATH="${DATA_PATH:-${SATNAV_TRAIN_DATA_DIR}/annotations.json}"
 VIDEO_FOLDER="${VIDEO_FOLDER:-${SATNAV_TRAIN_DATA_DIR}}"
 
@@ -151,8 +154,7 @@ if [[ ! -f "${DATA_PATH}" ]]; then
 fi
 
 # ── Conda ──────────────────────────────────────────────────
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate uninavid-baseline
+swiftvln_activate_conda uninavid-baseline
 
 echo "=========================================="
 echo "Uni-NaVid Baseline Training"

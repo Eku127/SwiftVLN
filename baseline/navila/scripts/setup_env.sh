@@ -4,8 +4,15 @@
 # Skips conda cuda-toolkit install (system CUDA already available)
 set -euo pipefail
 
-CONDA_ENV="navila-baseline"
-NAVILA_REPO="/mnt/data1/home/jiangjiajun/workspace/NaVILA"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASELINE_DIR="$(dirname "${SCRIPT_DIR}")"
+SWIFTVLN_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${SWIFTVLN_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
+
+CONDA_ENV="${NAVILA_CONDA_ENV:-navila-baseline}"
+NAVILA_REPO="${NAVILA_REPO:-../NaVILA}"
 FLASH_ATTN_WHL="https://github.com/Dao-AILab/flash-attention/releases/download/v2.5.8/flash_attn-2.5.8+cu122torch2.3cxx11abiFALSE-cp310-cp310-linux_x86_64.whl"
 TORCH_INDEX="https://download.pytorch.org/whl/cu121"
 
@@ -15,7 +22,7 @@ echo " Target env: $CONDA_ENV"
 echo "=========================================="
 
 # Init conda
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+swiftvln_init_conda
 
 # Step 1: Create conda env
 echo "[1/6] Creating conda env: $CONDA_ENV (Python 3.10)"
