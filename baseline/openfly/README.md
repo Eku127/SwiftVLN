@@ -25,32 +25,42 @@ editable install。
 
 | 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
 |------|--------------|----------|-----------------|
-| OpenFly-Platform | `/mnt/data1/home/jiangjiajun/workspace/OpenFly-Platform` | `git@github.com:SHAILAB-IPEC/OpenFly-Platform.git` | `c075075497a7122bad82f5b76b9be926ad5a81b3` |
-| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+| OpenFly-Platform | `${OPENFLY_PLATFORM_REPO}` | `https://github.com/SHAILAB-IPEC/OpenFly-Platform.git` | `c075075497a7122bad82f5b76b9be926ad5a81b3` |
+| SatNav | `${SWIFTVLN_SATNAV_REPO}` | `https://github.com/Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
 
 从空 workspace 准备源码：
 
 ```bash
-WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+WORKSPACE="${WORKSPACE:-$HOME/workspace}"
 
-git clone git@github.com:SHAILAB-IPEC/OpenFly-Platform.git "$WORKSPACE/OpenFly-Platform"
+git clone https://github.com/SHAILAB-IPEC/OpenFly-Platform.git "$WORKSPACE/OpenFly-Platform"
 git -C "$WORKSPACE/OpenFly-Platform" checkout c075075497a7122bad82f5b76b9be926ad5a81b3
 
-git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git clone https://github.com/Eku127/SatNav.git "$WORKSPACE/SatNav"
 git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
 ```
 
 路径约定：
 
 ```bash
-export OPENFLY_PLATFORM_REPO=/mnt/data1/home/jiangjiajun/workspace/OpenFly-Platform
-export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+export OPENFLY_PLATFORM_REPO="${WORKSPACE}/OpenFly-Platform"
+export SWIFTVLN_SATNAV_REPO="${WORKSPACE}/SatNav"
 ```
 
 `OPENFLY_PLATFORM_REPO` 当前主要用于人工对照上游代码，不是训练/评测脚本的运行时
 必需变量。实际训练起点来自 `baseline/openfly/model/openfly-agent-7b` 或
 `baseline/openfly/model/openvlaopenvla-7b-prismatic`，模型下载见下一节。环境安装
-阶段仍需 `pip install -e "$SATNAV_REPO"`。
+阶段仍需 `pip install -e "$SWIFTVLN_SATNAV_REPO"`。
+
+本机路径和 checkpoint 转换缓存推荐放到被忽略的 baseline 配置：
+
+```bash
+mkdir -p .local baseline/openfly/.local
+cp local.env.example .local/env.sh
+cp baseline/openfly/local.env.example baseline/openfly/.local/env.sh
+```
+
+脚本会自动加载两个文件；也可以直接导出变量或修改脚本默认值。
 
 ## 1. 模型
 
@@ -236,7 +246,7 @@ SatNav 评测入口：
 
 ```bash
 bash baseline/openfly/scripts/eval_satnav.sh \
-  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_dir ${SWIFTVLN_ROOT}/output/model_zoo/baseline \
   --model_name openfly-baseline-1ep-data260418-bkcontinue-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-bs96-lr2e-5-20260420-095357 \
   --gpus 8
 ```
@@ -246,13 +256,13 @@ SatNav 评测 split 约定：
 - split 和 eval 数据只由 `baseline/openfly/configs/satnav_task.yaml` 控制。
 - `SPLIT: all` 会顺序运行 `val_seen` 和 `val_unseen`。
 - `DATA_PATH` 必须是 eval split 父目录，例如
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`。
+  `${SWIFTVLN_SATNAV_EVAL_ROOT}`。
 
 常用覆盖项：
 
 ```bash
 bash baseline/openfly/scripts/eval_satnav.sh \
-  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_dir ${SWIFTVLN_ROOT}/output/model_zoo/baseline/HF_model \
   --model_name openfly-satnav-continue-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5 \
   --gpus 8 \
   --max_episodes 10
@@ -274,7 +284,7 @@ openfly-satnav-scratch-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-
 
 ```bash
 bash baseline/openfly/scripts/eval_satnav.sh \
-  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_dir ${SWIFTVLN_ROOT}/output/model_zoo/baseline/HF_model \
   --model_name openfly-satnav-scratch-1ep-actcompact-sample-hk7-fs3-stopx2-stopw0-tail5-stoph1-hist16-lr2e-5 \
   --gpus 8
 ```

@@ -14,7 +14,7 @@
 export SWIFTVLN_ROOT="$PWD"
 export WORKSPACE="${SWIFTVLN_ROOT}/.."
 export CONDA_HOME="${CONDA_HOME:-$HOME/miniconda3}"
-export SATNAV_REPO="${SATNAV_REPO:-${WORKSPACE}/SatNav}"
+export SWIFTVLN_SATNAV_REPO="${SWIFTVLN_SATNAV_REPO:-${WORKSPACE}/SatNav}"
 ```
 
 如果本机路径不同，只需要覆盖这些变量，不需要改文档里的命令。
@@ -24,7 +24,7 @@ export SATNAV_REPO="${SATNAV_REPO:-${WORKSPACE}/SatNav}"
 ## 前提条件
 
 - Conda 已安装，并可通过 `${CONDA_HOME}/etc/profile.d/conda.sh` 激活。
-- SatNav 仓库已 clone 至 `${SATNAV_REPO}`。
+- SatNav 仓库已 clone 至 `${SWIFTVLN_SATNAV_REPO}`。
 - `continue` 后端需要 HF OpenFly 模型目录：`baseline/openfly/model/openfly-agent-7b`。
 - `scratch` 后端还需要本地 Prismatic/OpenVLA native checkpoint：
   `baseline/openfly/model/openvlaopenvla-7b-prismatic/checkpoints/*.pt`。
@@ -97,7 +97,7 @@ pip install \
 ### Step 6：安装 SatNav（评测必需，editable install）
 
 ```bash
-pip install -e "${SATNAV_REPO}"
+pip install -e "${SWIFTVLN_SATNAV_REPO}"
 ```
 
 ---
@@ -125,7 +125,7 @@ torch: 2.3.0+cu121 | cuda: True
 flash_attn: 2.5.8
 deepspeed: 0.14.4
 transformers: 4.48.1
-satnav: <SATNAV_REPO>/satnav/__init__.py
+satnav: <SWIFTVLN_SATNAV_REPO>/satnav/__init__.py
 === ALL CHECKS PASSED ===
 ```
 
@@ -143,7 +143,7 @@ satnav: <SATNAV_REPO>/satnav/__init__.py
 | accelerate | 0.33.0 |
 | deepspeed | 0.14.4 |
 | timm | 0.9.16 |
-| satnav | editable install from `${SATNAV_REPO}` |
+| satnav | editable install from `${SWIFTVLN_SATNAV_REPO}` |
 
 ---
 

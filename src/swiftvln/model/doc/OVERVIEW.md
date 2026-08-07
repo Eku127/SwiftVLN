@@ -3,7 +3,7 @@
 本文档描述当前 SwiftVLN 主线的稳定边界。默认值和跨字段约束以
 `swiftvln/experiment.py` 为唯一事实源；训练参数定义见 `model/arguments.py`，
 实际启动约定见 train/eval shell。历史实验指标不在本文维护，统一查阅
-`reports/model_zoo.md` 及对应结果 JSON。
+各次评测生成的结果 JSON。
 
 ## 支持范围
 
@@ -162,8 +162,7 @@ top-down 组合视频；`VIDEO_COMPRESSION=true` 控制压缩。视频能力与�
 Stage-A 位于 `swiftvln/s2r/`，负责 SatDronePair manifest、teacher/adapter 训练、
 checkpoint 与 retrieval eval。Stage-B 通过 `EMBEDDING_MODE=uav` 将 Stage-A adapter
 接入 SwiftVLN。`s2r/data_generation/` 是离线原始数据转换与 QA 工具，不属于训练或
-评测运行时依赖。`packaging/build_inference_wheel.py` 生成的 inference wheel 会排除
-该目录，但保留 Stage-B 推理所需的 `s2r/model.py`。
+评测运行时依赖；Stage-B 推理仍需要 `s2r/model.py`。
 
 ## 入口与验证
 
@@ -174,8 +173,6 @@ bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
 # 按规范模型名评测；SatNav 默认跑 val_seen + val_unseen
 bash src/swiftvln/scripts/eval/eval_by_name.sh <model_name>
 
-# 全部 contract tests
-PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
 核心入口：
@@ -186,5 +183,5 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - `common/env/` 与 `common/eval/`：环境和持久化结果。
 - `scripts/train/`、`scripts/eval/`：队列与 shell 入口。
 
-涉及模型名、默认数据、入口路径或 train/eval 主流程的变更，还必须同步
-`.codex/CODEX_CONTEXT.md` 和对应 contract/smoke。
+涉及模型名、默认数据、入口路径或 train/eval 主流程的变更，应同步更新公开配置与
+本文，并进行相应的本地 contract/smoke 验证。
