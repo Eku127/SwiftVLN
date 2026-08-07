@@ -60,6 +60,14 @@ class EvaluationEnvironment:
         config = get_habitat_config(self.config_path)
         with habitat.config.read_write(config):
             config.habitat.dataset.split = self.args.eval_split
+            habitat_data_path = os.environ.get(
+                "SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH"
+            )
+            habitat_scenes_dir = os.environ.get("SWIFTVLN_HABITAT_SCENES_DIR")
+            if habitat_data_path:
+                config.habitat.dataset.data_path = habitat_data_path
+            if habitat_scenes_dir:
+                config.habitat.dataset.scenes_dir = habitat_scenes_dir
             local_rank = int(os.environ.get("LOCAL_RANK", 0))
             config.habitat.simulator.habitat_sim_v0.gpu_device_id = local_rank
             config.habitat.task.measurements.update(
@@ -90,7 +98,12 @@ class EvaluationEnvironment:
         OmegaConf.set_struct(config, False)
         config.DATASET.SPLIT = self.args.eval_split
 
-        raw_path = config.DATASET.DATA_PATH
+        raw_path = os.environ.get(
+            "SWIFTVLN_SATNAV_EVAL_DATA_PATH", config.DATASET.DATA_PATH
+        )
+        scenes_dir = os.environ.get("SWIFTVLN_SATNAV_SCENES_DIR")
+        if scenes_dir:
+            config.DATASET.SCENES_DIR = scenes_dir
         if "{split}" in raw_path:
             resolved_path = raw_path.replace("{split}", self.args.eval_split)
             if not os.path.exists(resolved_path):
@@ -104,6 +117,8 @@ class EvaluationEnvironment:
                 f"[SatNav] eval_split='{self.args.eval_split}' -> "
                 f"DATA_PATH: {resolved_path}"
             )
+        else:
+            config.DATASET.DATA_PATH = raw_path
 
         OmegaConf.set_struct(config, True)
         return config

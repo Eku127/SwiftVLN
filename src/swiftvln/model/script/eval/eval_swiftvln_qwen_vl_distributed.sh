@@ -12,6 +12,12 @@
 
 set -e  # Exit on error
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+# shellcheck source=../../../scripts/lib/local_env.sh
+source "${SWIFTVLN_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env
+
 # ============================================================================
 # CRITICAL: Force NVIDIA EGL BEFORE anything else (must be set early!)
 # This prevents Mesa software rendering fallback on machines with both
@@ -22,9 +28,8 @@ export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.js
 # ============================================================================
 # Conda Environment
 # ============================================================================
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 SWIFTVLN_EVAL_CONDA_ENV="${SWIFTVLN_EVAL_CONDA_ENV:-swift-vln-eval-update}"
-conda activate "$SWIFTVLN_EVAL_CONDA_ENV"
+swiftvln_activate_conda "$SWIFTVLN_EVAL_CONDA_ENV"
 
 # ============================================================================
 # GPU Configuration
@@ -238,7 +243,9 @@ export NCCL_TIMEOUT=7200
 export NCCL_SOCKET_IFNAME=^docker0,lo
 export NCCL_BUFFSIZE=2097152
 export NCCL_MAX_NCHANNELS=4
-export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
+if [[ -n "${SWIFTVLN_MODELSCOPE_CACHE:-${MODELSCOPE_CACHE:-}}" ]]; then
+    export MODELSCOPE_CACHE="${SWIFTVLN_MODELSCOPE_CACHE:-${MODELSCOPE_CACHE}}"
+fi
 
 # Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
 # SWIFTVLN_MAP_CACHE_DIR env var. "auto" keeps the code default (derive
@@ -261,8 +268,6 @@ fi
 # ============================================================================
 # Paths
 # ============================================================================
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 VLN_DIR="${SWIFTVLN_ROOT}/src/swiftvln"
 if [[ "$CONFIG_PATH" = /* ]]; then

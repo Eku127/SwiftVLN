@@ -47,5 +47,5 @@ habitat:
   dataset:
     type: R2RVLN-v1
     split: val_unseen
-    scenes_dir: /mnt/data3/jiangjiajun/dataset
-    data_path: /mnt/data3/jiangjiajun/dataset/vlnce_datasets/R2R_VLNCE_v1-3_preprocessed/{split}/{split}.json.gz
+    scenes_dir: data/habitat
+    data_path: data/habitat/R2R_VLNCE/{split}/{split}.json.gz

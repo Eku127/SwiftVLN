@@ -9,15 +9,18 @@
 
 set -e  # Exit on error
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+# shellcheck source=../../../scripts/lib/local_env.sh
+source "${SWIFTVLN_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env
+
 # ============================================================================
 # Conda Environment
 # ============================================================================
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 SWIFTVLN_TRAIN_CONDA_ENV="${SWIFTVLN_TRAIN_CONDA_ENV:-swift-vln-train-update}"
-conda activate "$SWIFTVLN_TRAIN_CONDA_ENV"
+swiftvln_activate_conda "$SWIFTVLN_TRAIN_CONDA_ENV"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 
 # ============================================================================
@@ -135,12 +138,12 @@ case "$MODEL_FAMILY" in
     qwen2_5_vl|qwen25|qwen2.5)
         MODEL_FAMILY="qwen2_5_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen2_5_vl"
-        DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
+        DEFAULT_BASE_MODEL_PATH="${SWIFTVLN_QWEN25_MODEL_PATH:-Qwen/Qwen2.5-VL-3B-Instruct}"
         ;;
     qwen3_vl|qwen3)
         MODEL_FAMILY="qwen3_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen3_vl"
-        DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct"
+        DEFAULT_BASE_MODEL_PATH="${SWIFTVLN_QWEN3_MODEL_PATH:-Qwen/Qwen3-VL-2B-Instruct}"
         ;;
     *)
         echo "[ERROR] Unknown MODEL_FAMILY: $MODEL_FAMILY. Available: qwen2_5_vl, qwen3_vl."
@@ -150,11 +153,11 @@ esac
 MODEL_TYPE="${MODEL_TYPE:-$DEFAULT_MODEL_TYPE}"
 
 # Base model path
-# Defaults to the local offline cache path to avoid ModelScope hub resolution.
-# Default remains the local 3B cache path for Qwen2.5 and 2B for Qwen3.
+# Defaults to a public model ID. A local path from .local/env.sh avoids hub
+# resolution on offline machines.
 # For larger models, override BASE_MODEL_PATH or MODEL_PATH
 # via env, e.g.:
-#   BASE_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
+#   BASE_MODEL_PATH=/path/to/Qwen2.5-VL-7B-Instruct
 BASE_MODEL_PATH="${BASE_MODEL_PATH:-$DEFAULT_BASE_MODEL_PATH}"
 MODEL_PATH="${MODEL_PATH:-$BASE_MODEL_PATH}"
 
@@ -171,12 +174,11 @@ VLN_DATA_PATH_OVERRIDE="${VLN_DATA_PATH:-}"
 
 # Define data paths for each environment
 HABITAT_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/R2R"
-    "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/RxR_new"
-    # "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/EnvDrop"
+    "${SWIFTVLN_HABITAT_R2R_TRAIN_PATH:-data/habitat/trajectory_data/R2R}"
+    "${SWIFTVLN_HABITAT_RXR_TRAIN_PATH:-data/habitat/trajectory_data/RxR_new}"
 )
 SATNAV_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data"
+    "${SWIFTVLN_SATNAV_TRAIN_DATA_PATH:-data/satnav/SatNav-v0.1/trajectory_data}"
 )
 
 # Select data paths based on VLN_ENV_TYPE (using nameref), unless explicitly
@@ -426,7 +428,9 @@ export NCCL_TIMEOUT=1800
 export NCCL_SOCKET_IFNAME=^docker0,lo
 export NCCL_BUFFSIZE=2097152
 export NCCL_MAX_NCHANNELS=4
-export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
+if [[ -n "${SWIFTVLN_MODELSCOPE_CACHE:-${MODELSCOPE_CACHE:-}}" ]]; then
+    export MODELSCOPE_CACHE="${SWIFTVLN_MODELSCOPE_CACHE:-${MODELSCOPE_CACHE}}"
+fi
 export CUDA_VISIBLE_DEVICES=$CUDA_DEVICES
 
 # Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
