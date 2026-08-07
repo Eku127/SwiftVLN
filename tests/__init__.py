@@ -1,1 +1,0 @@
-"""SwiftVLN contract tests."""
