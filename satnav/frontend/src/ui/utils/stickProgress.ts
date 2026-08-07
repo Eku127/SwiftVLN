@@ -45,9 +45,17 @@ export function computeStickProgressPercent(
 
   if (kind.includes("YAW")) {
     const degree = readNumber(data.degree);
-    const delta = readNumber(data.head_delta_deg);
-    if (degree !== null && degree > 0 && delta !== null) {
-      return Math.min(100, Math.max(0, (Math.abs(delta) / degree) * 100));
+    // head_delta_deg: remaining yaw to target (not already turned).
+    const remainingDeg = readNumber(data.head_delta_deg);
+    if (degree !== null && remainingDeg !== null) {
+      const degreeAbs = Math.abs(degree);
+      if (degreeAbs > 0) {
+        const remainingAbs = Math.abs(remainingDeg);
+        return Math.min(
+          100,
+          Math.max(0, ((degreeAbs - remainingAbs) / degreeAbs) * 100),
+        );
+      }
     }
   }
 
@@ -89,7 +97,7 @@ export function formatStickBackendDetail(
     const start = readNumber(data.start_head);
     const target = readNumber(data.target_head);
     const current = readNumber(data.current_head);
-    const delta = readNumber(data.head_delta_deg);
+    const remainingDeg = readNumber(data.head_delta_deg);
     const lines = [
       "任务：航向转动",
       `状态：${status}`,
@@ -98,8 +106,8 @@ export function formatStickBackendDetail(
         : degree !== null
           ? `目标转角：${degree.toFixed(1)}°`
           : null,
-      current !== null && delta !== null
-        ? `当前航向：${current.toFixed(1)}°（已转 ${Math.abs(delta).toFixed(1)}°）`
+      current !== null && remainingDeg !== null
+        ? `当前航向：${current.toFixed(1)}°（剩余 ${Math.abs(remainingDeg).toFixed(1)}°）`
         : current !== null
           ? `当前航向：${current.toFixed(1)}°`
           : null,
@@ -149,11 +157,14 @@ export function buildStickProgressView(
 
   if (kind.includes("YAW")) {
     const degree = readNumber(data.degree);
-    const delta = readNumber(data.head_delta_deg);
+    // head_delta_deg: remaining yaw to target (not already turned).
+    const remainingDeg = readNumber(data.head_delta_deg);
     const current = readNumber(data.current_head);
     const target = readNumber(data.target_head);
-    if (degree !== null && delta !== null) {
-      metrics.push(`航向 Δ ${Math.abs(delta).toFixed(1)}° / ${degree.toFixed(1)}°`);
+    if (degree !== null && remainingDeg !== null) {
+      metrics.push(
+        `剩余 ${Math.abs(remainingDeg).toFixed(1)}° / 目标 ${Math.abs(degree).toFixed(1)}°`,
+      );
     }
     if (current !== null && target !== null) {
       metrics.push(`current ${current.toFixed(1)}° → target ${target.toFixed(1)}°`);
