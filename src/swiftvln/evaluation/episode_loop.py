@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 import traceback
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import torch
 from PIL import Image
@@ -20,6 +20,19 @@ from swiftvln.backends.base import EnvWrapper
 from swiftvln.backends.factory import create_backend
 from swiftvln.evaluation.diagnostics import DiagnosticsObserver
 from swiftvln.evaluation.inference import SwiftVLNInferenceSession
+
+
+def _next_window_start(
+    *,
+    step_id: int,
+    window_start_step: int,
+    num_frames: int,
+    stride: int,
+) -> Optional[int]:
+    """Return the next aligned window start once its boundary is reached."""
+    if step_id < window_start_step + num_frames:
+        return None
+    return window_start_step + stride
 
 
 def _new_timing_stats() -> Dict[str, float]:
@@ -93,20 +106,28 @@ class EnvironmentEpisodeLoop:
                             initial_features,
                         )
 
-                    if (
-                        step_id > 0
-                        and step_id % session.stride == 0
-                        and step_id >= session.num_frames
-                    ):
+                    next_window_start = _next_window_start(
+                        step_id=step_id,
+                        window_start_step=session.window_start_step,
+                        num_frames=session.num_frames,
+                        stride=session.stride,
+                    )
+                    while next_window_start is not None:
                         slide_start = time.time()
                         session.slide_window(
                             rgb_list,
                             session.pose_history,
-                            step_id - session.num_overlap,
+                            next_window_start,
                             episode,
                         )
                         timing_stats["window_slide"] += time.time() - slide_start
-                    elif step_id == 0:
+                        next_window_start = _next_window_start(
+                            step_id=step_id,
+                            window_start_step=session.window_start_step,
+                            num_frames=session.num_frames,
+                            stride=session.stride,
+                        )
+                    if step_id == 0:
                         session.start_first_window(rgb_list, episode)
 
                     try:
