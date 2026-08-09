@@ -1,4 +1,4 @@
-# SwiftVLN training pip dependencies.
+# SwiftVLN mainline training pip dependencies.
 # Install PyTorch CUDA 12.8 first, install ms-swift from the pinned local repo,
 # then install this file. Install flash-attn separately with --no-build-isolation.
 

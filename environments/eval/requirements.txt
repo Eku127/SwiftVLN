@@ -1,4 +1,4 @@
-# SwiftVLN evaluation pip dependencies.
+# SwiftVLN mainline evaluation pip dependencies.
 # Install PyTorch CUDA 12.8 first, then install this file. Install editable
 # habitat-lab / habitat-baselines / SatNav / ms-swift / SwiftVLN after this.
 # Install flash-attn separately with --no-build-isolation after PyTorch is ready.

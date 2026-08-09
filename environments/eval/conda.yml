@@ -1,3 +1,4 @@
+# SwiftVLN mainline evaluation Conda environment.
 name: swift-vln-eval-update
 channels:
   - aihabitat

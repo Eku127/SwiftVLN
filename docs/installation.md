@@ -31,6 +31,22 @@ export HABITAT_LAB_REPO="${HABITAT_LAB_REPO:-$WORKSPACE/habitat-lab-0.2.4}"
   当前不再保留任何 ms-swift 3.x Conda 环境。
 - 旧 3.x 源码目录已经删除；当前未加后缀的 `ms-swift` 即 4.x 主线源码目录。
 
+主线环境定义按用途成对存放，避免在仓库根目录混放 Conda 与 pip 文件：
+
+```text
+environments/
+├── train/
+│   ├── conda.yml
+│   └── requirements.txt
+└── eval/
+    ├── conda.yml
+    └── requirements.txt
+```
+
+`conda.yml` 只负责 Python、CUDA toolkit 和 Habitat-Sim 等 Conda 依赖；
+`requirements.txt` 负责对应环境的 pip 依赖。PyTorch、FlashAttention 和 editable
+上游仓库仍按下文顺序单独安装。
+
 ## Train Environment (`swift-vln-train-update`)
 
 ### Train 版本固定
@@ -91,7 +107,7 @@ source .local/env.sh
 source "${SWIFTVLN_CONDA_SH}"
 cd "${SWIFTVLN_ROOT}"
 
-conda env create -f environment-train.yml
+conda env create -f environments/train/conda.yml
 conda activate swift-vln-train-update
 
 export PYTHONNOUSERSITE=1
@@ -127,7 +143,7 @@ cd "${MS_SWIFT_REPO}"
 pip install -e .
 
 cd "${SWIFTVLN_ROOT}"
-pip install -r requirements-train.txt
+pip install -r environments/train/requirements.txt
 ```
 
 `flash-attn` 需要在 PyTorch 和 CUDA toolkit 已就绪后单独安装：
@@ -345,7 +361,7 @@ git checkout v0.2.4
 source "${SWIFTVLN_CONDA_SH}"
 cd "${SWIFTVLN_ROOT}"
 
-conda env create -f environment-eval.yml
+conda env create -f environments/eval/conda.yml
 conda activate swift-vln-eval-update
 
 export PYTHONNOUSERSITE=1
@@ -378,7 +394,7 @@ conda activate swift-vln-eval-update
 export PYTHONNOUSERSITE=1
 
 cd "${SWIFTVLN_ROOT}"
-pip install -r requirements-eval.txt
+pip install -r environments/eval/requirements.txt
 ```
 
 Eval 默认使用 `flash_attn`，需要在 PyTorch 和 CUDA toolkit 已就绪后单独安装：
