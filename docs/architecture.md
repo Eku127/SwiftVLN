@@ -1,7 +1,8 @@
 # SwiftVLN 架构与配置概览
 
 本文档描述当前 SwiftVLN 主线的稳定边界。默认值和跨字段约束以
-`swiftvln/experiment.py` 为唯一事实源；训练参数定义见 `model/arguments.py`，
+`swiftvln/experiment.py` 为唯一事实源；训练参数定义见
+`training/sft/arguments.py`，
 实际启动约定见 train/eval shell。历史实验指标不在本文维护，统一查阅
 各次评测生成的结果 JSON。
 
@@ -28,16 +29,16 @@ train shell
 
 评测
 eval_by_name.sh -> ExperimentSpec 解析模型名
-  -> model/eval.py（CLI）
+  -> evaluation/cli.py（CLI）
   -> SwiftVLNEvaluationRunner（模型、rank、resume、汇总）
   -> SwiftVLNEvaluator（环境、推理、episode loop 的组合根）
   -> SwiftVLNInferenceSession（窗口、缓存、prompt、生成）
-  -> EvaluationEnvironment / EnvWrapper（SatNav 或 Habitat）
+  -> backend factory / EnvWrapper（SatNav 或 Habitat）
   -> ResultRecorder（JSONL 与 evaluation_summary.json）
 ```
 
 评测不再构造训练 template。推理 session 直接构造 token 与视觉 embedding；
-`model/template.py` 只属于训练链路。
+`modeling/template.py` 只属于训练链路。
 
 ## 当前默认配置
 
@@ -60,7 +61,7 @@ DeepSpeed ZeRO-2。模型名中编码的是有效 batch size，而不是单 rank
 
 ## 轨迹窗口与多轮训练
 
-`model/dataset.py` 把轨迹切成窗口，并按 `NUM_FUTURE_STEPS` 组织 user/assistant
+`training/sft/dataset.py` 把轨迹切成窗口，并按 `NUM_FUTURE_STEPS` 组织 user/assistant
 多轮对话。窗口步长为：
 
 ```text
@@ -134,10 +135,11 @@ Pose MLP 的最后一层零初始化，因此训练开始时与 `none` 的视觉
 
 相关实现：
 
-- `common/embedding_enhancement/pose_utils.py`：action 到 pose。
-- `common/embedding_enhancement/pose_embed.py`：additive/FiLM 模块。
-- `common/embedding_enhancement/uav_adapter.py`：Stage-A checkpoint loader。
-- `common/embedding_enhancement/pipeline.py`、`runtime.py`：互斥 pipeline 与挂载。
+- `modeling/embeddings/pose_utils.py`：action 到 pose。
+- `modeling/embeddings/pose_embed.py`：additive/FiLM 模块。
+- `modeling/embeddings/s2r_adapter.py`：运行时 Stage-A adapter 架构。
+- `modeling/embeddings/uav_adapter.py`：Stage-A checkpoint loader。
+- `modeling/embeddings/pipeline.py`、`runtime.py`：互斥 pipeline 与挂载。
 
 ## 推理与评测
 
@@ -159,29 +161,34 @@ top-down 组合视频；`VIDEO_COMPRESSION=true` 控制压缩。视频能力与�
 
 ## S2R
 
-Stage-A 位于 `swiftvln/s2r/`，负责 SatDronePair manifest、teacher/adapter 训练、
-checkpoint 与 retrieval eval。Stage-B 通过 `EMBEDDING_MODE=uav` 将 Stage-A adapter
-接入 SwiftVLN。`s2r/data_generation/` 是离线原始数据转换与 QA 工具，不属于训练或
-评测运行时依赖；Stage-B 推理仍需要 `s2r/model.py`。
+Stage-A 的 manifest、teacher/adapter 训练、checkpoint、retrieval eval 与原始数据
+转换均位于仓库级 `tools/s2r/`，不进入 SwiftVLN wheel。Stage-B 通过
+`EMBEDDING_MODE=uav` 将 Stage-A adapter 接入 SwiftVLN；安装包只保留
+`modeling/embeddings/s2r_adapter.py` 和 checkpoint loader。离线工具依赖核心 adapter
+定义，核心包不反向 import `tools/`。
 
 ## 入口与验证
 
 ```bash
 # 训练
-bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
+bash scripts/train/train_swiftvln_qwen_vl.sh
 
 # 按规范模型名评测；SatNav 默认跑 val_seen + val_unseen
-bash src/swiftvln/scripts/eval/eval_by_name.sh <model_name>
+bash scripts/eval/eval_by_name.sh <model_name>
 
 ```
 
 核心入口：
 
 - `swiftvln/experiment.py`：约束与模型名 codec。
-- `model/{arguments,dataset,template,model,trainer}.py`：训练闭环。
-- `model/{eval,eval_runner,evaluator,inference}.py`：评测闭环。
-- `common/env/` 与 `common/eval/`：环境和持久化结果。
-- `scripts/train/`、`scripts/eval/`：队列与 shell 入口。
+- `modeling/`：模型、template、embedding、history 与 memory 能力；注册由
+  `register_swiftvln_models()` 显式触发。
+- `training/sft/`：SFT 参数、dataset 与 trainer。
+- `evaluation/`：评测参数、分布式 runner、episode loop、inference 与结果持久化。
+- `backends/`：SatNav/Habitat wrapper 与 simulator 专有扩展。
+- `utils/`：小型、依赖中立的运行时工具。
+- `scripts/train/`、`scripts/eval/`：单次训练与评测 shell 入口；
+- `scripts/queue/`：仅在仓库 checkout 中运行的训练与评测队列。
 
 涉及模型名、默认数据、入口路径或 train/eval 主流程的变更，应同步更新公开配置与
 本文，并进行相应的本地 contract/smoke 验证。

@@ -5,7 +5,7 @@ SwiftVLN 是当前 `swiftvln` 主线模型的视觉语言导航训练与评测�
 ## 文档入口
 
 - [环境安装](docs/installation.md)
-- [S2R SatDronePair 数据生产](src/swiftvln/s2r/data_generation/README.md)
+- [S2R SatDronePair 离线工具](tools/s2r/data_generation/README.md)
 
 `reports/`、`tests/`、`.codex/`、`AGENTS.md` 以及 `.local/` 是维护者本地内容，
 不会进入公开仓库。

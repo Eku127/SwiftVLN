@@ -258,7 +258,7 @@ VLN_ENV_TYPE=satnav \
 TRAIN_NUM_GPUS=1 \
 TRAIN_DRY_RUN=true \
 USE_SWANLAB=false \
-bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
+bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
 ### Train 8. 最小训练 smoke
@@ -279,7 +279,7 @@ SAVE_STEPS=1 \
 SAVE_TOTAL_LIMIT=1 \
 USE_SWANLAB=false \
 TRAIN_NUM_GPUS=2 \
-bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
+bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
 训练输出默认写入：
@@ -291,7 +291,7 @@ output/swiftvln/
 主训练脚本默认激活 `swift-vln-train-update`。如需临时使用其他环境，可以覆盖：
 
 ```bash
-SWIFTVLN_TRAIN_CONDA_ENV=<env_name> bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
+SWIFTVLN_TRAIN_CONDA_ENV=<env_name> bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
 ## Eval Environment (`swift-vln-eval-update`)
@@ -495,13 +495,13 @@ cuda_version 12.8
 
 ```bash
 python - <<'PY'
-import swiftvln.model.eval
+import swiftvln.evaluation
 from satnav.core.env import Env as SatNavEnv
 import habitat
 import habitat_sim
 import decord
 
-print("swiftvln.model.eval OK")
+print("swiftvln.evaluation OK")
 print("SatNavEnv OK", SatNavEnv)
 print("habitat OK", habitat.__file__)
 print("habitat_sim OK", habitat_sim.__file__)
@@ -560,7 +560,7 @@ cd "${SWIFTVLN_ROOT}"
 CHECK_ONLY=true \
 ENV_TYPE=satnav \
 EVAL_SPLIT=val_seen \
-bash src/swiftvln/scripts/eval/eval_by_name.sh \
+bash scripts/eval/eval_by_name.sh \
   swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-20260419-113050
 ```
 
@@ -579,7 +579,7 @@ MAX_EPISODES=1 \
 CUDA_DEVICES=0 \
 ENV_TYPE=satnav \
 EVAL_SPLIT=val_seen \
-bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_satnav_exp_name>
+bash scripts/eval/eval_by_name.sh <swiftvln_satnav_exp_name>
 ```
 
 Habitat eval smoke 示例：
@@ -594,11 +594,11 @@ MAX_EPISODES=1 \
 CUDA_DEVICES=0 \
 ENV_TYPE=habitat \
 EVAL_SPLIT=val_unseen \
-bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_habitat_exp_name>
+bash scripts/eval/eval_by_name.sh <swiftvln_habitat_exp_name>
 ```
 
 底层 eval 脚本默认激活 `swift-vln-eval-update`。如需临时使用其他环境，可以覆盖：
 
 ```bash
-SWIFTVLN_EVAL_CONDA_ENV=<env_name> bash src/swiftvln/model/script/eval/eval_swiftvln_qwen_vl_distributed.sh
+SWIFTVLN_EVAL_CONDA_ENV=<env_name> bash scripts/eval/eval_swiftvln_qwen_vl_distributed.sh
 ```
