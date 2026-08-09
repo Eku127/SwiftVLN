@@ -27,4 +27,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"swiftvln.s2r.data_generation" = ["README.md", "config.example.yaml"]
+"swiftvln" = ["configs/*/*.yaml"]
