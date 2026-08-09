@@ -15,7 +15,7 @@ export SWIFTVLN_ROOT="$PWD"
 export WORKSPACE="${SWIFTVLN_ROOT}/.."
 export CONDA_HOME="${CONDA_HOME:-$HOME/miniconda3}"
 export NAVILA_REPO="${NAVILA_REPO:-${WORKSPACE}/NaVILA}"
-export SATNAV_REPO="${SATNAV_REPO:-${WORKSPACE}/SatNav}"
+export SWIFTVLN_SATNAV_REPO="${SWIFTVLN_SATNAV_REPO:-${WORKSPACE}/SatNav}"
 ```
 
 如果本机路径不同，只需要覆盖这些变量，不需要改文档里的命令。
@@ -26,7 +26,7 @@ export SATNAV_REPO="${SATNAV_REPO:-${WORKSPACE}/SatNav}"
 
 - Conda 已安装，并可通过 `${CONDA_HOME}/etc/profile.d/conda.sh` 激活。
 - NaVILA 上游仓库已 clone 至 `${NAVILA_REPO}`。
-- SatNav 仓库已 clone 至 `${SATNAV_REPO}`。
+- SatNav 仓库已 clone 至 `${SWIFTVLN_SATNAV_REPO}`。
 - NVIDIA Driver 支持 CUDA 12.x；PyTorch 使用 cu121 wheel，自带 CUDA runtime。
 
 ---

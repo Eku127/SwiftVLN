@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """Evaluation-related common components."""
 
-from .evaluator import BaseVLNEvaluator
+from .environment import EvaluationEnvironment
 from .reporting import (
     clean_results_for_output,
     compute_trajectory_type_stats,
@@ -9,14 +9,14 @@ from .reporting import (
     get_swanlab_url_from_train_metadata,
     save_timing_stats,
 )
-from .runner import BaseVLNEval
+from .results import ResultRecorder
 
 __all__ = [
-    'BaseVLNEval',
-    'BaseVLNEvaluator',
-    'compute_trajectory_type_stats',
-    'clean_results_for_output',
-    'save_timing_stats',
-    'get_swanlab_url',
-    'get_swanlab_url_from_train_metadata',
+    "EvaluationEnvironment",
+    "ResultRecorder",
+    "compute_trajectory_type_stats",
+    "clean_results_for_output",
+    "save_timing_stats",
+    "get_swanlab_url",
+    "get_swanlab_url_from_train_metadata",
 ]

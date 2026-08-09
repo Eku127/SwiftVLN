@@ -2,7 +2,8 @@
 """
 Embedding Enhancement Pipeline.
 
-A composable pipeline that chains multiple embedding enhancements.
+The historical class name and ModuleDict layout are retained for checkpoint
+compatibility, but SwiftVLN now permits at most one enhancement mode.
 Uses nn.ModuleDict so all parameters are automatically:
 - Visible in model.parameters() (trained by optimizer)
 - Serialized in model.state_dict() (saved/restored with checkpoints)
@@ -17,22 +18,21 @@ from .base import BaseEmbeddingEnhancement
 
 class EmbeddingEnhancementPipeline(nn.Module):
     """
-    Composable pipeline for embedding enhancements.
+    Mutually-exclusive container for one embedding enhancement.
     
-    Chains multiple BaseEmbeddingEnhancement modules. Each module is applied
-    sequentially to the input embeddings.
+    Contains either no module, one pose module, or one UAV module.
     
     Usage:
         pipeline = EmbeddingEnhancementPipeline()
         pipeline.add('pose', PoseEmbedding(embed_dim=1536))
         
-        # Apply all enhancements
+        # Apply the selected enhancement
         enhanced = pipeline(embed, H, W, pose=frame_pose)
     
     Benefits:
     - nn.ModuleDict auto-manages parameters, state_dict, device/dtype
     - No manual checkpoint restore logic needed
-    - Adding new enhancements = one line
+    - Keeps historical checkpoint keys under ``enhancements.<name>``
     """
     
     def __init__(self):
@@ -47,11 +47,17 @@ class EmbeddingEnhancementPipeline(nn.Module):
             name: Unique name for this enhancement (e.g., 'pose', 'uav')
             module: Enhancement module instance
         """
+        if self.enhancements:
+            active = next(iter(self.enhancements))
+            raise ValueError(
+                "embedding modes are mutually exclusive; "
+                f"cannot add {name!r} while {active!r} is active"
+            )
         self.enhancements[name] = module
     
     def forward(self, embed: torch.Tensor, H: int, W: int, **kwargs) -> torch.Tensor:
         """
-        Apply all enhancements sequentially.
+        Apply the selected enhancement, if any.
         
         Args:
             embed: [N, D] ViT features

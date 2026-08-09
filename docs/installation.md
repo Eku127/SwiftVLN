@@ -5,6 +5,25 @@
 旧 `swift-vln`、`swift-vln-base`、`swift-vln-train`、`swift-vln-eval`
 环境均已删除；当前环境必须按本文档从零创建。
 
+## 路径配置方式
+
+SwiftVLN 支持两种等价方式：
+
+1. 推荐方式：复制 `local.env.example` 为 `.local/env.sh`，填写本机绝对路径；
+   该文件被 Git 忽略，训练/评测脚本会自动加载。
+2. 直接方式：在 shell 中导出同名环境变量，或者直接修改脚本和 YAML 中的公开
+   默认值。这样不依赖 `.local`，适合希望维护自定义 fork 的用户。
+
+下面的 `${...}` 均指 `local.env.example` 中的变量。安装前可先定义仓库位置：
+
+```bash
+export WORKSPACE="${WORKSPACE:-$HOME/workspace}"
+export SWIFTVLN_ROOT="${SWIFTVLN_ROOT:-$WORKSPACE/SwiftVLN}"
+export MS_SWIFT_REPO="${MS_SWIFT_REPO:-$WORKSPACE/ms-swift}"
+export SWIFTVLN_SATNAV_REPO="${SWIFTVLN_SATNAV_REPO:-$WORKSPACE/SatNav}"
+export HABITAT_LAB_REPO="${HABITAT_LAB_REPO:-$WORKSPACE/habitat-lab-0.2.4}"
+```
+
 仓库目录职责：
 
 - `ms-swift`：当前 SwiftVLN 主线使用的 ms-swift 4.x，固定在下述验证 commit。
@@ -12,13 +31,29 @@
   当前不再保留任何 ms-swift 3.x Conda 环境。
 - 旧 3.x 源码目录已经删除；当前未加后缀的 `ms-swift` 即 4.x 主线源码目录。
 
+主线环境定义按用途成对存放，避免在仓库根目录混放 Conda 与 pip 文件：
+
+```text
+environments/
+├── train/
+│   ├── conda.yml
+│   └── requirements.txt
+└── eval/
+    ├── conda.yml
+    └── requirements.txt
+```
+
+`conda.yml` 只负责 Python、CUDA toolkit 和 Habitat-Sim 等 Conda 依赖；
+`requirements.txt` 负责对应环境的 pip 依赖。PyTorch、FlashAttention 和 editable
+上游仓库仍按下文顺序单独安装。
+
 ## Train Environment (`swift-vln-train-update`)
 
 ### Train 版本固定
 
 当前验证版本：
 
-- SwiftVLN repo: `git@github.com:Eku127/SwiftVLN.git`
+- SwiftVLN repo: `https://github.com/Eku127/SwiftVLN.git`
 - SwiftVLN branch: `master`
 - SwiftVLN commit: 当前 `master` 分支 HEAD
 - ms-swift repo: `https://github.com/modelscope/ms-swift.git`
@@ -36,18 +71,31 @@
 建议保持两个仓库并列放在同一个 workspace 下：
 
 ```bash
-mkdir -p /mnt/data1/home/jiangjiajun/workspace
-cd /mnt/data1/home/jiangjiajun/workspace
+export WORKSPACE="${WORKSPACE:-$HOME/workspace}"
+export SWIFTVLN_ROOT="${SWIFTVLN_ROOT:-$WORKSPACE/SwiftVLN}"
+export MS_SWIFT_REPO="${MS_SWIFT_REPO:-$WORKSPACE/ms-swift}"
+mkdir -p "${WORKSPACE}"
+cd "${WORKSPACE}"
 
-git clone git@github.com:Eku127/SwiftVLN.git
+git clone https://github.com/Eku127/SwiftVLN.git
 cd SwiftVLN
 git fetch origin
 git checkout master
 
-cd /mnt/data1/home/jiangjiajun/workspace
+cd "${WORKSPACE}"
 git clone https://github.com/modelscope/ms-swift.git ms-swift
 cd ms-swift
 git checkout ad7d5c5157b59afa1faceb04266274392f145745
+```
+
+克隆后可创建本地覆盖文件；后续安装命令应在已加载该文件的 shell 中执行：
+
+```bash
+cd "${SWIFTVLN_ROOT}"
+mkdir -p .local
+cp local.env.example .local/env.sh
+${EDITOR:-vi} .local/env.sh
+source .local/env.sh
 ```
 
 如需完全复现某次已验证安装，请在安装前记录并固定当前 `master`
@@ -56,10 +104,10 @@ git checkout ad7d5c5157b59afa1faceb04266274392f145745
 ### Train 2. 创建 conda 环境
 
 ```bash
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+source "${SWIFTVLN_CONDA_SH}"
+cd "${SWIFTVLN_ROOT}"
 
-conda env create -f environment-train.yml
+conda env create -f environments/train/conda.yml
 conda activate swift-vln-train-update
 
 export PYTHONNOUSERSITE=1
@@ -91,11 +139,11 @@ pip install \
 conda activate swift-vln-train-update
 export PYTHONNOUSERSITE=1
 
-cd /mnt/data1/home/jiangjiajun/workspace/ms-swift
+cd "${MS_SWIFT_REPO}"
 pip install -e .
 
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
-pip install -r requirements-train.txt
+cd "${SWIFTVLN_ROOT}"
+pip install -r environments/train/requirements.txt
 ```
 
 `flash-attn` 需要在 PyTorch 和 CUDA toolkit 已就绪后单独安装：
@@ -122,7 +170,7 @@ MAX_JOBS=8 pip install flash-attn==2.8.3 --no-build-isolation
 最后安装 SwiftVLN 本仓库：
 
 ```bash
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd "${SWIFTVLN_ROOT}"
 pip install -e .
 ```
 
@@ -176,33 +224,34 @@ cuda_version 12.8
 
 ### Train 6. 路径约定
 
-默认训练脚本使用以下本地路径：
+训练脚本从 `.local/env.sh` 或当前 shell 读取以下路径变量：
 
 ```text
 SwiftVLN root:
-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+${SWIFTVLN_ROOT}
 
 ms-swift root:
-/mnt/data1/home/jiangjiajun/workspace/ms-swift
+${MS_SWIFT_REPO}
 
 Qwen2.5-VL 3B base model:
-/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct
+${SWIFTVLN_QWEN25_MODEL_PATH}
 
 SatNav training data:
-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data
+${SWIFTVLN_SATNAV_TRAIN_DATA_PATH}
 ```
 
-如果这些路径不存在，需要先下载模型或同步数据；训练脚本默认不会自动下载远端模型。
+模板中的值需要改为本机路径；如果模型值使用公开模型 ID，则运行时可以从模型仓库
+解析。离线机器应设置为已有的本地模型目录。
 
 ### Train 7. 训练脚本 dry run
 
 dry run 只解析配置、GPU 和环境，不启动 `torchrun`：
 
 ```bash
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+source "${SWIFTVLN_CONDA_SH}"
 conda activate swift-vln-train-update
 export PYTHONNOUSERSITE=1
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd "${SWIFTVLN_ROOT}"
 
 MODEL_FAMILY=qwen2_5_vl \
 VLN_ENV_TYPE=satnav \
@@ -217,10 +266,10 @@ bash src/swiftvln/model/script/train/train_swiftvln_qwen_vl.sh
 确认 GPU、模型和数据都可用后，可以跑 2 step smoke：
 
 ```bash
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+source "${SWIFTVLN_CONDA_SH}"
 conda activate swift-vln-train-update
 export PYTHONNOUSERSITE=1
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd "${SWIFTVLN_ROOT}"
 
 MODEL_FAMILY=qwen2_5_vl \
 VLN_ENV_TYPE=satnav \
@@ -255,12 +304,12 @@ eval 使用 Python `3.9` 和 Habitat `0.2.4` 栈；训练环境使用 Python `3.
 
 当前验证版本：
 
-- SwiftVLN repo: `git@github.com:Eku127/SwiftVLN.git`
+- SwiftVLN repo: `https://github.com/Eku127/SwiftVLN.git`
 - SwiftVLN branch: `master`
 - SwiftVLN commit: 当前 `master` 分支 HEAD
 - ms-swift repo: `https://github.com/modelscope/ms-swift.git`
 - ms-swift commit: `ad7d5c5157b59afa1faceb04266274392f145745`
-- SatNav repo: `git@github.com:Eku127/SatNav.git`
+- SatNav repo: `https://github.com/Eku127/SatNav.git`
 - SatNav commit: `c0c0e72ea4575b36d74a5e8f777942172978938e`
 - Habitat-Lab repo: `https://github.com/facebookresearch/habitat-lab.git`
 - Habitat-Lab tag: `v0.2.4`
@@ -282,25 +331,25 @@ eval 使用 Python `3.9` 和 Habitat `0.2.4` 栈；训练环境使用 Python `3.
 建议保持四个仓库并列放在同一个 workspace 下：
 
 ```bash
-mkdir -p /mnt/data1/home/jiangjiajun/workspace
-cd /mnt/data1/home/jiangjiajun/workspace
+mkdir -p "${WORKSPACE}"
+cd "${WORKSPACE}"
 
-git clone git@github.com:Eku127/SwiftVLN.git
+git clone https://github.com/Eku127/SwiftVLN.git
 cd SwiftVLN
 git fetch origin
 git checkout master
 
-cd /mnt/data1/home/jiangjiajun/workspace
+cd "${WORKSPACE}"
 git clone https://github.com/modelscope/ms-swift.git ms-swift
 cd ms-swift
 git checkout ad7d5c5157b59afa1faceb04266274392f145745
 
-cd /mnt/data1/home/jiangjiajun/workspace
-git clone git@github.com:Eku127/SatNav.git
+cd "${WORKSPACE}"
+git clone https://github.com/Eku127/SatNav.git
 cd SatNav
 git checkout c0c0e72ea4575b36d74a5e8f777942172978938e
 
-cd /mnt/data1/home/jiangjiajun/workspace
+cd "${WORKSPACE}"
 git clone https://github.com/facebookresearch/habitat-lab.git habitat-lab-0.2.4
 cd habitat-lab-0.2.4
 git checkout v0.2.4
@@ -309,10 +358,10 @@ git checkout v0.2.4
 ### Eval 2. 创建 conda 环境
 
 ```bash
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+source "${SWIFTVLN_CONDA_SH}"
+cd "${SWIFTVLN_ROOT}"
 
-conda env create -f environment-eval.yml
+conda env create -f environments/eval/conda.yml
 conda activate swift-vln-eval-update
 
 export PYTHONNOUSERSITE=1
@@ -344,8 +393,8 @@ pip install \
 conda activate swift-vln-eval-update
 export PYTHONNOUSERSITE=1
 
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
-pip install -r requirements-eval.txt
+cd "${SWIFTVLN_ROOT}"
+pip install -r environments/eval/requirements.txt
 ```
 
 Eval 默认使用 `flash_attn`，需要在 PyTorch 和 CUDA toolkit 已就绪后单独安装：
@@ -375,19 +424,19 @@ MAX_JOBS=8 pip install flash-attn==2.8.3 --no-build-isolation
 conda activate swift-vln-eval-update
 export PYTHONNOUSERSITE=1
 
-cd /mnt/data1/home/jiangjiajun/workspace/habitat-lab-0.2.4/habitat-lab
+cd "${HABITAT_LAB_REPO}/habitat-lab"
 pip install -e .
 
-cd /mnt/data1/home/jiangjiajun/workspace/habitat-lab-0.2.4/habitat-baselines
+cd "${HABITAT_LAB_REPO}/habitat-baselines"
 pip install -e .
 
-cd /mnt/data1/home/jiangjiajun/workspace/SatNav
+cd "${SWIFTVLN_SATNAV_REPO}"
 pip install -e .
 
-cd /mnt/data1/home/jiangjiajun/workspace/ms-swift
+cd "${MS_SWIFT_REPO}"
 pip install -e .
 
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd "${SWIFTVLN_ROOT}"
 pip install -e .
 ```
 
@@ -469,31 +518,31 @@ PY
 
 ```text
 SwiftVLN root:
-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+${SWIFTVLN_ROOT}
 
 ms-swift root:
-/mnt/data1/home/jiangjiajun/workspace/ms-swift
+${MS_SWIFT_REPO}
 
 SatNav root:
-/mnt/data1/home/jiangjiajun/workspace/SatNav
+${SWIFTVLN_SATNAV_REPO}
 
 Habitat-Lab root:
-/mnt/data1/home/jiangjiajun/workspace/habitat-lab-0.2.4
+${HABITAT_LAB_REPO}
 
 SatNav eval data:
-/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/episodes/eval/{split}/all_episodes.json
+${SWIFTVLN_SATNAV_EVAL_DATA_PATH}
 
 SatNav scenes:
-/mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
+${SWIFTVLN_SATNAV_SCENES_DIR}
 
 R2R VLN-CE data:
-/mnt/data3/jiangjiajun/dataset/vlnce_datasets/R2R_VLNCE_v1-3_preprocessed/{split}/{split}.json.gz
+${SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH}
 
 MP3D scenes:
-/mnt/data3/jiangjiajun/dataset
+${SWIFTVLN_HABITAT_SCENES_DIR}
 
 ModelScope cache:
-/mnt/data1/home/jiangjiajun/.cache/modelscope
+${SWIFTVLN_MODELSCOPE_CACHE}
 ```
 
 如果这些路径不存在，需要先同步数据、场景和模型 cache；eval 脚本默认不会自动下载远端模型。
@@ -503,10 +552,10 @@ ModelScope cache:
 `CHECK_ONLY=true` 只解析模型名和 eval 参数，不检查 checkpoint，也不启动 `torchrun`：
 
 ```bash
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+source "${SWIFTVLN_CONDA_SH}"
 conda activate swift-vln-eval-update
 export PYTHONNOUSERSITE=1
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd "${SWIFTVLN_ROOT}"
 
 CHECK_ONLY=true \
 ENV_TYPE=satnav \
@@ -521,10 +570,10 @@ bash src/swiftvln/scripts/eval/eval_by_name.sh \
 或 `2` 的最小评测：
 
 ```bash
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+source "${SWIFTVLN_CONDA_SH}"
 conda activate swift-vln-eval-update
 export PYTHONNOUSERSITE=1
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd "${SWIFTVLN_ROOT}"
 
 MAX_EPISODES=1 \
 CUDA_DEVICES=0 \
@@ -536,10 +585,10 @@ bash src/swiftvln/scripts/eval/eval_by_name.sh <swiftvln_satnav_exp_name>
 Habitat eval smoke 示例：
 
 ```bash
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
+source "${SWIFTVLN_CONDA_SH}"
 conda activate swift-vln-eval-update
 export PYTHONNOUSERSITE=1
-cd /mnt/data1/home/jiangjiajun/workspace/SwiftVLN
+cd "${SWIFTVLN_ROOT}"
 
 MAX_EPISODES=1 \
 CUDA_DEVICES=0 \

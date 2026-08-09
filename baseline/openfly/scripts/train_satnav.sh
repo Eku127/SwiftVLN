@@ -3,6 +3,9 @@ set -euo pipefail
 
 SWIFTVLN_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 BASELINE_DIR="${SWIFTVLN_ROOT}/baseline/openfly"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${SWIFTVLN_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
 
 OPENFLY_BACKEND="${OPENFLY_BACKEND:-continue}"
 if [ "${OPENFLY_BACKEND}" = "scratch" ]; then
@@ -15,9 +18,9 @@ fi
 
 MODEL_PATH="${MODEL_PATH:-${DEFAULT_MODEL_PATH}}"
 PROCESSOR_PATH="${PROCESSOR_PATH:-${DEFAULT_PROCESSOR_PATH}}"
-SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
-SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
-SATNAV_TRAIN_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}"
+SATNAV_DATA_ROOT="${SWIFTVLN_SATNAV_DATA_ROOT:-data/satnav}"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-${SWIFTVLN_SATNAV_DATASET:-SatNav-v0.1}}}"
+SATNAV_TRAIN_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SWIFTVLN_SATNAV_TRAIN_DATA_PATH:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}}"
 DATA_PATH="${DATA_PATH:-${SATNAV_TRAIN_DATA_DIR}/annotations.json}"
 IMAGE_FOLDER="${IMAGE_FOLDER:-${SATNAV_TRAIN_DATA_DIR}}"
 NUM_GPUS="${NUM_GPUS:-8}"
@@ -76,8 +79,7 @@ else
 fi
 mkdir -p "${OUTPUT_DIR}"
 
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate openfly-baseline
+swiftvln_activate_conda openfly-baseline
 
 export PYTHONPATH="${BASELINE_DIR}/src:${PYTHONPATH:-}"
 export WANDB_DISABLED="${WANDB_DISABLED:-true}"

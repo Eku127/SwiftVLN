@@ -11,7 +11,7 @@
 #    pip install "$FLASH_ATTN_WHL"
 #
 # 3. satnav (editable install, eval 必需):
-#    pip install -e "$SATNAV_REPO"
+#    pip install -e "$SWIFTVLN_SATNAV_REPO"
 #
 # === Install order ===
 # Step 1: conda create -n streamvln-baseline python=3.9 && conda activate streamvln-baseline

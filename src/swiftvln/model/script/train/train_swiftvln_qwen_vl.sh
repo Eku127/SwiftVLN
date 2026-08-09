@@ -9,12 +9,19 @@
 
 set -e  # Exit on error
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
+# shellcheck source=../../../scripts/lib/local_env.sh
+source "${SWIFTVLN_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env
+
 # ============================================================================
 # Conda Environment
 # ============================================================================
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
 SWIFTVLN_TRAIN_CONDA_ENV="${SWIFTVLN_TRAIN_CONDA_ENV:-swift-vln-train-update}"
-conda activate "$SWIFTVLN_TRAIN_CONDA_ENV"
+swiftvln_activate_conda "$SWIFTVLN_TRAIN_CONDA_ENV"
+
+export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 
 # ============================================================================
 # GPU Configuration
@@ -131,14 +138,12 @@ case "$MODEL_FAMILY" in
     qwen2_5_vl|qwen25|qwen2.5)
         MODEL_FAMILY="qwen2_5_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen2_5_vl"
-        DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/models/Qwen/Qwen2___5-VL-3B-Instruct"
-        MODEL_FAMILY_NAME_TAG=""
+        DEFAULT_BASE_MODEL_PATH="${SWIFTVLN_QWEN25_MODEL_PATH:-Qwen/Qwen2.5-VL-3B-Instruct}"
         ;;
     qwen3_vl|qwen3)
         MODEL_FAMILY="qwen3_vl"
         DEFAULT_MODEL_TYPE="swiftvln_qwen3_vl"
-        DEFAULT_BASE_MODEL_PATH="/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen3-VL-2B-Instruct"
-        MODEL_FAMILY_NAME_TAG="qwen3vl-"
+        DEFAULT_BASE_MODEL_PATH="${SWIFTVLN_QWEN3_MODEL_PATH:-Qwen/Qwen3-VL-2B-Instruct}"
         ;;
     *)
         echo "[ERROR] Unknown MODEL_FAMILY: $MODEL_FAMILY. Available: qwen2_5_vl, qwen3_vl."
@@ -148,11 +153,11 @@ esac
 MODEL_TYPE="${MODEL_TYPE:-$DEFAULT_MODEL_TYPE}"
 
 # Base model path
-# Defaults to the local offline cache path to avoid ModelScope hub resolution.
-# Default remains the local 3B cache path for Qwen2.5 and 2B for Qwen3.
+# Defaults to a public model ID. A local path from .local/env.sh avoids hub
+# resolution on offline machines.
 # For larger models, override BASE_MODEL_PATH or MODEL_PATH
 # via env, e.g.:
-#   BASE_MODEL_PATH=/mnt/data1/home/jiangjiajun/.cache/modelscope/hub/models/Qwen/Qwen2___5-VL-7B-Instruct
+#   BASE_MODEL_PATH=/path/to/Qwen2.5-VL-7B-Instruct
 BASE_MODEL_PATH="${BASE_MODEL_PATH:-$DEFAULT_BASE_MODEL_PATH}"
 MODEL_PATH="${MODEL_PATH:-$BASE_MODEL_PATH}"
 
@@ -169,12 +174,11 @@ VLN_DATA_PATH_OVERRIDE="${VLN_DATA_PATH:-}"
 
 # Define data paths for each environment
 HABITAT_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/R2R"
-    "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/RxR_new"
-    # "/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/EnvDrop"
+    "${SWIFTVLN_HABITAT_R2R_TRAIN_PATH:-data/habitat/trajectory_data/R2R}"
+    "${SWIFTVLN_HABITAT_RXR_TRAIN_PATH:-data/habitat/trajectory_data/RxR_new}"
 )
 SATNAV_DATA_PATHS=(
-    "/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data"
+    "${SWIFTVLN_SATNAV_TRAIN_DATA_PATH:-data/satnav/SatNav-v0.1/trajectory_data}"
 )
 
 # Select data paths based on VLN_ENV_TYPE (using nameref), unless explicitly
@@ -266,23 +270,29 @@ MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
 # Only has effect when MEMORY_METHOD=map.
 MAP_CACHE_DIR="${MAP_CACHE_DIR:-auto}"
 
-# Pose embedding enhancement (MLP, per-image pose injection)
-# - false: disable (default)
-# - true: enable and train pose embedding module
-USE_POSE_EMBED="${USE_POSE_EMBED:-false}"
+# Embedding enhancement is one mutually-exclusive choice:
+# none | pose (additive) | posefilm (FiLM) | uav (Stage-A adapter)
+for legacy_embedding_var in USE_POSE_EMBED USE_UAV_ADAPTER POSE_FUSION_METHOD; do
+    if [[ -v "$legacy_embedding_var" ]]; then
+        echo "[ERROR] $legacy_embedding_var was removed. Set EMBEDDING_MODE=none|pose|posefilm|uav instead."
+        exit 2
+    fi
+done
+EMBEDDING_MODE="${EMBEDDING_MODE:-none}"
+case "$EMBEDDING_MODE" in
+    none|pose|posefilm|uav) ;;
+    *)
+        echo "[ERROR] Invalid EMBEDDING_MODE=$EMBEDDING_MODE. Expected none|pose|posefilm|uav."
+        exit 2
+        ;;
+esac
 
-# Stage-A UAV adapter enhancement
-# - false: disable (default)
-# - true: enable and optionally load from an external s2r checkpoint
-USE_UAV_ADAPTER="${USE_UAV_ADAPTER:-false}"
+# Stage-A UAV adapter options (used only when EMBEDDING_MODE=uav)
 UAV_ADAPTER_PATH="${UAV_ADAPTER_PATH:-}"
 UAV_ADAPTER_TYPE="${UAV_ADAPTER_TYPE:-transformer_v1}"
 UAV_ADAPTER_APPLY_SCOPE="${UAV_ADAPTER_APPLY_SCOPE:-all_images}"
 
-# Pose fusion method: "additive" (default) or "film"
-POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
-
-# Pose normalization scale for tanh(pos/scale), default 100.0
+# Pose normalization scale (used only for pose/posefilm)
 POSE_NORM_SCALE="${POSE_NORM_SCALE:-100.0}"
 
 # ============================================================================
@@ -341,89 +351,36 @@ TIMESTAMP=$(date +%H%M%S)
 EFFECTIVE_BATCH_SIZE=$((BATCH_SIZE * GRAD_ACCUM_STEPS * GPUS_PER_NODE))
 WINDOW_STRIDE=$((NUM_FRAMES - NUM_OVERLAP))
 
-if [ "$MEMORY_METHOD" = "map" ]; then
-    if [ "$VLN_ENV_TYPE" != "satnav" ]; then
-        echo "[ERROR] MEMORY_METHOD=map currently supports only VLN_ENV_TYPE=satnav."
-        exit 1
-    fi
-    if [ "$HISTORY_PROCESSOR_TYPE" != "per_frame" ]; then
-        echo "[ERROR] MEMORY_METHOD=map currently requires HISTORY_PROCESSOR_TYPE=per_frame."
-        exit 1
-    fi
-    if [ "$USE_TOME" = true ] || [ "$USE_TOME" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map currently requires USE_TOME=false."
-        exit 1
-    fi
-    # Map images are synthesized top-down views, so RGB-frame embed
-    # enhancements (pose / uav_adapter) are not meaningful and must
-    # stay disabled to avoid silent semantic mismatches.
-    if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_POSE_EMBED=false."
-        exit 1
-    fi
-    if [ "$USE_UAV_ADAPTER" = true ] || [ "$USE_UAV_ADAPTER" = "true" ]; then
-        echo "[ERROR] MEMORY_METHOD=map requires USE_UAV_ADAPTER=false."
-        exit 1
-    fi
-fi
-
-# Build experiment name based on memory method
-MEMORY_SUFFIX=""
-if [ "$MEMORY_METHOD" = "map" ]; then
-    MAP_GLOBAL_TAG=$(printf '%g' "$MAP_GLOBAL_SIDE_M")
-    MAP_LOCAL_TAG=$(printf '%g' "$MAP_LOCAL_SIDE_M")
-    MAP_MASK_TAG="$MAP_MASK_METHOD"
-    if [[ "$MAP_MASK_METHOD" =~ ^dilate([0-9]+([.][0-9]+)?)$ ]]; then
-        MAP_MASK_TAG="d$(printf '%g' "${BASH_REMATCH[1]}")"
-    fi
-    MEMORY_SUFFIX="map-g${MAP_GLOBAL_TAG}-l${MAP_LOCAL_TAG}-r${MAP_RENDER_PX}-${MAP_MASK_TAG}-s${COMPRESS_STRIDE}"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "per_frame" ]; then
-    # Per-frame: include history count, log_base, method, stride.
-    # NUM_HISTORY=0 is the supported no-memory configuration:
-    # the dataset will sample zero history frames and omit <history_memory>.
-    COMPRESS_METHOD="pool"
-    [ "$USE_TOME" = true ] && COMPRESS_METHOD="tome"
-    NO_MEMORY_SUFFIX=""
-    RANDOM_SUFFIX=""
-    if [ "$NUM_HISTORY" = "0" ]; then
-        NO_MEMORY_SUFFIX="-nomem"
-    elif [ "$USE_RANDOM" = true ] || [ "$USE_RANDOM" = "true" ]; then
-        # Only tag random when it actually changes per-frame history sampling.
-        RANDOM_SUFFIX="-random"
-    fi
-    MEMORY_SUFFIX="pf-h${NUM_HISTORY}${NO_MEMORY_SUFFIX}${RANDOM_SUFFIX}-b${LOG_BASE}-${COMPRESS_METHOD}-s${COMPRESS_STRIDE}"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "gtc" ]; then
-    # GTC: include output tokens
-    MEMORY_SUFFIX="gtc-k${GTC_OUTPUT_TOKENS}"
-elif [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc" ]; then
-    # Segment GTC: include output tokens (8 segments, chronological order by default)
-    MEMORY_SUFFIX="sgtc-k${GTC_OUTPUT_TOKENS}"
-fi
-
-# Add system prompt setting suffix (vanilla = no suffix, others = -<setting>)
-PROMPT_SUFFIX=""
-if [ "$SYSTEM_PROMPT_SETTING" != "vanilla" ]; then
-    PROMPT_SUFFIX="-${SYSTEM_PROMPT_SETTING}"
-fi
-
-# Embedding enhancement suffix
-EMBED_SUFFIX="-noembed"
-_EMBED_PARTS=()
-if [ "$USE_POSE_EMBED" = true ] || [ "$USE_POSE_EMBED" = "true" ]; then
-    if [ "$POSE_FUSION_METHOD" = "film" ]; then
-        _EMBED_PARTS+=("posefilm")
-    else
-        _EMBED_PARTS+=("pose")
-    fi
-fi
-if [ "$USE_UAV_ADAPTER" = true ] || [ "$USE_UAV_ADAPTER" = "true" ]; then
-    _EMBED_PARTS+=("uav")
-fi
-if [ ${#_EMBED_PARTS[@]} -gt 0 ]; then
-    EMBED_SUFFIX="-$(IFS='+'; echo "${_EMBED_PARTS[*]}")"
-fi
-
-EXP_NAME="swiftvln-${VLN_ENV_TYPE}-${MODEL_FAMILY_NAME_TAG}${MODEL_SIZE}-${NUM_EPOCHS}ep-f${NUM_FRAMES}s${NUM_FUTURE_STEPS}-overlap${NUM_OVERLAP}-${MEMORY_SUFFIX}${PROMPT_SUFFIX}${EMBED_SUFFIX}-bs${EFFECTIVE_BATCH_SIZE}-lr${LEARNING_RATE}-${TIMESTAMP}"
+# Name generation and cross-field validation share the same Python schema as eval.
+EXP_NAME=$(
+    python -m swiftvln.experiment build-name \
+        --env-type "$VLN_ENV_TYPE" \
+        --model-family "$MODEL_FAMILY" \
+        --model-size "$MODEL_SIZE" \
+        --num-epochs "$NUM_EPOCHS" \
+        --num-frames "$NUM_FRAMES" \
+        --num-future-steps "$NUM_FUTURE_STEPS" \
+        --num-overlap "$NUM_OVERLAP" \
+        --memory-method "$MEMORY_METHOD" \
+        --history-processor-type "$HISTORY_PROCESSOR_TYPE" \
+        --num-history "$NUM_HISTORY" \
+        --log-base "$LOG_BASE" \
+        --use-random "$USE_RANDOM" \
+        --compress-stride "$COMPRESS_STRIDE" \
+        --use-tome "$USE_TOME" \
+        --gtc-output-tokens "$GTC_OUTPUT_TOKENS" \
+        --gtc-temperature "$GTC_TEMPERATURE" \
+        --gtc-num-iterations "$GTC_NUM_ITERATIONS" \
+        --map-global-side-m "$MAP_GLOBAL_SIDE_M" \
+        --map-local-side-m "$MAP_LOCAL_SIDE_M" \
+        --map-render-px "$MAP_RENDER_PX" \
+        --map-mask-method "$MAP_MASK_METHOD" \
+        --system-prompt-setting "$SYSTEM_PROMPT_SETTING" \
+        --embedding-mode "$EMBEDDING_MODE" \
+        --effective-batch-size "$EFFECTIVE_BATCH_SIZE" \
+        --learning-rate "$LEARNING_RATE" \
+        --timestamp "$TIMESTAMP"
+)
 OUTPUT_DIR="output/swiftvln/${EXP_NAME}"
 if [[ -n "$OUTPUT_DIR_OVERRIDE" ]]; then
     OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
@@ -471,7 +428,9 @@ export NCCL_TIMEOUT=1800
 export NCCL_SOCKET_IFNAME=^docker0,lo
 export NCCL_BUFFSIZE=2097152
 export NCCL_MAX_NCHANNELS=4
-export MODELSCOPE_CACHE=/mnt/data1/home/jiangjiajun/.cache/modelscope
+if [[ -n "${SWIFTVLN_MODELSCOPE_CACHE:-${MODELSCOPE_CACHE:-}}" ]]; then
+    export MODELSCOPE_CACHE="${SWIFTVLN_MODELSCOPE_CACHE:-${MODELSCOPE_CACHE}}"
+fi
 export CUDA_VISIBLE_DEVICES=$CUDA_DEVICES
 
 # Map-memory render cache: forward MAP_CACHE_DIR to the Python layer via the
@@ -541,9 +500,13 @@ fi
 echo "Overlap: num_overlap=$NUM_OVERLAP, window_stride=$WINDOW_STRIDE"
 echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with start_idx > 0"
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
-echo "Pose Embed:  $USE_POSE_EMBED (fusion=$POSE_FUSION_METHOD, norm_scale=$POSE_NORM_SCALE)"
-echo "UAV Adapter: $USE_UAV_ADAPTER (type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE)"
-[ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
+echo "Embedding Mode: $EMBEDDING_MODE"
+if [[ "$EMBEDDING_MODE" == "pose" || "$EMBEDDING_MODE" == "posefilm" ]]; then
+    echo "  Pose norm scale: $POSE_NORM_SCALE"
+elif [[ "$EMBEDDING_MODE" == "uav" ]]; then
+    echo "  UAV Adapter: type=$UAV_ADAPTER_TYPE, scope=$UAV_ADAPTER_APPLY_SCOPE"
+    [ -n "$UAV_ADAPTER_PATH" ] && echo "  UAV Adapter Path: $UAV_ADAPTER_PATH"
+fi
 if [[ -n "$RESUME_FROM_CHECKPOINT" ]]; then
     echo "Resume: $RESUME_FROM_CHECKPOINT (resume_only_model=$RESUME_ONLY_MODEL)"
 fi
@@ -561,9 +524,6 @@ echo "=========================================="
 # ============================================================================
 # Build Arguments
 # ============================================================================
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SWIFTVLN_ROOT="$(cd "$SCRIPT_DIR/../../../../../" && pwd)"
-export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"
 SWANLAB_DIRECT_NETWORK="${SWANLAB_DIRECT_NETWORK:-true}"
 
 unset_proxy_for_swanlab() {
@@ -683,12 +643,10 @@ torchrun \
     --num_overlap $NUM_OVERLAP \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
     $MEMORY_ARGS \
-    --use_pose_embed $USE_POSE_EMBED \
-    --use_uav_adapter $USE_UAV_ADAPTER \
+    --embedding_mode $EMBEDDING_MODE \
     --uav_adapter_path "$UAV_ADAPTER_PATH" \
     --uav_adapter_type $UAV_ADAPTER_TYPE \
     --uav_adapter_apply_scope $UAV_ADAPTER_APPLY_SCOPE \
-    --pose_fusion_method $POSE_FUSION_METHOD \
     --pose_norm_scale $POSE_NORM_SCALE \
     --use_tome $USE_TOME \
     --tf32 $TF32 \

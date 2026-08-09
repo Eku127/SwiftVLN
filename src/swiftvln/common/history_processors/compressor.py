@@ -235,7 +235,6 @@ class HistoryTokenCompressor:
         t, h, w = int(t), int(h), int(w)
         hidden_size = image_embeds.shape[-1]
         device = image_embeds.device
-        dtype = image_embeds.dtype
         
         # Reshape to spatial layout: [num_tokens, C] -> [t, h, w, C]
         x = image_embeds.view(t, h, w, hidden_size)
@@ -254,7 +253,6 @@ class HistoryTokenCompressor:
         total_out_w = 0
         
         for gi in range(self.grid_size):
-            row_cells = []
             for gj in range(self.grid_size):
                 # Calculate cell boundaries (last cells may be larger)
                 h_start = gi * base_cell_h
@@ -331,8 +329,6 @@ class HistoryTokenCompressor:
         centers = centers.permute(0, 2, 3, 1).contiguous()  # [t, out_h, out_w, C]
         centers = centers.view(-1, hidden_size)  # [num_centers, C]
         
-        num_centers = centers.shape[0]
-        
         # Step 2: Compute similarity (attention scores)
         # Normalize for cosine similarity
         features_norm = F.normalize(features.float(), dim=-1)
@@ -354,23 +350,3 @@ class HistoryTokenCompressor:
         out = torch.mm(attn.T.to(dtype), features)
         
         return out
-    
-    def get_compressed_length(self, original_length: int, stride: int = None) -> int:
-        """
-        Calculate the compressed sequence length (approximate, for pooling).
-        
-        DEPRECATED: Use get_compressed_token_count() instead for accurate calculation.
-        
-        Args:
-            original_length: Original number of tokens
-            stride: Pooling stride (if None, uses self.stride)
-        
-        Returns:
-            Compressed sequence length
-        """
-        if stride is None:
-            stride = self.stride
-        
-        # For a square grid, compression ratio is stride^2
-        compression_ratio = stride ** 2
-        return original_length // compression_ratio

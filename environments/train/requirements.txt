@@ -1,0 +1,35 @@
+# SwiftVLN mainline training pip dependencies.
+# Install PyTorch CUDA 12.8 first, install ms-swift from the pinned local repo,
+# then install this file. Install flash-attn separately with --no-build-isolation.
+
+accelerate==1.12.0
+av==16.0.1
+datasets==3.6.0
+decord==0.6.0
+deepspeed==0.17.6
+einops==0.8.1
+liger-kernel==0.6.4
+matplotlib==3.10.8
+modelscope==1.33.0
+networkx==3.4.2
+ninja==1.13.0
+numpy==2.2.6
+omegaconf==2.3.0
+pandas==2.3.3
+peft==0.18.0
+pillow==11.3.0
+pyproj==3.7.1
+qwen-vl-utils==0.0.14
+rasterio==1.4.4
+safetensors==0.7.0
+scipy==1.15.3
+sentencepiece==0.2.1
+swanlab==0.7.5
+tensorboard==2.20.0
+tiktoken==0.12.0
+tokenizers==0.22.1
+tqdm==4.67.1
+transformers==4.57.3
+transformers-stream-generator==0.0.5
+trl==0.24.0
+zstandard==0.25.0

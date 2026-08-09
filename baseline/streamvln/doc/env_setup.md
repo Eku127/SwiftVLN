@@ -15,7 +15,7 @@ export SWIFTVLN_ROOT="$PWD"
 export WORKSPACE="${SWIFTVLN_ROOT}/.."
 export CONDA_HOME="${CONDA_HOME:-$HOME/miniconda3}"
 export STREAMVLN_REPO="${STREAMVLN_REPO:-${WORKSPACE}/StreamVLN}"
-export SATNAV_REPO="${SATNAV_REPO:-${WORKSPACE}/SatNav}"
+export SWIFTVLN_SATNAV_REPO="${SWIFTVLN_SATNAV_REPO:-${WORKSPACE}/SatNav}"
 export FLASH_ATTN_WHL="${FLASH_ATTN_WHL:-${WORKSPACE}/flash_attn-2.8.3+cu12torch2.5cxx11abiFALSE-cp39-cp39-linux_x86_64.whl}"
 ```
 
@@ -27,7 +27,7 @@ export FLASH_ATTN_WHL="${FLASH_ATTN_WHL:-${WORKSPACE}/flash_attn-2.8.3+cu12torch
 
 - Conda 已安装，并可通过 `${CONDA_HOME}/etc/profile.d/conda.sh` 激活。
 - StreamVLN 上游仓库已 clone 至 `${STREAMVLN_REPO}`。
-- SatNav 仓库已 clone 至 `${SATNAV_REPO}`。
+- SatNav 仓库已 clone 至 `${SWIFTVLN_SATNAV_REPO}`。
 - 本机存在 FlashAttention wheel：`${FLASH_ATTN_WHL}`。
 - 目标模型目录已准备在 `baseline/streamvln/model/` 下。
 
@@ -76,7 +76,7 @@ pip install -r baseline/streamvln/requirements.txt
 ### Step 5：安装 SatNav（评测必需，editable install）
 
 ```bash
-pip install -e "${SATNAV_REPO}"
+pip install -e "${SWIFTVLN_SATNAV_REPO}"
 ```
 
 ---
@@ -108,7 +108,7 @@ deepspeed: 0.14.4
 transformers: 4.45.1
 peft: 0.5.0
 decord: OK
-satnav: <SATNAV_REPO>/satnav/__init__.py
+satnav: <SWIFTVLN_SATNAV_REPO>/satnav/__init__.py
 === ALL CHECKS PASSED ===
 ```
 
@@ -127,7 +127,7 @@ satnav: <SATNAV_REPO>/satnav/__init__.py
 | deepspeed | 0.14.4 |
 | peft | 0.5.0 |
 | decord | 0.6.0 |
-| satnav | editable install from `${SATNAV_REPO}` |
+| satnav | editable install from `${SWIFTVLN_SATNAV_REPO}` |
 
 ---
 

@@ -5,7 +5,14 @@
 - 论文：[NaVILA: Legged Robot Vision-Language-Action Model for Navigation (RSS'25)](https://arxiv.org/abs/2412.04453)
 - 上游仓库：[NaVILA GitHub](https://github.com/AnjieCheng/NaVILA)（按第 0 节的 `$NAVILA_REPO` 路径准备本地 clone）
 
-## 0. 上游源码 clone 与路径
+## 0. 代码来源、适配基准与上游路径
+
+> **代码来源声明：** 本目录的 SatNav dataset adapter、训练入口和评测 wrapper，
+> 以
+> [`AnjieCheng/NaVILA@76b98f233dd0fff05dfcd69435eec6740febff9d`](https://github.com/AnjieCheng/NaVILA/commit/76b98f233dd0fff05dfcd69435eec6740febff9d)
+> 为明确的上游适配与验证基准；VILA/NaVILA 模型和 trainer 核心仍在运行时从该
+> 上游 clone 加载，并未完整复制到本目录。SatNav 接口开发与验证基于
+> [`Eku127/SatNav@c0c0e72ea4575b36d74a5e8f777942172978938e`](https://github.com/Eku127/SatNav/commit/c0c0e72ea4575b36d74a5e8f777942172978938e)。
 
 当前 NaVILA baseline 只在本仓库维护 SatNav 数据接入、启动脚本和评测 wrapper；
 VILA/NaVILA 的模型、trainer、Transformers/DeepSpeed patch 仍来自本地上游
@@ -14,34 +21,39 @@ workspace 使用的 commit 固定版本：
 
 | 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
 |------|--------------|----------|-----------------|
-| NaVILA | `/mnt/data1/home/jiangjiajun/workspace/NaVILA` | `git@github.com:AnjieCheng/NaVILA.git` | `76b98f233dd0fff05dfcd69435eec6740febff9d` |
-| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+| NaVILA | `${NAVILA_REPO}` | `https://github.com/AnjieCheng/NaVILA.git` | `76b98f233dd0fff05dfcd69435eec6740febff9d` |
+| SatNav | `${SWIFTVLN_SATNAV_REPO}` | `https://github.com/Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
 
 从空 workspace 准备源码：
 
 ```bash
-WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+WORKSPACE="${WORKSPACE:-$HOME/workspace}"
 
-git clone git@github.com:AnjieCheng/NaVILA.git "$WORKSPACE/NaVILA"
+git clone https://github.com/AnjieCheng/NaVILA.git "$WORKSPACE/NaVILA"
 git -C "$WORKSPACE/NaVILA" checkout 76b98f233dd0fff05dfcd69435eec6740febff9d
 
-git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git clone https://github.com/Eku127/SatNav.git "$WORKSPACE/SatNav"
 git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
 ```
 
 路径约定：
 
 ```bash
-export NAVILA_REPO=/mnt/data1/home/jiangjiajun/workspace/NaVILA
-export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+export NAVILA_REPO="${WORKSPACE}/NaVILA"
+export SWIFTVLN_SATNAV_REPO="${WORKSPACE}/SatNav"
 ```
 
-`baseline/navila/scripts/setup_env.sh` 当前默认使用
-`/mnt/data1/home/jiangjiajun/workspace/NaVILA` 安装 VILA/NaVILA，并从该目录复制
-`llava/train/transformers_replace` 与 `llava/train/deepspeed_replace` patch。
-因此推荐直接 clone 到上表路径。若使用其他路径，需要同步调整
-`setup_env.sh` 中的 `NAVILA_REPO`，或按 `baseline/navila/doc/env_setup.md`
-手动安装并使用 `pip install -e "$SATNAV_REPO"` 安装 SatNav。
+推荐复制根配置和 NaVILA 专属配置：
+
+```bash
+mkdir -p .local baseline/navila/.local
+cp local.env.example .local/env.sh
+cp baseline/navila/local.env.example baseline/navila/.local/env.sh
+```
+
+`setup_env.sh`、训练和评测脚本会自动加载它们。也可以直接导出变量或修改脚本里的
+相对路径默认值。环境安装阶段使用
+`pip install -e "$SWIFTVLN_SATNAV_REPO"` 安装 SatNav。
 
 ## 1. 模型
 
@@ -109,7 +121,7 @@ baseline/navila/doc/env_setup.md
 关键说明：
 
 - 需要提前 clone 上游 NaVILA repo，并保证 `baseline/navila/scripts/setup_env.sh`
-  中的 `NAVILA_REPO` 指向该路径，默认是 `/mnt/data1/home/jiangjiajun/workspace/NaVILA`。
+  中的 `NAVILA_REPO` 指向该路径。
 - 评测使用 SatNav 环境，不需要 Habitat。
 
 ## 4. 训练
@@ -124,7 +136,7 @@ bash baseline/navila/scripts/train_satnav.sh
 
 ```bash
 SATNAV_DATASET=SatNav-v0.1
-SATNAV_TRAIN_DATA_DIR=/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data
+SATNAV_TRAIN_DATA_DIR=${SWIFTVLN_SATNAV_TRAIN_DATA_PATH}
 ```
 
 训练模式约定：
@@ -183,7 +195,7 @@ SatNav 评测入口：
 
 ```bash
 bash baseline/navila/scripts/eval_satnav.sh \
-  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_dir ${SWIFTVLN_ROOT}/output/model_zoo/baseline \
   --model_name navila-continue0404-r2-20260427-141143-sample-hk7-fs7-stopx4 \
   --gpus 8
 ```
@@ -193,14 +205,14 @@ SatNav 评测 split 约定：
 - split 和 eval 数据只由 `baseline/navila/configs/satnav_task.yaml` 控制。
 - `SPLIT: all` 会顺序运行 `val_seen` 和 `val_unseen`。
 - `DATA_PATH` 必须是 eval split 父目录，例如
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`。
+  `${SWIFTVLN_SATNAV_EVAL_ROOT}`。
 
 常用覆盖项：
 
 ```bash
 MODEL_BASE=baseline/navila/model/navila-siglip-llama3-8b-v1.5-pretrain \
 bash baseline/navila/scripts/eval_satnav.sh \
-  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_dir ${SWIFTVLN_ROOT}/output/model_zoo/baseline \
   --model_name navila-scratch0404-r1-20260407-195154-sample-hk7-fs7-stopx4 \
   --gpus 8 \
   --max_episodes 10
@@ -223,14 +235,14 @@ navila-satnav-scratch-1ep-8f-sample-hk7-fs7-stopx4
 公开版目录放在：
 
 ```text
-/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model
+${SWIFTVLN_ROOT}/output/model_zoo/baseline/HF_model
 ```
 
 示例：
 
 ```bash
 bash baseline/navila/scripts/eval_satnav.sh \
-  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_dir ${SWIFTVLN_ROOT}/output/model_zoo/baseline/HF_model \
   --model_name navila-satnav-continue-1ep-8f-sample-hk7-fs7-stopx4 \
   --gpus 8
 ```
@@ -243,3 +255,10 @@ bash baseline/navila/scripts/eval_satnav.sh \
 - eval 不再从模型名中的 `data{ver}` 自动解析数据版本；数据选择只来自
   `baseline/navila/configs/satnav_task.yaml`。
 - 结果输出到 `results/navila-baseline/...`
+
+## 致谢
+
+感谢 [NaVILA](https://github.com/AnjieCheng/NaVILA) 与
+[VILA](https://github.com/NVlabs/VILA) 的作者和贡献者公开代码、模型与研究成果，
+也感谢 SatNav 的开发者提供统一的训练数据接口和在线评测环境。本目录是面向 SatNav
+的非官方适配；使用相关成果时请遵循各上游项目的许可证并引用原始工作。

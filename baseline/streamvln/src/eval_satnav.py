@@ -17,7 +17,9 @@ import os
 # ---------------------------------------------------------------
 # sys.path setup — make StreamVLN packages importable
 # ---------------------------------------------------------------
-_STREAMVLN_ROOT = "/mnt/data1/home/jiangjiajun/workspace/StreamVLN"
+_STREAMVLN_ROOT = os.path.abspath(
+    os.path.expanduser(os.environ.get("STREAMVLN_REPO", "../StreamVLN"))
+)
 if _STREAMVLN_ROOT not in sys.path:
     sys.path.insert(0, _STREAMVLN_ROOT)
 

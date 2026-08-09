@@ -35,5 +35,5 @@ DATASET:
   SPLIT: all
   # Eval split parent dir. The launcher resolves this to:
   #   ${DATA_PATH}/${split}/all_episodes.json
-  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
-  SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
+  DATA_PATH: data/satnav/SatNav-v0.1/episodes/eval
+  SCENES_DIR: data/satnav/scenes

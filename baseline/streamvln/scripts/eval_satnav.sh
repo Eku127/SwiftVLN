@@ -56,10 +56,13 @@ usage() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${REPO_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
 EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
 SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
 DEFAULT_MODEL_DIR="${REPO_ROOT}/output/streamvln-baseline"
-DEFAULT_STREAMVLN_PYTHON="/mnt/data1/home/jiangjiajun/miniconda3/envs/streamvln-baseline/bin/python"
+DEFAULT_STREAMVLN_PYTHON="${STREAMVLN_PYTHON:-}"
 if [ -z "${PYTHON_BIN:-}" ]; then
     if [ -x "$DEFAULT_STREAMVLN_PYTHON" ]; then
         PYTHON_BIN="$DEFAULT_STREAMVLN_PYTHON"
@@ -302,6 +305,8 @@ fi
 # ---- Resolve SatNav data from config ----
 CONFIG_DATA_PATH="$(read_config_value DATA_PATH)"
 CONFIG_SCENES_DIR="$(read_config_value SCENES_DIR)"
+CONFIG_DATA_PATH="${SWIFTVLN_SATNAV_EVAL_ROOT:-${CONFIG_DATA_PATH}}"
+CONFIG_SCENES_DIR="${SWIFTVLN_SATNAV_SCENES_DIR:-${CONFIG_SCENES_DIR}}"
 
 if [ -z "$CONFIG_DATA_PATH" ]; then
     print_error "DATASET.DATA_PATH not found in config: ${SATNAV_CONFIG_TEMPLATE}"
@@ -329,8 +334,9 @@ if [ ! -f "${MODEL_DIR}/tokenizer_config.json" ]; then
 fi
 
 # ---- PYTHONPATH ----
-export PYTHONPATH="/mnt/data1/home/jiangjiajun/workspace/StreamVLN:\
-/mnt/data1/home/jiangjiajun/workspace/StreamVLN/streamvln:\
+STREAMVLN_REPO="${STREAMVLN_REPO:-../StreamVLN}"
+export PYTHONPATH="${STREAMVLN_REPO}:\
+${STREAMVLN_REPO}/streamvln:\
 ${BASELINE_DIR}:${PYTHONPATH:-}"
 
 # ---- Launch ----

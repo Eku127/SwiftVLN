@@ -48,16 +48,19 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${REPO_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
 
 TRAIN_SCRIPT="${BASELINE_DIR}/src/train_satnav.py"
 DEEPSPEED_CFG="${BASELINE_DIR}/configs/zero2.json"
 
 # ---- SatNav Data ----
-SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
-SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
+SATNAV_DATA_ROOT="${SWIFTVLN_SATNAV_DATA_ROOT:-data/satnav}"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-${SWIFTVLN_SATNAV_DATASET:-SatNav-v0.1}}}"
 echo "[INFO] Using SatNav dataset: ${SATNAV_DATASET}"
 
-SATNAV_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}"
+SATNAV_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SWIFTVLN_SATNAV_TRAIN_DATA_PATH:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}}"
 if [ ! -d "$SATNAV_DATA_DIR" ]; then
     echo "[ERROR] SatNav trajectory data not found: ${SATNAV_DATA_DIR}"
     echo "[ERROR] StreamVLN training expects <dataset>/trajectory_data/annotations.json and image folders."
@@ -176,12 +179,13 @@ echo "  Smoke Test  : ${SMOKE_TEST}"
 echo "=========================================="
 
 # ---- PYTHONPATH ----
-export PYTHONPATH="/mnt/data1/home/jiangjiajun/workspace/StreamVLN:\
-/mnt/data1/home/jiangjiajun/workspace/StreamVLN/streamvln:\
+STREAMVLN_REPO="${STREAMVLN_REPO:-../StreamVLN}"
+export PYTHONPATH="${STREAMVLN_REPO}:\
+${STREAMVLN_REPO}/streamvln:\
 ${BASELINE_DIR}:${PYTHONPATH:-}"
 
 # ---- Python / distributed launcher ----
-DEFAULT_STREAMVLN_PYTHON="/mnt/data1/home/jiangjiajun/miniconda3/envs/streamvln-baseline/bin/python"
+DEFAULT_STREAMVLN_PYTHON="${STREAMVLN_PYTHON:-}"
 if [ -z "${PYTHON_BIN:-}" ]; then
     if [ -x "$DEFAULT_STREAMVLN_PYTHON" ]; then
         PYTHON_BIN="$DEFAULT_STREAMVLN_PYTHON"

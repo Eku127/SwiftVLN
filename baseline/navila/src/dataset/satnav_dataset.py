@@ -23,7 +23,9 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-_NAVILA_ROOT = "/mnt/data1/home/jiangjiajun/workspace/NaVILA"
+_NAVILA_ROOT = os.path.abspath(
+    os.path.expanduser(os.environ.get("NAVILA_REPO", "../NaVILA"))
+)
 if _NAVILA_ROOT not in sys.path:
     sys.path.insert(0, _NAVILA_ROOT)
 

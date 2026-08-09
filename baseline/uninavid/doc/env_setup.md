@@ -15,7 +15,7 @@ export SWIFTVLN_ROOT="$PWD"
 export WORKSPACE="${SWIFTVLN_ROOT}/.."
 export CONDA_HOME="${CONDA_HOME:-$HOME/miniconda3}"
 export UNINAVID_REPO="${UNINAVID_REPO:-${WORKSPACE}/Uni-NaVid}"
-export SATNAV_REPO="${SATNAV_REPO:-${WORKSPACE}/SatNav}"
+export SWIFTVLN_SATNAV_REPO="${SWIFTVLN_SATNAV_REPO:-${WORKSPACE}/SatNav}"
 export FLASH_ATTN_WHL="${FLASH_ATTN_WHL:-${WORKSPACE}/flash_attn-2.8.3+cu12torch2.5cxx11abiFALSE-cp39-cp39-linux_x86_64.whl}"
 ```
 
@@ -28,7 +28,7 @@ export FLASH_ATTN_WHL="${FLASH_ATTN_WHL:-${WORKSPACE}/flash_attn-2.8.3+cu12torch
 - Conda 已安装，并可通过 `${CONDA_HOME}/etc/profile.d/conda.sh` 激活。
 - 本机存在 FlashAttention wheel：`${FLASH_ATTN_WHL}`。
 - Uni-NaVid 上游仓库已 clone 至 `${UNINAVID_REPO}`。
-- SatNav 仓库已 clone 至 `${SATNAV_REPO}`。
+- SatNav 仓库已 clone 至 `${SWIFTVLN_SATNAV_REPO}`。
 
 ---
 
@@ -96,7 +96,7 @@ pip install -e . --no-deps
 ### Step 6：安装 SatNav（评测必需，editable install）
 
 ```bash
-pip install -e "${SATNAV_REPO}"
+pip install -e "${SWIFTVLN_SATNAV_REPO}"
 ```
 
 > SatNav 的依赖（omegaconf、selenium、pillow 等）会一并安装，无需额外指定。
@@ -135,7 +135,7 @@ peft: 0.6.0
 decord: OK
 LlavaLlamaAttForCausalLM: OK
 train module: OK
-satnav: <SATNAV_REPO>/satnav/__init__.py
+satnav: <SWIFTVLN_SATNAV_REPO>/satnav/__init__.py
 SatNavEnv: OK
 === ALL CHECKS PASSED ===
 ```
@@ -164,7 +164,7 @@ SatNavEnv: OK
 | sentencepiece | 0.2.1 |
 | wandb | 0.25.0 |
 | opencv-python-headless | 4.13.0 |
-| satnav | editable install from `${SATNAV_REPO}` |
+| satnav | editable install from `${SWIFTVLN_SATNAV_REPO}` |
 
 ---
 

@@ -15,101 +15,21 @@ from types import MethodType
 
 import torch
 from swift.model.models.qwen import Qwen2_5VLLoader, Qwen3VLLoader
-from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration
-from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration
+from transformers import (
+    AutoConfig,
+    AutoModel,
+    AutoModelForCausalLM,
+    Qwen2_5_VLConfig,
+    Qwen2_5_VLForConditionalGeneration,
+    Qwen3VLConfig,
+    Qwen3VLForConditionalGeneration,
+)
 
 from swiftvln.common.constants import CURRENT_IMAGE_TOKEN, HISTORY_MEMORY_TOKEN
+from swiftvln.experiment import normalize_embedding_mode
 
 # Special tokens (must match dataset.py and template.py)
 SWIFTVLN_SPECIAL_TOKENS = [HISTORY_MEMORY_TOKEN, CURRENT_IMAGE_TOKEN]
-
-
-class SwiftVLNStreamingMixin:
-    """
-    KV-cache state management shared by SwiftVLN Qwen-family wrappers.
-    """
-
-    def reset(self, env_num: int = 1):
-        """
-        Initialize KV cache for multiple environments.
-
-        MUST be called before evaluation starts!
-
-        Args:
-            env_num: Number of parallel environments
-        """
-        self._env_num = env_num
-        self.curr_t = [0] * env_num
-        self.cache = [dict() for _ in range(env_num)]
-
-    def reset_for_env(self, env_idx: int):
-        """
-        Reset KV cache for a single environment.
-
-        Called at the start of each episode and every num_frames steps.
-
-        Args:
-            env_idx: Environment index to reset
-        """
-        # Auto-initialize if not done
-        if not hasattr(self, 'cache') or not hasattr(self, 'curr_t'):
-            self.reset(env_num=max(env_idx + 1, 1))
-        
-        # Expand if needed
-        while env_idx >= len(self.cache):
-            self.cache.append(dict())
-            self.curr_t.append(0)
-        
-        self.curr_t[env_idx] = 0
-        self.cache[env_idx] = dict()
-
-    def get_cache(self, env_idx: int):
-        """
-        Get past_key_values cache for a specific environment.
-
-        Args:
-            env_idx: Environment index
-
-        Returns:
-            past_key_values or None if not cached
-        """
-        if hasattr(self, 'cache') and env_idx < len(self.cache):
-            return self.cache[env_idx].get('past_key_values', None)
-        return None
-
-    def update_cache(self, env_idx: int, past_key_values):
-        """
-        Update past_key_values cache for a specific environment.
-
-        Args:
-            env_idx: Environment index
-            past_key_values: KV cache from model.generate()
-        """
-        # Auto-initialize if not done
-        if not hasattr(self, 'cache') or not hasattr(self, 'curr_t'):
-            self.reset(env_num=max(env_idx + 1, 1))
-        
-        # Expand if needed
-        while env_idx >= len(self.cache):
-            self.cache.append(dict())
-            self.curr_t.append(0)
-        
-        self.cache[env_idx]['past_key_values'] = past_key_values
-        self.curr_t[env_idx] += 1
-    
-    def get_step_count(self, env_idx: int) -> int:
-        """
-        Get current step count for an environment.
-
-        Args:
-            env_idx: Environment index
-
-        Returns:
-            Current step count
-        """
-        if hasattr(self, 'curr_t') and env_idx < len(self.curr_t):
-            return self.curr_t[env_idx]
-        return 0
 
 
 class SwiftVLNQwen25VLConfig(Qwen2_5_VLConfig):
@@ -119,7 +39,6 @@ class SwiftVLNQwen25VLConfig(Qwen2_5_VLConfig):
 
 
 class SwiftVLNQwen25VLForConditionalGeneration(
-    SwiftVLNStreamingMixin,
     Qwen2_5_VLForConditionalGeneration,
 ):
     """SwiftVLN model wrapper for Qwen2.5-VL."""
@@ -134,7 +53,6 @@ class SwiftVLNQwen3VLConfig(Qwen3VLConfig):
 
 
 class SwiftVLNQwen3VLForConditionalGeneration(
-    SwiftVLNStreamingMixin,
     Qwen3VLForConditionalGeneration,
 ):
     """SwiftVLN model wrapper for Qwen3-VL."""
@@ -241,29 +159,66 @@ def _patch_qwen3_inputs_embeds_only_forward(qwen3_model) -> None:
     qwen3_model._swiftvln_inputs_embeds_only_patch = True
 
 
-# Register model for auto loading with transformers
-try:
-    from transformers import AutoModel, AutoModelForCausalLM, AutoConfig
-    AutoConfig.register("swiftvln_qwen2_5_vl", SwiftVLNQwen25VLConfig)
-    AutoModel.register(SwiftVLNQwen25VLConfig, SwiftVLNQwen25VLForConditionalGeneration)
-    AutoModelForCausalLM.register(SwiftVLNQwen25VLConfig, SwiftVLNQwen25VLForConditionalGeneration)
-    AutoConfig.register("swiftvln_qwen3_vl", SwiftVLNQwen3VLConfig)
-    AutoModel.register(SwiftVLNQwen3VLConfig, SwiftVLNQwen3VLForConditionalGeneration)
-    AutoModelForCausalLM.register(SwiftVLNQwen3VLConfig, SwiftVLNQwen3VLForConditionalGeneration)
-except Exception:
-    pass
+# Register model for auto loading with transformers. ``exist_ok`` makes module
+# reloads idempotent without hiding unrelated registration failures.
+AutoConfig.register(
+    "swiftvln_qwen2_5_vl", SwiftVLNQwen25VLConfig, exist_ok=True
+)
+AutoModel.register(
+    SwiftVLNQwen25VLConfig,
+    SwiftVLNQwen25VLForConditionalGeneration,
+    exist_ok=True,
+)
+AutoModelForCausalLM.register(
+    SwiftVLNQwen25VLConfig,
+    SwiftVLNQwen25VLForConditionalGeneration,
+    exist_ok=True,
+)
+AutoConfig.register("swiftvln_qwen3_vl", SwiftVLNQwen3VLConfig, exist_ok=True)
+AutoModel.register(
+    SwiftVLNQwen3VLConfig,
+    SwiftVLNQwen3VLForConditionalGeneration,
+    exist_ok=True,
+)
+AutoModelForCausalLM.register(
+    SwiftVLNQwen3VLConfig,
+    SwiftVLNQwen3VLForConditionalGeneration,
+    exist_ok=True,
+)
 
 
 def _pop_embedding_options(kwargs):
+    legacy_options = {
+        'use_pose_embed',
+        'use_uav_adapter',
+        'pose_fusion_method',
+    }
+    present_legacy = sorted(legacy_options.intersection(kwargs))
+    if present_legacy:
+        raise TypeError(
+            "Legacy embedding options are no longer supported: "
+            f"{', '.join(present_legacy)}. Use embedding_mode="
+            "none|pose|posefilm|uav."
+        )
     return {
-        'use_pose_embed': kwargs.pop('use_pose_embed', False),
-        'use_uav_adapter': kwargs.pop('use_uav_adapter', False),
+        'embedding_mode': normalize_embedding_mode(
+            kwargs.pop('embedding_mode', 'none')
+        ),
         'uav_adapter_path': kwargs.pop('uav_adapter_path', ''),
         'uav_adapter_type': kwargs.pop('uav_adapter_type', 'transformer_v1'),
         'uav_adapter_apply_scope': kwargs.pop('uav_adapter_apply_scope', 'all_images'),
-        'pose_fusion_method': kwargs.pop('pose_fusion_method', 'additive'),
         'pose_norm_scale': kwargs.pop('pose_norm_scale', 100.0),
     }
+
+
+def _prepare_loader_kwargs(kwargs):
+    embedding_options = _pop_embedding_options(kwargs)
+    new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
+    for token in SWIFTVLN_SPECIAL_TOKENS:
+        if token not in new_special_tokens:
+            new_special_tokens.append(token)
+    kwargs['new_special_tokens'] = new_special_tokens
+    return embedding_options
 
 
 def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
@@ -283,7 +238,6 @@ def _attach_embedding_enhancement(model, model_dir: str, **options) -> None:
         **options,
         force_rebuild=True,
         restore_callback=_restore_if_available,
-        clear_disabled_aliases=True,
         log_embed_dim=True,
         log_train_save_note=True,
     )
@@ -293,12 +247,7 @@ class SwiftVLNQwen25VLLoader(Qwen2_5VLLoader):
     """ms-swift 4.x loader for the SwiftVLN Qwen2.5-VL model."""
 
     def __init__(self, *args, **kwargs):
-        self._swiftvln_embedding_options = _pop_embedding_options(kwargs)
-        new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
-        for token in SWIFTVLN_SPECIAL_TOKENS:
-            if token not in new_special_tokens:
-                new_special_tokens.append(token)
-        kwargs['new_special_tokens'] = new_special_tokens
+        self._swiftvln_embedding_options = _prepare_loader_kwargs(kwargs)
         super().__init__(*args, **kwargs)
 
     def get_model(self, model_dir: str, *args, **kwargs):
@@ -316,12 +265,7 @@ class SwiftVLNQwen3VLLoader(Qwen3VLLoader):
     """ms-swift 4.x loader for the SwiftVLN Qwen3-VL model."""
 
     def __init__(self, *args, **kwargs):
-        self._swiftvln_embedding_options = _pop_embedding_options(kwargs)
-        new_special_tokens = list(kwargs.pop('new_special_tokens', None) or [])
-        for token in SWIFTVLN_SPECIAL_TOKENS:
-            if token not in new_special_tokens:
-                new_special_tokens.append(token)
-        kwargs['new_special_tokens'] = new_special_tokens
+        self._swiftvln_embedding_options = _prepare_loader_kwargs(kwargs)
         super().__init__(*args, **kwargs)
 
     def get_model(self, model_dir: str, *args, **kwargs):
@@ -383,7 +327,7 @@ def _restore_enhancement_weights(model, model_dir: str):
     if enhancement_sd:
         missing, unexpected = model.embed_enhance.load_state_dict(enhancement_sd, strict=False)
         if missing or unexpected:
-            print(f"[SwiftVLN] embed_enhance load_state_dict warnings:")
+            print("[SwiftVLN] embed_enhance load_state_dict warnings:")
             if missing:
                 print(f"  - missing_keys: {missing}")
             if unexpected:

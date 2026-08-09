@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+/dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -18,6 +19,17 @@ road_data_checks/
 runtime/
 swanlog/
 /test_data/
+
+# Machine-local overlays and maintainer-only material
+**/.local/
+/.codex/
+/AGENTS.md
+/reports/
+/tests/
+
+# Host/server operations are intentionally local-only
+/src/swiftvln/scripts/docker/
+/src/swiftvln/scripts/data_sync/
 
 # Generated analysis artifacts
 src/swiftvln/scripts/analysis/trajectory_analysis/*.png

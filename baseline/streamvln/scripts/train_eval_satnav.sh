@@ -38,13 +38,16 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${REPO_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
 
 TRAIN_GPUS="${TRAIN_GPUS:-8}"
 EVAL_GPUS="${EVAL_GPUS:-8}"
 EVAL_MAX_EPISODES="${EVAL_MAX_EPISODES:-}"
 CLEAN_EVAL_FIRST="${CLEAN_EVAL_FIRST:-true}"
 SMOKE_TEST="${SMOKE_TEST:-false}"
-SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-${SWIFTVLN_SATNAV_DATASET:-SatNav-v0.1}}}"
 EVAL_MODEL_DIR="${EVAL_MODEL_DIR:-${REPO_ROOT}/output/streamvln-baseline}"
 SATNAV_CONFIG="${BASELINE_DIR}/configs/satnav_task.yaml"
 
@@ -62,6 +65,7 @@ read_config_value() {
 
 CONFIG_SPLIT="$(read_config_value SPLIT)"
 CONFIG_DATA_PATH="$(read_config_value DATA_PATH)"
+CONFIG_DATA_PATH="${SWIFTVLN_SATNAV_EVAL_ROOT:-${CONFIG_DATA_PATH}}"
 
 PIPE_TS="$(date +%Y%m%d-%H%M%S)"
 PIPE_LOG="/tmp/streamvln_baseline_train_eval_${PIPE_TS}.log"

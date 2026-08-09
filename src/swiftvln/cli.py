@@ -1,43 +1,69 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+from pathlib import Path
+import subprocess
 import sys
+from typing import Sequence
 
-from swiftvln.common.registry import MODEL_CHOICES
-from swiftvln.deployment import DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME
-from swiftvln.runners.train import run_train
-from swiftvln.runners.eval import run_eval
-from swiftvln.runners.deploy import run_deploy
-from swiftvln.runners.queue import run_queue_train, run_queue_eval
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _has_s2r_data_tools() -> bool:
+    """Return whether this installation includes offline S2R data tooling."""
+    try:
+        return importlib.util.find_spec("swiftvln.s2r.data_generation") is not None
+    except ModuleNotFoundError:
+        return False
+
+
+def _run_train(extra_args: Sequence[str]) -> int:
+    from swiftvln.model.trainer import train_main
+
+    train_main(list(extra_args))
+    return 0
+
+
+def _run_eval(extra_args: Sequence[str]) -> int:
+    from swiftvln.model.eval import main as eval_main
+
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = ["swiftvln.model.eval", *extra_args]
+        eval_main()
+    finally:
+        sys.argv = old_argv
+    return 0
+
+
+def _run_queue(target: str, extra_args: Sequence[str]) -> int:
+    script = REPO_ROOT / "src" / "swiftvln" / "scripts" / target / f"{target}_queue.sh"
+    completed = subprocess.run(
+        ["bash", str(script), *extra_args],
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    return completed.returncode
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="swiftvln", description="SwiftVLN command line")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    p_train = subparsers.add_parser("train", help="Run model training")
-    p_train.add_argument("--model", required=True, choices=list(MODEL_CHOICES))
-
-    p_eval = subparsers.add_parser("eval", help="Run model evaluation")
-    p_eval.add_argument("--model", required=True, choices=list(MODEL_CHOICES))
-
-    p_deploy = subparsers.add_parser("deploy", help="Run local deployment server")
-    p_deploy.add_argument("--model", required=True, choices=list(MODEL_CHOICES))
-    p_deploy.add_argument(
-        "--model-name",
-        default=DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME,
-        help=(
-            "Trained model experiment name. "
-            f"Default: {DEFAULT_SWIFTVLN_DEPLOY_MODEL_NAME}"
-        ),
-    )
-    p_deploy.add_argument(
-        "--session-root",
-        default="runtime/deploy/sessions",
-        help="Directory for persisted deploy sessions",
-    )
+    subparsers.add_parser("train", help="Run SwiftVLN training")
+    subparsers.add_parser("eval", help="Run SwiftVLN evaluation")
 
     p_queue = subparsers.add_parser("queue", help="Run queue orchestrations")
     p_queue.add_argument("target", choices=["train", "eval"], help="Queue type")
+
+    if _has_s2r_data_tools():
+        subparsers.add_parser(
+            "s2r-data",
+            help="Generate SatDronePair data for S2R alignment training",
+            add_help=False,
+        )
 
     return parser
 
@@ -47,15 +73,15 @@ def main(argv: list[str] | None = None) -> int:
     args, extra = parser.parse_known_args(argv)
 
     if args.command == "train":
-        return run_train(args.model, extra)
+        return _run_train(extra)
     if args.command == "eval":
-        return run_eval(args.model, extra)
-    if args.command == "deploy":
-        return run_deploy(args.model, args.model_name, args.session_root, extra)
+        return _run_eval(extra)
     if args.command == "queue":
-        if args.target == "train":
-            return run_queue_train(extra)
-        return run_queue_eval(extra)
+        return _run_queue(args.target, extra)
+    if args.command == "s2r-data":
+        from swiftvln.s2r.data_generation import main as run_s2r_data
+
+        return run_s2r_data(extra)
 
     parser.error(f"Unknown command: {args.command}")
     return 2

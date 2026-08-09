@@ -3,14 +3,20 @@
 # Shared helpers for SwiftVLN eval shell entrypoints.
 
 parse_env_type_from_model() {
-    local name="$1"
-    local second_field
+    python -m swiftvln.experiment parse-name "$1" \
+        --format value --field env_type
+}
 
-    second_field=$(echo "$name" | cut -d'-' -f2)
-    if [[ "$second_field" == "habitat" ]] || [[ "$second_field" == "satnav" ]]; then
-        echo "$second_field"
+parse_embed_slot_from_model() {
+    local embedding
+    embedding=$(
+        python -m swiftvln.experiment parse-name "$1" \
+            --format value --field embedding
+    ) || return 1
+    if [[ "$embedding" == "none" ]]; then
+        echo "noembed"
     else
-        echo "habitat"
+        echo "$embedding"
     fi
 }
 

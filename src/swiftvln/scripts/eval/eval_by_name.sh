@@ -89,165 +89,15 @@ if [ "$CHECK_ONLY" == "true" ]; then
     print_info "CHECK-ONLY 模式: 检查eval脚本和参数配置，不运行评估"
 fi
 
-# ============================================================================
-# 解析模型架构
-# ============================================================================
-parse_model_arch() {
-    local name="$1"
-
-    if [[ "$name" == swiftvln-* ]]; then
-        echo "swiftvln"
-    else
-        echo ""
-    fi
-}
-
-MODEL_ARCH=$(parse_model_arch "$MODEL_NAME")
-
-if [ -z "$MODEL_ARCH" ]; then
-    print_error "无法解析模型架构! 模型名称必须以 swiftvln- 开头"
-    print_error "输入的模型名称: $MODEL_NAME"
+# Parse and validate the name in the lightweight Python source of truth.
+if ! PARSED_ASSIGNMENTS=$(
+    python -m swiftvln.experiment parse-name "$MODEL_NAME" --format shell
+); then
+    print_error "无法解析 SwiftVLN 模型名称: $MODEL_NAME"
     exit 1
 fi
-
+eval "$PARSED_ASSIGNMENTS"
 print_info "检测到模型架构: ${MODEL_ARCH}"
-
-# ============================================================================
-# 解析模型参数 (基于EXP_NAME格式)
-# ============================================================================
-# 新格式 (带 env_type):
-# SwiftVLN (per_frame):   swiftvln-{env_type}-[qwen3vl-]{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-pf-h{num_history}[-nomem][-random]-b{log_base}-{method}-s{compress_stride}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
-# SwiftVLN (gtc):         swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-gtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
-# SwiftVLN (segment_gtc): swiftvln-{env_type}-{model_size}-{epochs}ep-f{num_frames}s{num_future_steps}-overlap{num_overlap}-sgtc-k{output_tokens}[-initial]-{embed_slot}-bs{batch_size}-lr{learning_rate}-{timestamp}
-#   embed_slot: noembed | pose | posefilm | uav | pose+uav | posefilm+uav
-
-parse_swiftvln_params() {
-    local name="$1"
-    # 新格式 (map):         swiftvln-satnav-3b-1ep-f32s4-overlap16-map-g1000-l400-r448-d20-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
-    # 新格式 (per_frame):   swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h8-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
-    # random 示例:          swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-random-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
-    # no-memory 示例:       swiftvln-habitat-3b-1ep-f32s4-overlap16-pf-h0-nomem-b1.0-pool-s2[-initial]-{embed_slot}-bs64-lr2e-5-123456
-    # 新格式 (gtc):         swiftvln-satnav-3b-1ep-f32s4-overlap16-gtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
-    # 新格式 (segment_gtc): swiftvln-satnav-3b-1ep-f32s4-overlap16-sgtc-k512[-initial]-{embed_slot}-bs64-lr2e-5-123456
-    # embed_slot: noembed | pose | posefilm | uav | pose+uav | posefilm+uav
-    # 注: -initial 是可选的，vanilla 模式下不显示（默认）
-
-    local model_size=$(echo "$name" | grep -oP '\d+[bB](?=-\d+ep)' | head -1)
-    local model_family="qwen2_5_vl"
-    if [[ "$name" == *"-qwen3vl-"* ]]; then
-        model_family="qwen3_vl"
-    fi
-    local epochs=$(echo "$name" | sed -n 's/.*-\([0-9]*\)ep-.*$/\1/p')
-
-    # 新格式: f{num_frames}s{num_future_steps} (不含 h)
-    local frames_steps=$(echo "$name" | grep -oP 'f\d+s\d+' | head -1)
-    local num_frames=$(echo "$frames_steps" | sed -n 's/f\([0-9]*\)s.*/\1/p')
-    local num_future_steps=$(echo "$frames_steps" | sed -n 's/.*s\([0-9]*\)$/\1/p')
-
-    local num_overlap=$(echo "$name" | sed -n 's/.*-overlap\([0-9]*\)-.*$/\1/p')
-    local batch_size=$(echo "$name" | sed -n 's/.*-bs\([0-9]*\)-.*$/\1/p')
-    local learning_rate=$(echo "$name" | grep -oP 'lr\d+e-\d+' | sed 's/lr//')
-
-    # 解析 system_prompt_setting: 检查 -initial 后缀
-    local system_prompt_setting="vanilla"
-    if [[ "$name" == *"-initial-"* ]]; then
-        system_prompt_setting="initial"
-    fi
-    local memory_method="history"
-    local map_global_side_m=""
-    local map_local_side_m=""
-    local map_render_px=""
-    local map_mask_method=""
-
-    # 解析历史处理器类型和相关参数
-    local history_processor_type="per_frame"
-    local num_history="8"
-    local log_base="1.0"
-    local compress_stride="2"
-    local use_random="false"
-    local use_tome="false"
-    local gtc_output_tokens=""
-    local use_pose_embed="false"
-    local pose_fusion_method="additive"
-
-    if [[ "$name" == *"-map-g"* ]]; then
-        local map_block
-        map_block=$(echo "$name" | grep -oP 'map-g[^-]+-l[^-]+-r\d+-[^-]+-s\d+' | head -1)
-        memory_method="map"
-        history_processor_type="per_frame"
-        use_tome="false"
-        if [ -n "$map_block" ]; then
-            map_global_side_m=$(echo "$map_block" | sed -n 's/.*map-g\([^-]*\)-l.*/\1/p')
-            map_local_side_m=$(echo "$map_block" | sed -n 's/.*-l\([^-]*\)-r.*/\1/p')
-            map_render_px=$(echo "$map_block" | sed -n 's/.*-r\([0-9]*\)-.*/\1/p')
-            compress_stride=$(echo "$map_block" | sed -n 's/.*-s\([0-9]*\)$/\1/p')
-            local map_mask_tag
-            map_mask_tag=$(echo "$map_block" | sed -n 's/.*-r[0-9]*-\([^-]*\)-s[0-9]*$/\1/p')
-            if [[ "$map_mask_tag" == d* ]]; then
-                map_mask_method="dilate${map_mask_tag#d}"
-            else
-                map_mask_method="$map_mask_tag"
-            fi
-        fi
-    elif [[ "$name" == *"-sgtc-k"* ]]; then
-        history_processor_type="segment_gtc"
-        gtc_output_tokens=$(echo "$name" | grep -oP 'sgtc-k\d+' | sed 's/sgtc-k//')
-    elif [[ "$name" == *"-gtc-k"* ]]; then
-        history_processor_type="gtc"
-        gtc_output_tokens=$(echo "$name" | grep -oP 'gtc-k\d+' | sed 's/gtc-k//')
-    elif [[ "$name" == *"-pf-h"* ]]; then
-        history_processor_type="per_frame"
-        num_history=$(echo "$name" | grep -oP 'pf-h\d+' | sed 's/pf-h//')
-        if [[ "$name" == *"-random-"* ]]; then
-            use_random="true"
-        fi
-        local parsed_log_base=""
-        parsed_log_base=$(echo "$name" | grep -oP '\-b[0-9.]+\-' | sed 's/-b//' | sed 's/-//' || true)
-        if [ -n "$parsed_log_base" ]; then
-            log_base="$parsed_log_base"
-        fi
-        compress_stride=$(echo "$name" | grep -oP '\-(pool|tome)\-s\d+' | grep -oP 's\d+' | sed 's/s//')
-        if [[ "$name" == *"-tome-s"* ]]; then
-            use_tome="true"
-        fi
-    fi
-
-    # 解析 embedding enhancement slot
-    # 匹配顺序: posefilm > pose > noembed
-    if [[ "$name" == *"-posefilm-"* ]] || [[ "$name" == *"-posefilm" ]]; then
-        use_pose_embed="true"
-        pose_fusion_method="film"
-    elif [[ "$name" == *"-pose-"* ]] || [[ "$name" == *"-pose" ]]; then
-        use_pose_embed="true"
-        pose_fusion_method="additive"
-    elif [[ "$name" == *"-noembed-"* ]] || [[ "$name" == *"-noembed" ]]; then
-        use_pose_embed="false"
-    fi
-
-    echo "MODEL_FAMILY=$model_family"
-    echo "MODEL_SIZE=$model_size"
-    echo "NUM_EPOCHS=$epochs"
-    echo "NUM_FRAMES=$num_frames"
-    echo "NUM_HISTORY=$num_history"
-    echo "NUM_FUTURE_STEPS=$num_future_steps"
-    echo "NUM_OVERLAP=$num_overlap"
-    echo "MEMORY_METHOD=$memory_method"
-    echo "HISTORY_PROCESSOR_TYPE=$history_processor_type"
-    echo "LOG_BASE=$log_base"
-    echo "USE_RANDOM=$use_random"
-    echo "COMPRESS_STRIDE=$compress_stride"
-    echo "USE_TOME=$use_tome"
-    echo "GTC_OUTPUT_TOKENS=$gtc_output_tokens"
-    echo "MAP_GLOBAL_SIDE_M=$map_global_side_m"
-    echo "MAP_LOCAL_SIDE_M=$map_local_side_m"
-    echo "MAP_RENDER_PX=$map_render_px"
-    echo "MAP_MASK_METHOD=$map_mask_method"
-    echo "SYSTEM_PROMPT_SETTING=$system_prompt_setting"
-    echo "USE_POSE_EMBED=$use_pose_embed"
-    echo "POSE_FUSION_METHOD=$pose_fusion_method"
-    echo "BATCH_SIZE=$batch_size"
-    echo "LEARNING_RATE=$learning_rate"
-}
 
 print_swiftvln_params() {
     if [ "$MODEL_ARCH" != "swiftvln" ]; then
@@ -267,8 +117,12 @@ print_swiftvln_params() {
     fi
     if [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ]; then
         echo "GTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+        echo "GTC_TEMPERATURE: ${GTC_TEMPERATURE:-0.1}"
+        echo "GTC_NUM_ITERATIONS: ${GTC_NUM_ITERATIONS:-1}"
     elif [ "${MEMORY_METHOD:-history}" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
         echo "SGTC_OUTPUT_TOKENS: ${GTC_OUTPUT_TOKENS:-512}"
+        echo "SGTC_TEMPERATURE: ${GTC_TEMPERATURE:-0.1}"
+        echo "SGTC_NUM_ITERATIONS: ${GTC_NUM_ITERATIONS:-1}"
         echo "SGTC_NUM_SEGMENTS: 8 (fixed)"
     elif [ "${MEMORY_METHOD:-history}" != "map" ]; then
         echo "NUM_HISTORY:    ${NUM_HISTORY:-8}"
@@ -281,10 +135,7 @@ print_swiftvln_params() {
         echo "USE_TOME:       ${USE_TOME:-false}"
     fi
     echo "SYSTEM_PROMPT:  ${SYSTEM_PROMPT_SETTING:-vanilla}"
-    echo "USE_POSE_EMBED: ${USE_POSE_EMBED:-false}"
-    if [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "POSE_FUSION_METHOD: ${POSE_FUSION_METHOD:-additive}"
-    fi
+    echo "EMBEDDING_MODE: ${EMBEDDING_MODE:-none}"
 }
 
 print_swiftvln_env_assignments() {
@@ -301,9 +152,11 @@ print_swiftvln_env_assignments() {
             fi
         done
     elif [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "gtc" ] || [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "segment_gtc" ]; then
-        if [ -n "${GTC_OUTPUT_TOKENS:-}" ]; then
-            echo "GTC_OUTPUT_TOKENS=${GTC_OUTPUT_TOKENS}"
-        fi
+        for name in GTC_OUTPUT_TOKENS GTC_TEMPERATURE GTC_NUM_ITERATIONS; do
+            if [ -n "${!name:-}" ]; then
+                echo "${name}=${!name}"
+            fi
+        done
         if [ "${HISTORY_PROCESSOR_TYPE:-per_frame}" == "segment_gtc" ]; then
             echo "SGTC_NUM_SEGMENTS=8 (fixed)"
         fi
@@ -318,17 +171,10 @@ print_swiftvln_env_assignments() {
     if [ -n "${SYSTEM_PROMPT_SETTING:-}" ]; then
         echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
     fi
-    if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-        echo "USE_POSE_EMBED=${USE_POSE_EMBED}"
-        echo "POSE_FUSION_METHOD=${POSE_FUSION_METHOD:-additive}"
+    if [ "$MODEL_ARCH" == "swiftvln" ]; then
+        echo "EMBEDDING_MODE=${EMBEDDING_MODE:-none}"
     fi
 }
-
-# 解析 swiftvln 参数
-eval "$(parse_swiftvln_params "$MODEL_NAME")"
-
-# 解析环境类型 (从模型名中提取，如果用户没有指定 ENV_TYPE)
-PARSED_ENV_TYPE=$(parse_env_type_from_model "$MODEL_NAME")
 
 # 如果用户没有指定 ENV_TYPE，则使用从模型名解析出的值
 if [ -z "$ENV_TYPE" ]; then
@@ -668,9 +514,7 @@ if [ "$MEMORY_METHOD" == "map" ]; then
     [ -n "$MAP_RENDER_PX" ] && export MAP_RENDER_PX
     [ -n "$MAP_MASK_METHOD" ] && export MAP_MASK_METHOD
 elif [ "$HISTORY_PROCESSOR_TYPE" == "gtc" ] || [ "$HISTORY_PROCESSOR_TYPE" == "segment_gtc" ]; then
-    if [ -n "$GTC_OUTPUT_TOKENS" ]; then
-        export GTC_OUTPUT_TOKENS
-    fi
+    export GTC_OUTPUT_TOKENS GTC_TEMPERATURE GTC_NUM_ITERATIONS
 else
     # per_frame 参数
     if [ -n "$LOG_BASE" ]; then
@@ -690,9 +534,8 @@ fi
 if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
     export SYSTEM_PROMPT_SETTING
 fi
-if [ "$MODEL_ARCH" == "swiftvln" ] && [ "${USE_POSE_EMBED:-false}" = "true" ]; then
-    export USE_POSE_EMBED
-    export POSE_FUSION_METHOD="${POSE_FUSION_METHOD:-additive}"
+if [ "$MODEL_ARCH" == "swiftvln" ]; then
+    export EMBEDDING_MODE="${EMBEDDING_MODE:-none}"
 fi
 
 # ============================================================================

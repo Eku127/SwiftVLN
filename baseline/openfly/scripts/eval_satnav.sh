@@ -53,6 +53,9 @@ usage() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_DIR="$(dirname "${SCRIPT_DIR}")"
 REPO_ROOT="$(cd "${BASELINE_DIR}/../.." && pwd)"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${REPO_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
 EVAL_SCRIPT="${BASELINE_DIR}/src/eval_satnav.py"
 SATNAV_CONFIG_TEMPLATE="${BASELINE_DIR}/configs/satnav_task.yaml"
 DEFAULT_MODEL_DIR="${REPO_ROOT}/output/openfly-baseline"
@@ -205,6 +208,8 @@ fi
 CONFIG_SPLIT="$(read_config_value SPLIT)"
 CONFIG_DATA_PATH="$(read_config_value DATA_PATH)"
 CONFIG_SCENES_DIR="$(read_config_value SCENES_DIR)"
+CONFIG_DATA_PATH="${SWIFTVLN_SATNAV_EVAL_ROOT:-${CONFIG_DATA_PATH}}"
+CONFIG_SCENES_DIR="${SWIFTVLN_SATNAV_SCENES_DIR:-${CONFIG_SCENES_DIR}}"
 
 if [ -z "$CONFIG_SPLIT" ]; then
     print_error "DATASET.SPLIT not found in config: ${SATNAV_CONFIG_TEMPLATE}"
@@ -233,8 +238,7 @@ print_info "Using SatNav eval data root from config: ${CONFIG_DATA_PATH}"
 print_info "Using OpenFly model load dir: ${CHECKPOINT_DIR}"
 
 if [ "$DRY_RUN" != "true" ]; then
-    source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-    conda activate openfly-baseline
+    swiftvln_activate_conda openfly-baseline
 fi
 
 export PYTHONPATH="${BASELINE_DIR}/src:${PYTHONPATH:-}"

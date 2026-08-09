@@ -85,7 +85,7 @@ uninavid-baseline-{mode}-{epochs}ep-data{dataset}-bs{effective_bs}-lr{lr}-{times
 
 ```bash
 bash baseline/uninavid/scripts/eval_satnav.sh \
-  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline/HF_model \
+  --model_dir ${SWIFTVLN_ROOT}/output/model_zoo/baseline/HF_model \
   --model_name uninavid-satnav-continue-1ep-lr1e-5 \
   --gpus 8 \
   --max_episodes 10
@@ -96,7 +96,7 @@ split 约定：
 - split 和 eval 数据只由 `baseline/uninavid/configs/satnav_task.yaml` 控制
 - `SPLIT: all` 会顺序运行 `val_seen` 和 `val_unseen`
 - `DATA_PATH` 必须是 eval split 父目录，例如
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval`
+  `${SWIFTVLN_SATNAV_EVAL_ROOT}`
 - 旧位置参数、`--checkpoint_path`、`--split`、`--satnav_version` 均不再作为公开入口
 
 常用环境变量：

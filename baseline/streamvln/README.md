@@ -4,9 +4,15 @@
 
 - 上游仓库：按第 0 节的 `$STREAMVLN_REPO` 路径准备本地 StreamVLN clone
 - 运行范围：当前集成面向 SatNav trajectory 数据训练和 SatNav 在线评测。
-- 训练/评测 skill：`.codex/skills/run-streamvln-baseline/SKILL.md`
 
-## 0. 上游源码 clone 与路径
+## 0. 代码来源、适配基准与上游路径
+
+> **代码来源声明：** 本目录的 SatNav dataset adapter、训练入口和评测 wrapper，
+> 以
+> [`Eku127/StreamVLN@60476e81f4c01b29f1a51a7469f1cb4addbc1d62`](https://github.com/Eku127/StreamVLN/commit/60476e81f4c01b29f1a51a7469f1cb4addbc1d62)
+> 为明确的上游适配与验证基准；StreamVLN 模型核心仍在运行时从该上游 clone 加载，
+> 并未完整复制到本目录。SatNav 接口开发与验证基于
+> [`Eku127/SatNav@c0c0e72ea4575b36d74a5e8f777942172978938e`](https://github.com/Eku127/SatNav/commit/c0c0e72ea4575b36d74a5e8f777942172978938e)。
 
 当前 StreamVLN baseline 不在本仓库内复制完整上游实现；训练和评测会把本地
 StreamVLN 上游源码加入 `PYTHONPATH`。SatNav 评测环境也需要本地 SatNav
@@ -14,33 +20,40 @@ editable install。建议按当前 workspace 使用的 commit 固定版本：
 
 | 依赖 | 推荐本地路径 | 上游仓库 | 当前使用 commit |
 |------|--------------|----------|-----------------|
-| StreamVLN | `/mnt/data1/home/jiangjiajun/workspace/StreamVLN` | `git@github.com:Eku127/StreamVLN.git` | `60476e81f4c01b29f1a51a7469f1cb4addbc1d62` |
-| SatNav | `/mnt/data1/home/jiangjiajun/workspace/SatNav` | `git@github.com:Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
+| StreamVLN | `${STREAMVLN_REPO}` | `https://github.com/Eku127/StreamVLN.git` | `60476e81f4c01b29f1a51a7469f1cb4addbc1d62` |
+| SatNav | `${SWIFTVLN_SATNAV_REPO}` | `https://github.com/Eku127/SatNav.git` | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
 
 从空 workspace 准备源码：
 
 ```bash
-WORKSPACE=/mnt/data1/home/jiangjiajun/workspace
+WORKSPACE="${WORKSPACE:-$HOME/workspace}"
 
-git clone git@github.com:Eku127/StreamVLN.git "$WORKSPACE/StreamVLN"
+git clone https://github.com/Eku127/StreamVLN.git "$WORKSPACE/StreamVLN"
 git -C "$WORKSPACE/StreamVLN" checkout 60476e81f4c01b29f1a51a7469f1cb4addbc1d62
 
-git clone git@github.com:Eku127/SatNav.git "$WORKSPACE/SatNav"
+git clone https://github.com/Eku127/SatNav.git "$WORKSPACE/SatNav"
 git -C "$WORKSPACE/SatNav" checkout c0c0e72ea4575b36d74a5e8f777942172978938e
 ```
 
 路径约定：
 
 ```bash
-export STREAMVLN_REPO=/mnt/data1/home/jiangjiajun/workspace/StreamVLN
-export SATNAV_REPO=/mnt/data1/home/jiangjiajun/workspace/SatNav
+export STREAMVLN_REPO="${WORKSPACE}/StreamVLN"
+export SWIFTVLN_SATNAV_REPO="${WORKSPACE}/SatNav"
 export PYTHONPATH="${STREAMVLN_REPO}:${STREAMVLN_REPO}/streamvln:${PYTHONPATH:-}"
 ```
 
-当前 `train_satnav.sh` 和 `eval_satnav.sh` 默认也会把
-`/mnt/data1/home/jiangjiajun/workspace/StreamVLN` 加入 `PYTHONPATH`，因此最稳妥的
-做法是 clone 到上表路径。若 clone 到其他位置，启动前显式设置上面的
-`PYTHONPATH`，并在环境安装阶段使用 `pip install -e "$SATNAV_REPO"`。
+推荐将这些机器路径写入被忽略的配置层：
+
+```bash
+mkdir -p .local baseline/streamvln/.local
+cp local.env.example .local/env.sh
+cp baseline/streamvln/local.env.example baseline/streamvln/.local/env.sh
+```
+
+编辑两个 `.local/env.sh` 后，训练和评测脚本会自动加载它们。也可以直接导出上面的
+变量，或修改脚本中的相对路径默认值。环境安装阶段使用
+`pip install -e "$SWIFTVLN_SATNAV_REPO"` 安装 SatNav。
 
 ## 1. 模型
 
@@ -122,7 +135,7 @@ pip install "$FLASH_ATTN_WHL"
 pip install -r baseline/streamvln/requirements.txt
 
 # Step 5: 安装 SatNav（评测必需，editable install）
-pip install -e "$SATNAV_REPO"
+pip install -e "$SWIFTVLN_SATNAV_REPO"
 ```
 
 关键说明：
@@ -130,7 +143,7 @@ pip install -e "$SATNAV_REPO"
 - 若通过 ModelScope 下载模型，需额外安装 `modelscope`。
 - 训练脚本会把 `$STREAMVLN_REPO` 加入 `PYTHONPATH`，因此该上游源码目录必须存在。
 - 默认 SatNav 数据集为 `SatNav-v0.1`；训练需要
-  `/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data/annotations.json`
+  `${SWIFTVLN_SATNAV_TRAIN_DATA_PATH}/annotations.json`
   以及对应 image folders，评测需要 `SatNav-v0.1/episodes/eval`。
 - H100 上如需编译 CUDA op，可设置 `CUDA_HOME` 指向支持 `sm_90` 的 CUDA Toolkit。
 
@@ -175,7 +188,7 @@ bash baseline/streamvln/scripts/train_satnav.sh continue
 当前默认训练配置：
 
 - `SATNAV_DATASET=SatNav-v0.1`
-- `SATNAV_TRAIN_DATA_DIR=/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data`
+- `SATNAV_TRAIN_DATA_DIR=${SWIFTVLN_SATNAV_TRAIN_DATA_PATH}`
 - `NUM_FRAMES=32`
 - `NUM_HISTORY=8`
 - `NUM_FUTURE_STEPS=4`
@@ -212,8 +225,8 @@ StreamVLN baseline 评测分两步：先确定评测数据，再指定模型目�
 DATASET:
   TYPE: SatNav
   SPLIT: all
-  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval
-  SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
+  DATA_PATH: ${SWIFTVLN_SATNAV_EVAL_ROOT}
+  SCENES_DIR: ${SWIFTVLN_SATNAV_SCENES_DIR}
 ```
 
 字段说明：
@@ -229,7 +242,7 @@ DATASET:
 
 ```bash
 bash baseline/streamvln/scripts/eval_satnav.sh \
-  --model_dir /mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/model_zoo/baseline \
+  --model_dir ${SWIFTVLN_ROOT}/output/model_zoo/baseline \
   --model_name streamvln-baseline-continue-1ep-f32h8s4-lr2e-5 \
   --gpus 8
 ```
@@ -258,3 +271,10 @@ streamvln-satnav-scratch-1ep-f32h8s4-lr2e-5
 - 脚本不会从模型名里的数据版本字段选择 eval 数据；eval 数据和 split 都由 `satnav_task.yaml` 控制。
 - 输出目录：`results/streamvln-baseline/<model_name>/<split>/`。
 - 评测日志：`results/streamvln-baseline/<model_name>/<split>/eval.log`。
+
+## 致谢
+
+感谢 [StreamVLN](https://github.com/OpenRobotLab/StreamVLN) 的作者和贡献者公开代码、
+模型与研究成果，也感谢 LLaVA-Video、SigLIP 和 SatNav 等相关工作的作者为本适配提供
+基础模型与评测环境。本目录是面向 SatNav 的非官方适配；使用相关成果时请遵循各上游
+项目的许可证并引用原始工作。

@@ -1,17 +1,17 @@
 #!/bin/bash
 # ============================================================================
-# VLN 串行训练脚本 - 交互式配置
+# SwiftVLN config-driven serial training queue
 # ============================================================================
 #
 # 功能:
-#   - 交互式配置多个模型的训练参数
-#   - 支持多组实验配置（分号分隔）
+#   - 从 TRAIN_EXPERIMENTS_FILE 加载结构化实验列表
 #   - 串行执行训练，避免资源竞争
 #   - 自动记录实验结果和错误
 #   - 训练完成后显示汇总表格
 #
 # 使用方法:
-#   bash src/swiftvln/scripts/train/train_queue.sh
+#   TRAIN_EXPERIMENTS_FILE=/path/to/experiments.sh \
+#     bash src/swiftvln/scripts/train/train_queue.sh
 #
 # 支持的模型: swiftvln
 #
@@ -25,7 +25,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
 NC='\033[0m'
 BOLD='\033[1m'
 
@@ -71,14 +70,6 @@ MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
 MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
 MAP_RENDER_PX="${MAP_RENDER_PX:-448}"
 MAP_MASK_METHOD="${MAP_MASK_METHOD:-dilate20}"
-
-# ── 事件日志（供 train_watchdog 消费）──────────────────────────────────────
-# 写入 TRAIN_EVENTS_FILE（由 watchdog export），回退到 TRAIN_RUN_DIR 下的文件
-_emit_train_event() {
-    local event_file="${TRAIN_EVENTS_FILE:-${TRAIN_RUN_DIR:+${TRAIN_RUN_DIR}/train_events.log}}"
-    [[ -z "$event_file" ]] && return 0
-    echo "$*" >> "$event_file"
-}
 
 enqueue_model_for_eval() {
     local model_name="$1"
@@ -279,411 +270,79 @@ apply_auto_fix_for_train_failure() {
 }
 
 # ============================================================================
-# 查找模型目录下最新的 checkpoint (参考 eval_by_name.sh)
+# Config-only queue protocol
 # ============================================================================
-find_latest_checkpoint() {
-    local model_dir="$1"
-    local latest_checkpoint=""
+show_usage() {
+    cat <<EOF
+Usage:
+  TRAIN_EXPERIMENTS_FILE=/path/to/experiments.sh \\
+    bash src/swiftvln/scripts/train/train_queue.sh [--check-config]
 
-    # 首先在 v0-* 子目录中查找
-    for version_dir in "$model_dir"/v*; do
-        if [ -d "$version_dir" ]; then
-            # 查找 checkpoint-* 目录，取最大的
-            for ckpt in "$version_dir"/checkpoint-*; do
-                if [ -d "$ckpt" ]; then
-                    latest_checkpoint="$ckpt"
-                fi
-            done
-        fi
-    done
+The config file must define:
+  ENV_TYPE="satnav"  # or habitat
+  EXPERIMENTS=(
+    "swiftvln|default|baseline|SatNav|/path/to/trajectory_data"
+  )
 
-    # 如果没有找到，直接在模型目录下查找
-    if [ -z "$latest_checkpoint" ]; then
-        for ckpt in "$model_dir"/checkpoint-*; do
-            if [ -d "$ckpt" ]; then
-                latest_checkpoint="$ckpt"
-            fi
-        done
-    fi
-
-    echo "$latest_checkpoint"
-}
-
-# ============================================================================
-# 模型默认配置
-# ============================================================================
-get_default_config() {
-    local model="$1"
-
-    case "$model" in
-        swiftvln)
-            cat << 'EOF'
-# SwiftVLN 可配置参数 (代号=默认值) - 滑动窗口重叠压缩
-a) NUM_FRAMES=32           # 视频帧数
-b) NUM_HISTORY=8           # 历史帧数 (per_frame模式有效)
-c) NUM_FUTURE_STEPS=4      # 预测动作步数
-d) COMPRESS_STRIDE=2       # 压缩步长 (per_frame: 2=4x, 3=9x, 4=16x)
-e) NUM_OVERLAP=0           # 滑动窗口重叠帧数 (0=禁用; stride = num_frames - num_overlap)
-f) NUM_EPOCHS=1            # 训练轮数
-g) LEARNING_RATE=2e-5      # 学习率
-h) BATCH_SIZE=8            # 批量大小
-i) FREEZE_VIT=false        # 冻结ViT
-j) FREEZE_LLM=false        # 冻结LLM
-k) FREEZE_ALIGNER=false    # 冻结Aligner
-l) USE_TOME=false          # 使用GridToMe压缩 (per_frame模式: true=ToMe, false=AvgPool)
-m) HISTORY_PROCESSOR_TYPE=per_frame  # 历史处理方式: per_frame(默认), gtc 或 sgtc(segment_gtc)
-n) GTC_OUTPUT_TOKENS=512   # GTC/SegmentGTC输出tokens数 (gtc/segment_gtc模式有效)
-o) LOG_BASE=1.0            # 历史采样分布 (per_frame: 1.0=均匀, >1.0=对数/更多近帧; NUM_HISTORY=0时忽略)
-p) SYSTEM_PROMPT_SETTING=vanilla  # System prompt策略: vanilla(默认) 或 initial
-q) USE_POSE_EMBED=false       # Pose增强: true(开启) 或 false(关闭)
-r) POSE_FUSION_METHOD=additive  # Pose融合方式: additive(默认) 或 film
-# 说明: SwiftVLN 没有单独的 USE_MEMORY 开关；如需 no-memory，请用
-#       HISTORY_PROCESSOR_TYPE=per_frame + NUM_HISTORY=0
+Each experiment is: model|comma-separated KEY=VALUE overrides|description|dataset name|dataset path.
 EOF
-            ;;
-    esac
 }
 
-# ============================================================================
-# 展开代号为完整参数名
-# ============================================================================
-expand_shortcodes() {
-    local model="$1"
-    local config="$2"
-
-    # 如果是default或空，直接返回
-    if [[ -z "$config" || "$config" == "default" ]]; then
-        echo "$config"
-        return
+load_experiment_config() {
+    if [[ -z "${TRAIN_EXPERIMENTS_FILE:-}" ]]; then
+        print_error "TRAIN_EXPERIMENTS_FILE is required; the interactive wizard was removed."
+        show_usage
+        return 1
+    fi
+    if [[ ! -f "$TRAIN_EXPERIMENTS_FILE" ]]; then
+        print_error "TRAIN_EXPERIMENTS_FILE does not exist: $TRAIN_EXPERIMENTS_FILE"
+        return 1
     fi
 
-    # 定义映射
-    declare -A mapping
-    case "$model" in
-        swiftvln)
-            mapping=([a]="NUM_FRAMES" [b]="NUM_HISTORY" [c]="NUM_FUTURE_STEPS" [d]="COMPRESS_STRIDE" [e]="NUM_OVERLAP" [f]="NUM_EPOCHS" [g]="LEARNING_RATE" [h]="BATCH_SIZE" [i]="FREEZE_VIT" [j]="FREEZE_LLM" [k]="FREEZE_ALIGNER" [l]="USE_TOME" [m]="HISTORY_PROCESSOR_TYPE" [n]="GTC_OUTPUT_TOKENS" [o]="LOG_BASE" [p]="SYSTEM_PROMPT_SETTING" [q]="USE_POSE_EMBED" [r]="POSE_FUSION_METHOD")
-            ;;
-    esac
+    print_info "Loading experiment config: $TRAIN_EXPERIMENTS_FILE"
+    ENV_TYPE=""
+    EXPERIMENTS=()
+    # shellcheck source=/dev/null
+    source "$TRAIN_EXPERIMENTS_FILE"
 
-    local result="$config"
-
-    # 替换代号为完整参数名
-    for code in "${!mapping[@]}"; do
-        local param="${mapping[$code]}"
-        # 替换开头的 代号= 和 ,代号=
-        result=$(echo "$result" | sed "s/^${code}=/${param}=/I" | sed "s/,${code}=/,${param}=/gI")
-    done
-
-    # 值的简写转换: sgtc -> segment_gtc
-    result=$(echo "$result" | sed 's/HISTORY_PROCESSOR_TYPE=sgtc/HISTORY_PROCESSOR_TYPE=segment_gtc/g')
-
-    echo "$result"
-}
-
-# ============================================================================
-# 解析配置字符串
-# ============================================================================
-parse_config_string() {
-    local config_str="$1"
-    # 将逗号分隔的配置转换为export语句
-    echo "$config_str" | tr ',' '\n' | while read -r item; do
-        if [[ -n "$item" ]]; then
-            echo "export $item"
-        fi
-    done
-}
-
-# ============================================================================
-# 生成实验描述（改动项）
-# ============================================================================
-get_experiment_changes() {
-    local config_str="$1"
-    if [[ -z "$config_str" || "$config_str" == "default" ]]; then
-        echo "默认配置"
-    else
-        echo "$config_str" | tr ',' ' '
-    fi
-}
-
-# ============================================================================
-# 交互式配置
-# ============================================================================
-interactive_setup() {
-    # ── Non-interactive mode ──────────────────────────────────────────────────
-    # If TRAIN_EXPERIMENTS_FILE is set, source it to load all config variables
-    # and skip the interactive wizard entirely.
-    #
-    # The file must define (at minimum):
-    #   EXPERIMENTS=("model|config|changes|ds_names|ds_paths" ...)
-    #   ENV_TYPE="satnav"      (or "habitat")
-    #
-    # Optional:
-    #   USE_SWANLAB="true"
-    #   SWANLAB_PROJECT="YourProject"
-    if [[ -n "${TRAIN_EXPERIMENTS_FILE:-}" ]]; then
-        if [[ ! -f "$TRAIN_EXPERIMENTS_FILE" ]]; then
-            print_error "TRAIN_EXPERIMENTS_FILE 指定的文件不存在: $TRAIN_EXPERIMENTS_FILE"
-            exit 1
-        fi
-        print_info "非交互模式：从文件加载实验配置 → $TRAIN_EXPERIMENTS_FILE"
-        # shellcheck source=/dev/null
-        source "$TRAIN_EXPERIMENTS_FILE"
-        USE_SWANLAB="${USE_SWANLAB:-false}"
-        SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
-        if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
-            print_error "TRAIN_EXPERIMENTS_FILE 加载后 EXPERIMENTS 数组为空，请检查文件内容"
-            exit 1
-        fi
-        print_success "已加载 ${#EXPERIMENTS[@]} 个实验，env=${ENV_TYPE}, SwanLab=${SWANLAB_PROJECT}"
-        return 0
-    fi
-    # ─────────────────────────────────────────────────────────────────────────
-
-    print_header "╔══════════════════════════════════════════════════════════════╗"
-    echo -e "         ${BOLD}VLN 串行训练配置向导${NC}"
-    print_header "╚══════════════════════════════════════════════════════════════╝"
-
-    # 1. SwanLab 配置
-    print_header "📊 Step 1: SwanLab 配置"
-    print_info "SwanLab 默认状态: $([ "$USE_SWANLAB" = true ] && echo "启用" || echo "禁用")"
-    local swanlab_default="n"
-    [[ "$USE_SWANLAB" == true ]] && swanlab_default="Y"
-    read -p "启用 SwanLab 记录实验? [${swanlab_default}]: " swanlab_enable_input
-    swanlab_enable_input=${swanlab_enable_input:-$swanlab_default}
-    if [[ "$swanlab_enable_input" =~ ^[Yy]$ ]]; then
-        USE_SWANLAB=true
-        read -p "SwanLab Project 名称 [${SWANLAB_PROJECT}]: " swanlab_project
-        SWANLAB_PROJECT=${swanlab_project:-$SWANLAB_PROJECT}
-        print_success "SwanLab: 启用, Project: $SWANLAB_PROJECT"
-    else
-        USE_SWANLAB=false
-        print_success "SwanLab: 禁用"
-    fi
-
-    # 2. 选择模型
-    print_header "🤖 Step 2: 选择训练模型"
-    echo "可选模型:"
-    echo "  a) swiftvln"
-    echo ""
-    echo "示例: a 或 swiftvln"
-    read -p "请选择模型 [a]: " models_input
-    models_input=${models_input:-a}
-
-    if [[ -z "$models_input" ]]; then
-        print_error "未选择任何模型!"
-        exit 1
-    fi
-
-    # 展开模型代号
-    declare -A model_mapping=([a]="swiftvln")
-    SELECTED_MODELS=()
-    IFS=',' read -ra model_codes <<< "$models_input"
-    for code in "${model_codes[@]}"; do
-        code=$(echo "$code" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
-        if [[ -n "${model_mapping[$code]}" ]]; then
-            SELECTED_MODELS+=("${model_mapping[$code]}")
-        elif [[ "$code" =~ ^(swiftvln)$ ]]; then
-            # 也支持直接输入模型名
-            SELECTED_MODELS+=("$code")
-        else
-            print_warning "未知模型代号: $code (已跳过)"
-        fi
-    done
-
-    if [[ ${#SELECTED_MODELS[@]} -eq 0 ]]; then
-        print_error "未选择任何有效模型!"
-        exit 1
-    fi
-
-    print_success "已选择模型: ${SELECTED_MODELS[*]}"
-
-    # 3. 环境类型
-    print_header "🌍 Step 3: 环境类型"
-    echo "可选环境:"
-    echo "  a) satnav  (卫星导航, forward=10m) [默认]"
-    echo "  b) habitat (室内导航, forward=0.25m)"
-    echo ""
-    read -p "选择环境类型 [a]: " env_input
-    env_input=${env_input:-a}
-
-    # 展开环境代号
-    case "$env_input" in
-        a|A|satnav|SatNav|SATNAV)
-            ENV_TYPE="satnav"
-            ;;
-        b|B|habitat|Habitat|HABITAT)
-            ENV_TYPE="habitat"
-            ;;
+    case "${ENV_TYPE:-}" in
+        satnav|habitat) ;;
         *)
-            print_warning "未知环境类型: $env_input, 使用默认 satnav"
-            ENV_TYPE="satnav"
+            print_error "ENV_TYPE must be satnav or habitat in TRAIN_EXPERIMENTS_FILE"
+            return 1
             ;;
     esac
-    print_success "环境类型: $ENV_TYPE"
-
-    # 4. 数据集配置
-    print_header "📁 Step 4: 数据集配置"
-
-    # 数据集映射（全局）
-    declare -A DATASET_MAPPING=([a]="R2R" [b]="RxR" [c]="EnvDrop" [d]="ScaleVLN")
-    declare -A DATASET_PATHS_MAP=(
-        [R2R]="/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/R2R"
-        [RxR]="/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/RxR_new"
-        [EnvDrop]="/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/EnvDrop"
-        [ScaleVLN]="/mnt/data3/jiangjiajun/dataset/streamvln_datasets/trajectory_data/ScaleVLN"
-    )
-
-    if [[ "$ENV_TYPE" == "habitat" ]]; then
-        echo "可用数据集:"
-        echo "  a) R2R"
-        echo "  b) RxR"
-        echo "  c) EnvDrop"
-        echo "  d) ScaleVLN"
-        echo ""
-        echo "示例: a,b 或 a,b,c"
-        echo "多组数据集用分号分隔: a,b;a,b,c (每组独立跑一轮实验)"
-        read -p "选择数据集 (逗号分隔) [a,b]: " datasets_input
-        datasets_input=${datasets_input:-a,b}
-
-        # 解析多组数据集配置（分号分隔）
-        DATASET_CONFIGS=()  # 存储所有数据集配置组
-        IFS=';' read -ra ds_groups <<< "$datasets_input"
-
-        for ds_group in "${ds_groups[@]}"; do
-            ds_group=$(echo "$ds_group" | xargs)  # trim
-
-            # 解析单组数据集
-            local group_paths=()
-            local group_names=()
-
-            IFS=',' read -ra ds_codes <<< "$ds_group"
-            for code in "${ds_codes[@]}"; do
-                code=$(echo "$code" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
-                local ds_name=""
-
-                # 检查是否是代号
-                if [[ -n "${DATASET_MAPPING[$code]}" ]]; then
-                    ds_name="${DATASET_MAPPING[$code]}"
-                elif [[ "$code" =~ ^(R2R|RxR|EnvDrop|ScaleVLN)$ ]]; then
-                    ds_name="$code"
-                elif [[ "$code" =~ ^(r2r|rxr|envdrop|scalevln)$ ]]; then
-                    case "$code" in
-                        r2r) ds_name="R2R" ;;
-                        rxr) ds_name="RxR" ;;
-                        envdrop) ds_name="EnvDrop" ;;
-                        scalevln) ds_name="ScaleVLN" ;;
-                    esac
-                fi
-
-                if [[ -n "$ds_name" && -n "${DATASET_PATHS_MAP[$ds_name]}" ]]; then
-                    group_paths+=("${DATASET_PATHS_MAP[$ds_name]}")
-                    group_names+=("$ds_name")
-                else
-                    print_warning "未知数据集: $code (已跳过)"
-                fi
-            done
-
-            if [[ ${#group_paths[@]} -gt 0 ]]; then
-                # 存储格式: "名称1,名称2|路径1,路径2"
-                local names_str=$(IFS=','; echo "${group_names[*]}")
-                local paths_str=$(IFS=','; echo "${group_paths[*]}")
-                DATASET_CONFIGS+=("${names_str}|${paths_str}")
-            fi
-        done
-
-        if [[ ${#DATASET_CONFIGS[@]} -eq 0 ]]; then
-            print_error "未选择任何有效数据集!"
-            exit 1
-        fi
-
-        # 显示数据集配置
-        if [[ ${#DATASET_CONFIGS[@]} -eq 1 ]]; then
-            IFS='|' read -r names paths <<< "${DATASET_CONFIGS[0]}"
-            print_success "数据集: $names"
-        else
-            print_success "数据集配置组: ${#DATASET_CONFIGS[@]} 组"
-            local group_idx=1
-            for ds_config in "${DATASET_CONFIGS[@]}"; do
-                IFS='|' read -r names paths <<< "$ds_config"
-                echo "  组 $group_idx: $names"
-                ((group_idx++))
-            done
-        fi
-    else
-        # SatNav 环境
-        local default_satnav_path="/mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/trajectory_data"
-        echo "默认 SatNav 数据路径:"
-        echo "  $default_satnav_path"
-        echo ""
-        read -p "使用默认路径? [Y/n]: " use_default_satnav
-        use_default_satnav=${use_default_satnav:-Y}
-
-        if [[ "$use_default_satnav" =~ ^[Yy]$ ]]; then
-            DATASET_CONFIGS=("SatNav|${default_satnav_path}")
-        else
-            read -p "请输入自定义 SatNav 数据路径: " custom_satnav_path
-            if [[ -z "$custom_satnav_path" ]]; then
-                print_warning "未输入路径，使用默认路径"
-                DATASET_CONFIGS=("SatNav|${default_satnav_path}")
-            else
-                DATASET_CONFIGS=("SatNav|${custom_satnav_path}")
-            fi
-        fi
-        IFS='|' read -r _ satnav_path <<< "${DATASET_CONFIGS[0]}"
-        print_success "数据集: SatNav ($satnav_path)"
+    if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
+        print_error "EXPERIMENTS must contain at least one entry"
+        return 1
     fi
 
-    # 配置实验参数
-    print_header "⚙️ Step 6: 配置各模型实验参数"
-
-        for model in "${SELECTED_MODELS[@]}"; do
-            model=$(echo "$model" | tr -d ' ')
-
-            echo ""
-            echo -e "${BOLD}${MAGENTA}━━━ $model 配置 ━━━${NC}"
-            echo ""
-            echo "默认配置:"
-            get_default_config "$model"
-            echo ""
-            echo "输入格式: 代号=值,代号=值  (如: g=16,h=true)"
-            echo "也支持完整参数名: BATCH_SIZE=16,FREEZE_VIT=true"
-            echo "多组实验用分号分隔: g=16;g=32,e=2"
-            echo "直接回车使用默认配置"
-            echo ""
-            read -p "[$model] 配置 (或按Enter使用默认): " config_input
-
-            # 收集该模型的所有参数配置
-            local model_configs=()
-            if [[ -z "$config_input" ]]; then
-                model_configs+=("default")
-            else
-                IFS=';' read -ra exp_configs <<< "$config_input"
-                for exp_config in "${exp_configs[@]}"; do
-                    exp_config=$(echo "$exp_config" | xargs)  # trim
-                    exp_config=$(expand_shortcodes "$model" "$exp_config")
-                    model_configs+=("$exp_config")
-                done
-            fi
-
-            # 组合模型配置与数据集配置
-            for model_cfg in "${model_configs[@]}"; do
-                changes=$(get_experiment_changes "$model_cfg")
-                for ds_config in "${DATASET_CONFIGS[@]}"; do
-                    IFS='|' read -r ds_names ds_paths <<< "$ds_config"
-                    EXPERIMENTS+=("${model}|${model_cfg}|${changes}|${ds_names}|${ds_paths}")
-                done
+    local experiment model config changes dataset_names dataset_paths extra item
+    local -a config_items=()
+    for experiment in "${EXPERIMENTS[@]}"; do
+        IFS='|' read -r model config changes dataset_names dataset_paths extra <<< "$experiment"
+        if [[ -n "$extra" || -z "$model" || -z "$config" || -z "$changes" || -z "$dataset_names" || -z "$dataset_paths" ]]; then
+            print_error "Invalid experiment entry (expected 5 non-empty fields): $experiment"
+            return 1
+        fi
+        if [[ "$model" != "swiftvln" ]]; then
+            print_error "Only swiftvln is supported, got: $model"
+            return 1
+        fi
+        if [[ "$config" != "default" ]]; then
+            IFS=',' read -ra config_items <<< "$config"
+            for item in "${config_items[@]}"; do
+                if [[ ! "$item" =~ ^[A-Z_][A-Z0-9_]*=.+$ ]]; then
+                    print_error "Invalid KEY=VALUE override: $item"
+                    return 1
+                fi
             done
-        done
-    # 8. 显示汇总
-    show_summary
+        fi
+    done
 
-    # 9. 确认执行
-    echo ""
-    read -p "是否开始训练? [Y/n]: " confirm
-    if [[ ! "$confirm" =~ ^[Yy]?$ ]]; then
-        print_warning "已取消训练"
-        exit 0
-    fi
+    USE_SWANLAB="${USE_SWANLAB:-false}"
+    SWANLAB_PROJECT="${SWANLAB_PROJECT:-SatNav}"
+    print_success "Validated ${#EXPERIMENTS[@]} experiments (env=$ENV_TYPE)"
 }
 
 # ============================================================================
@@ -887,11 +546,9 @@ run_experiment() {
         EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|SUCCESS|$duration_str|$exp_name")
         if [[ "$dry_run_completed" == "true" ]]; then
             print_success "实验 $exp_idx Dry Run 完成! 耗时: $duration_str"
-            _emit_train_event "EXPERIMENT_DRY_RUN_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${run_log_file}|$(date -Iseconds)"
         else
             print_success "实验 $exp_idx 完成! 耗时: $duration_str"
             enqueue_model_for_eval "$exp_name" || true
-            _emit_train_event "EXPERIMENT_SUCCESS|${exp_idx}|${total:-0}|${model}|${exp_name}|${output_path:-N/A}|$(date -Iseconds)"
         fi
 
         return 0
@@ -902,7 +559,6 @@ run_experiment() {
         EXP_RESULTS+=("$exp_idx|$model|$changes|$ds_names|FAILED|--|--")
         EXP_ERRORS+=("实验 $exp_idx ($model): $error_msg")
         print_error "实验 $exp_idx 失败!"
-        _emit_train_event "EXPERIMENT_FAILED|${exp_idx}|${total:-0}|${model}|unknown|${error_msg:0:200}|${run_log_file}|$(date -Iseconds)"
 
         return 1
     fi
@@ -974,7 +630,6 @@ show_final_results() {
         echo "════════════════════════════════════════════════════════════════════════════════════════════════════════════════════"
     } | tee "$RESULT_FILE"
 
-    _emit_train_event "QUEUE_DONE|${success_count}|${fail_count}|${#EXP_RESULTS[@]}|$(date -Iseconds)"
     _write_train_completion_status "$RESULT_FILE" "$success_count" "$fail_count"
 
     echo ""
@@ -1014,26 +669,40 @@ _write_train_completion_status() {
 EOF
 )
 
-    local queue_dir="${TRAIN_RUN_DIR:-${SWIFTVLN_ROOT}/runtime/train_queue}"
-    mkdir -p "$queue_dir"
-
-    # Per-host global file
     local host_file="${SWIFTVLN_ROOT}/runtime/train_queue/train_queue_last_run_${_hostname}.json"
     mkdir -p "$(dirname "$host_file")"
     echo "$json_body" > "$host_file"
     print_info "完成状态已写入: $host_file"
-
-    # Per-run file (if TRAIN_RUN_DIR set by watchdog)
-    if [[ -n "${TRAIN_RUN_DIR:-}" && -d "${TRAIN_RUN_DIR}" ]]; then
-        echo "$json_body" > "${TRAIN_RUN_DIR}/train_queue_status.json"
-        print_info "Per-run 状态已写入: ${TRAIN_RUN_DIR}/train_queue_status.json"
-    fi
 }
 
 # ============================================================================
 # 主函数
 # ============================================================================
 main() {
+    local validate_only="${TRAIN_QUEUE_VALIDATE_ONLY:-false}"
+    case "${1:-}" in
+        --help|-h)
+            show_usage
+            return 0
+            ;;
+        --check-config)
+            validate_only=true
+            ;;
+        "") ;;
+        *)
+            print_error "Unknown argument: $1"
+            show_usage
+            return 2
+            ;;
+    esac
+
+    load_experiment_config || return 1
+    show_summary
+    if [[ "$validate_only" == "true" ]]; then
+        print_success "Configuration check passed; no training was launched."
+        return 0
+    fi
+
     echo ""
     echo -e "${BOLD}${CYAN}"
     echo "  ╦  ╦╦  ╔╗╔  ╔╦╗┬─┐┌─┐┬┌┐┌  ╔═╗ ┬ ┬┌─┐┬ ┬┌─┐"
@@ -1041,9 +710,6 @@ main() {
     echo "   ╚╝ ╩═╝╝╚╝   ╩ ┴└─┴ ┴┴┘└┘  ╚═╝╚└─┘└─┘└─┘└─┘"
     echo -e "${NC}"
     echo ""
-
-    # 交互式配置
-    interactive_setup
 
     # 开始训练
     print_header "🏃 开始串行训练 ($ENV_TYPE)"

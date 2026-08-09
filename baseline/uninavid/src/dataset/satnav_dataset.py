@@ -23,7 +23,9 @@ import torch
 from torch.utils.data import Dataset
 from PIL import Image
 
-_UNINAVID_ROOT = "/mnt/data1/home/jiangjiajun/workspace/Uni-NaVid"
+_UNINAVID_ROOT = os.path.abspath(
+    os.path.expanduser(os.environ.get("UNINAVID_REPO", "../Uni-NaVid"))
+)
 if _UNINAVID_ROOT not in sys.path:
     sys.path.insert(0, _UNINAVID_ROOT)
 

@@ -10,7 +10,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -25,7 +25,7 @@ _SRC_ROOT = os.path.dirname(os.path.dirname(_CURRENT_DIR))
 if _SRC_ROOT not in sys.path:
     sys.path.insert(0, _SRC_ROOT)
 
-from swiftvln.common.utils.distributed_utils import init_distributed
+from swiftvln.common.utils.distributed_utils import init_distributed  # noqa: E402
 
 if __package__ in {None, ""}:
     from swiftvln.s2r.arguments import TrainConfig, parse_train_args

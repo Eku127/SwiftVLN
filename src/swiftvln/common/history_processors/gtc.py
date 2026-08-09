@@ -13,6 +13,27 @@ from typing import List, Tuple, Literal
 from .base import HistoryProcessor
 
 
+def soft_kmeans_step(
+    tokens: torch.Tensor,
+    centroids: torch.Tensor,
+    temperature: float,
+) -> torch.Tensor:
+    """Update centroids with one cosine-similarity soft k-means step."""
+    dtype = tokens.dtype
+    tokens_norm = F.normalize(tokens.float(), dim=-1)
+    centroids_norm = F.normalize(centroids.float(), dim=-1)
+    similarities = torch.mm(tokens_norm, centroids_norm.T)
+    assignments = F.softmax(similarities / temperature, dim=-1)
+
+    numerator = torch.mm(assignments.T.to(dtype), tokens)
+    denominator = (
+        assignments.sum(dim=0, keepdim=True)
+        .T.to(dtype)
+        .clamp(min=1e-6)
+    )
+    return numerator / denominator
+
+
 class GlobalTokenClustering(HistoryProcessor):
     """
     Global Token Clustering (GTC) processor.
@@ -93,7 +114,7 @@ class GlobalTokenClustering(HistoryProcessor):
         
         # Soft K-Means iteration(s)
         for _ in range(self.num_iterations):
-            C = self._soft_kmeans_step(X, C)
+            C = soft_kmeans_step(X, C, self.temperature)
         
         return C
     
@@ -123,21 +144,3 @@ class GlobalTokenClustering(HistoryProcessor):
         
         else:
             raise ValueError(f"Unknown init_method: {self.init_method}")
-    
-    def _soft_kmeans_step(self, X: torch.Tensor, C: torch.Tensor) -> torch.Tensor:
-        """One step of Soft K-Means."""
-        dtype = X.dtype
-        
-        # Cosine similarity
-        X_norm = F.normalize(X.float(), dim=-1)
-        C_norm = F.normalize(C.float(), dim=-1)
-        S = torch.mm(X_norm, C_norm.T)  # [M, K]
-        
-        # Soft assignment
-        A = F.softmax(S / self.temperature, dim=-1)  # [M, K]
-        
-        # Weighted aggregation
-        numerator = torch.mm(A.T.to(dtype), X)  # [K, d]
-        denominator = A.sum(dim=0, keepdim=True).T.to(dtype).clamp(min=1e-6)  # [K, 1]
-        
-        return numerator / denominator

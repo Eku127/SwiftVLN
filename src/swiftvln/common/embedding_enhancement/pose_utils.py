@@ -17,7 +17,6 @@ def reconstruct_pose_from_actions(
     actions: Iterable[Union[int, str]],
     step_size: float = 10.0,
     turn_angle: float = 15.0,
-    norm_scale: float = 100.0,
 ) -> np.ndarray:
     """
     Reconstruct per-step pose sequence from action sequence.
@@ -25,13 +24,8 @@ def reconstruct_pose_from_actions(
     Output pose format:
         [delta_forward, delta_right, sin(delta_heading), cos(delta_heading)]
 
-    Notes:
-    - This function follows action integration logic from SatNav tests.
-    - `norm_scale` is accepted for API consistency; normalization is handled
-      by PoseEmbedding at runtime.
+    This function follows action integration logic from SatNav tests.
     """
-    _ = norm_scale  # Reserved for compatibility with earlier planning APIs.
-
     delta_forward = 0.0
     delta_right = 0.0
     delta_heading = 0.0

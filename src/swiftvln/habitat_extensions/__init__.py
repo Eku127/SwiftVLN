@@ -1,16 +1,5 @@
-"""
-Habitat Extensions for VLN Evaluation
+"""SwiftVLN's custom Habitat evaluation measures."""
 
-This module contains custom measures and map utilities for VLN evaluation
-in Habitat environment. These components are shared across different VLN
-models (e.g., StreamVLN, NavID).
+from . import measures as measures
 
-Modules:
-    - measures: Custom evaluation measures (OracleSuccess, OracleNavigationError, etc.)
-    - maps: Map visualization utilities for top-down maps
-"""
-
-from . import measures
-from . import maps
-
-
+__all__ = ["measures"]

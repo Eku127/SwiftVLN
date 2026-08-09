@@ -41,14 +41,17 @@ set -euo pipefail
 
 SWIFTVLN_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 BASELINE_DIR="${SWIFTVLN_ROOT}/baseline/navila"
+# shellcheck source=../../../src/swiftvln/scripts/lib/local_env.sh
+source "${SWIFTVLN_ROOT}/src/swiftvln/scripts/lib/local_env.sh"
+swiftvln_load_local_env "${BASELINE_DIR}"
 
 SCRATCH_MODEL="${SCRATCH_MODEL:-${BASELINE_DIR}/model/navila-siglip-llama3-8b-v1.5-pretrain}"
 CONTINUE_MODEL="${CONTINUE_MODEL:-${BASELINE_DIR}/model/navila-llama3-8b-8f}"
 DS_CONFIG="${DS_CONFIG:-${BASELINE_DIR}/configs/zero2.json}"
 
-SATNAV_DATA_ROOT="/mnt/data3/jiangjiajun/dataset/satnav_datasets"
-SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-SatNav-v0.1}}"
-SATNAV_TRAIN_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}"
+SATNAV_DATA_ROOT="${SWIFTVLN_SATNAV_DATA_ROOT:-data/satnav}"
+SATNAV_DATASET="${SATNAV_DATASET:-${SATNAV_VERSION:-${SWIFTVLN_SATNAV_DATASET:-SatNav-v0.1}}}"
+SATNAV_TRAIN_DATA_DIR="${SATNAV_TRAIN_DATA_DIR:-${SWIFTVLN_SATNAV_TRAIN_DATA_PATH:-${SATNAV_DATA_ROOT}/${SATNAV_DATASET}/trajectory_data}}"
 DATA_PATH="${DATA_PATH:-${SATNAV_TRAIN_DATA_DIR}/annotations.json}"
 IMAGE_FOLDER="${IMAGE_FOLDER:-${SATNAV_TRAIN_DATA_DIR}}"
 
@@ -254,10 +257,9 @@ if [[ ! -f "${DATA_PATH}" ]]; then
 fi
 
 # Ensure python is available for sample counting and launcher scripts.
-source /mnt/data1/home/jiangjiajun/miniconda3/etc/profile.d/conda.sh
-conda activate navila-baseline
+swiftvln_activate_conda navila-baseline
 
-PYTHON_BIN="$(command -v python3 || command -v python || true)"
+PYTHON_BIN="${NAVILA_PYTHON:-$(command -v python3 || command -v python || true)}"
 if [[ -z "${PYTHON_BIN}" ]]; then
     echo "python interpreter not found after activating navila-baseline" >&2
     exit 2

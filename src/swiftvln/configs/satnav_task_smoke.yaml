@@ -73,8 +73,8 @@ DATASET:
   SPLIT: val_seen
   
   # {split} is replaced with --eval_split at runtime. Fails clearly if the path does not exist.
-  DATA_PATH: /mnt/data3/jiangjiajun/dataset/satnav_datasets/SatNav-v0.1/episodes/eval/{split}/all_episodes.json
+  DATA_PATH: data/satnav/SatNav-v0.1/episodes/eval/{split}/all_episodes.json
 
   # Directory containing scene datasets (satellite maps)
   # For example testing, use: tests/test_data/
-  SCENES_DIR: /mnt/data3/jiangjiajun/dataset/satnav_datasets/scenes
+  SCENES_DIR: data/satnav/scenes

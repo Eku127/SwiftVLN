@@ -6,7 +6,7 @@ import json
 import os
 import sys
 from collections import defaultdict
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, List, Optional
 
 import torch
 import torch.nn.functional as F

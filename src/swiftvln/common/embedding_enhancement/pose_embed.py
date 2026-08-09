@@ -52,7 +52,7 @@ class PoseEmbedding(BaseEmbeddingEnhancement):
         )
         self._zero_init_last_layer()
 
-        print(f"[PoseEmbedding] Initialized with:")
+        print("[PoseEmbedding] Initialized with:")
         print(f"  embed_dim={embed_dim}, pose_dim={pose_dim}")
         print(f"  hidden_dim={hidden_dim}, beta={beta}")
         print(f"  fusion={fusion}, norm_scale={norm_scale}")

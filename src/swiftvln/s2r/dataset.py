@@ -7,7 +7,7 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from PIL import Image
 from torch.utils.data import Dataset
@@ -116,6 +116,7 @@ def _gta_record(dataset_dir: Path, row: Dict[str, str]) -> PairRecord:
             "source_area_modes": row.get("_source_area_modes", []),
             "source_pair_ids": row.get("_source_pair_ids", []),
             "source_row_splits": row.get("_source_row_splits", []),
+            "source_meta_files": row.get("_source_meta_files", []),
             "satellite_img_name": row.get("satellite_img_name", ""),
             "cam_yaw": _safe_float(row.get("cam_yaw")),
             "iou": _safe_float(row.get("iou")),
@@ -207,6 +208,33 @@ def _gta_pair_identity(row: Dict[str, str]) -> tuple[str, str]:
     return str(drone_identity), str(satellite_identity)
 
 
+def _gta_provenance_values(row: Dict[str, Any], *keys: str) -> List[str]:
+    """Read legacy, compact pipe-delimited, or in-memory GTA provenance."""
+    values = set()
+    for key in keys:
+        raw = row.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, (list, tuple, set)):
+            items = raw
+        else:
+            text = str(raw).strip()
+            if not text:
+                continue
+            items = text.split("|")
+        values.update(str(item).strip() for item in items if str(item).strip())
+    return sorted(values)
+
+
+def _gta_provenance_or_fallback(
+    row: Dict[str, Any],
+    provenance_keys: Sequence[str],
+    fallback_key: str,
+) -> List[str]:
+    values = _gta_provenance_values(row, *provenance_keys)
+    return values or _gta_provenance_values(row, fallback_key)
+
+
 def deduplicate_gta_rows(rows: Sequence[Dict[str, str]]) -> List[Dict[str, Any]]:
     """Collapse duplicated same-area/cross-area exports into physical pairs.
 
@@ -234,19 +262,32 @@ def deduplicate_gta_rows(rows: Sequence[Dict[str, str]]) -> List[Dict[str, Any]]
         if canonical_sample_id and canonical_sample_id != "unknown":
             canonical["sample_id"] = canonical_sample_id
         canonical["_source_area_modes"] = sorted({
-            str(item.get("area_mode", "")).strip()
+            value
             for item in duplicates
-            if str(item.get("area_mode", "")).strip()
+            for value in _gta_provenance_or_fallback(
+                item, ("_source_area_modes", "source_area_modes"), "area_mode"
+            )
         })
         canonical["_source_pair_ids"] = sorted({
-            str(item.get("sample_id", "")).strip()
+            value
             for item in duplicates
-            if str(item.get("sample_id", "")).strip()
+            for value in _gta_provenance_or_fallback(
+                item, ("_source_pair_ids", "source_pair_ids"), "sample_id"
+            )
         })
         canonical["_source_row_splits"] = sorted({
-            str(item.get("split", "")).strip()
+            value
             for item in duplicates
-            if str(item.get("split", "")).strip()
+            for value in _gta_provenance_or_fallback(
+                item, ("_source_row_splits", "source_row_splits"), "split"
+            )
+        })
+        canonical["_source_meta_files"] = sorted({
+            value
+            for item in duplicates
+            for value in _gta_provenance_or_fallback(
+                item, ("_source_meta_files", "source_meta_files"), "source_meta_file"
+            )
         })
         canonical_rows.append(canonical)
     return canonical_rows

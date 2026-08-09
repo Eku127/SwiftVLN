@@ -3,11 +3,14 @@
 数据处理配置文件
 """
 
+import os
 from pathlib import Path
 from typing import List, Tuple
 
 # 数据集根目录
-DATASET_ROOT = Path("/mnt/data3/jiangjiajun/dataset/satnav_datasets")
+DATASET_ROOT = Path(
+    os.environ.get("SWIFTVLN_SATNAV_DATA_ROOT", "data/satnav")
+).expanduser()
 
 # 城市分类配置（0327 默认划分）
 # eval: LosAngeles-1, Rome-1, NewYork-1, Auckland-1, Orlando-1, Rotterdam-1

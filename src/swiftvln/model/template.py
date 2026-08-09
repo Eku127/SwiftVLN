@@ -79,8 +79,6 @@ class SwiftVLNTemplateMixin:
     # History processor
     history_processor: Optional[HistoryProcessor] = None
     
-    use_uav_adapter: bool = False
-    
     def __init__(
         self, 
         *args, 
@@ -535,7 +533,7 @@ class SwiftVLNTemplateMixin:
             all_image_embeds = visual_res
         
         # --- Embedding Enhancement Pipeline ---
-        # Apply embedding enhancements to ALL images
+        # Apply the selected embedding enhancement to ALL images
         # This must happen BEFORE history compression so both history and current
         # images benefit from the learned enhancements
         if hasattr(model, 'embed_enhance') and not model.embed_enhance.is_empty:
@@ -552,7 +550,7 @@ class SwiftVLNTemplateMixin:
                 img_embed = all_image_embeds[offset:offset + n_tokens]
                 pose_i = flat_frame_poses[i] if i < len(flat_frame_poses) else None
                 
-                # Apply all enhancements via pipeline
+                # Apply the selected enhancement via the checkpoint-compatible container
                 img_embed = model.embed_enhance(img_embed, h_m, w_m, pose=pose_i)
                 
                 enhanced.append(img_embed)
@@ -676,7 +674,7 @@ class SwiftVLNTemplateMixin:
             mask_true_count = (input_ids == self.history_memory_token_id).sum().item()
             embeds_count = history_embeds.shape[0]
             if mask_true_count != embeds_count:
-                print(f"[SwiftVLN] CRITICAL: History token count mismatch before masked_scatter!")
+                print("[SwiftVLN] CRITICAL: History token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
                 # Try to fix by padding or truncating
                 if embeds_count < mask_true_count:
@@ -700,7 +698,7 @@ class SwiftVLNTemplateMixin:
             mask_true_count = (input_ids == self.current_image_token_id).sum().item()
             embeds_count = current_embeds.shape[0]
             if mask_true_count != embeds_count:
-                print(f"[SwiftVLN] CRITICAL: Current token count mismatch before masked_scatter!")
+                print("[SwiftVLN] CRITICAL: Current token count mismatch before masked_scatter!")
                 print(f"  mask_true_count={mask_true_count}, embeds_count={embeds_count}")
             
             inputs_embeds = inputs_embeds.masked_scatter(current_mask, current_embeds)

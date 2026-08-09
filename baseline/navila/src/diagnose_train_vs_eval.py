@@ -13,7 +13,9 @@ import numpy as np
 from collections import Counter
 from PIL import Image
 
-_NAVILA_ROOT = "/mnt/data1/home/jiangjiajun/workspace/NaVILA"
+_NAVILA_ROOT = os.path.abspath(
+    os.path.expanduser(os.environ.get("NAVILA_REPO", "../NaVILA"))
+)
 if _NAVILA_ROOT not in sys.path:
     sys.path.insert(0, _NAVILA_ROOT)
 
@@ -56,12 +58,16 @@ def sample_and_pad_images(images, num_frames=8):
 
 
 def main():
+    train_data_dir = os.environ.get(
+        "SWIFTVLN_SATNAV_TRAIN_DATA_PATH",
+        "data/satnav/SatNav-v0.1/trajectory_data",
+    )
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, required=True)
-    parser.add_argument("--data_path", type=str,
-                        default="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data/annotations.json")
-    parser.add_argument("--image_folder", type=str,
-                        default="/mnt/data3/jiangjiajun/dataset/satnav_datasets/ver_260418/trajectory_data")
+    parser.add_argument(
+        "--data_path", type=str, default=os.path.join(train_data_dir, "annotations.json")
+    )
+    parser.add_argument("--image_folder", type=str, default=train_data_dir)
     parser.add_argument("--num_samples", type=int, default=20)
     parser.add_argument("--eval_dtype", type=str, default="auto")
     parser.add_argument(
