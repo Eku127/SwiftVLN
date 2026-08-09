@@ -244,7 +244,11 @@ configure_queue() {
 
     local model
     for model in "${MODELS[@]}"; do
-        if ! python -m swiftvln.experiment parse-name "$model" >/dev/null; then
+        local python_executable="${PYTHON_EXECUTABLE:-python}"
+        if ! command -v "$python_executable" >/dev/null 2>&1; then
+            python_executable=python3
+        fi
+        if ! "$python_executable" -m swiftvln.experiment parse-name "$model" >/dev/null; then
             print_error "Invalid SwiftVLN model name in $TODO_FILE: $model"
             return 1
         fi

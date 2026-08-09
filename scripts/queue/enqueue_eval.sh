@@ -19,6 +19,15 @@ print_info() { echo "[INFO] $1"; }
 print_ok() { echo "[OK] $1"; }
 print_err() { echo "[ERROR] $1" >&2; }
 
+PYTHON_EXECUTABLE="${PYTHON_EXECUTABLE:-python}"
+if ! command -v "$PYTHON_EXECUTABLE" >/dev/null 2>&1; then
+    PYTHON_EXECUTABLE=python3
+fi
+if ! command -v "$PYTHON_EXECUTABLE" >/dev/null 2>&1; then
+    print_err "Python is unavailable (tried python and python3)."
+    exit 1
+fi
+
 if [[ -z "$MODEL_NAME" ]]; then
     print_err "Usage: bash $0 <model_name> [--skip-checkpoint]"
     exit 1
@@ -61,7 +70,7 @@ find_latest_checkpoint() {
     echo "$latest"
 }
 
-if ! python -m swiftvln.experiment parse-name "$MODEL_NAME" >/dev/null; then
+if ! "$PYTHON_EXECUTABLE" -m swiftvln.experiment parse-name "$MODEL_NAME" >/dev/null; then
     print_err "Invalid SwiftVLN model name: $MODEL_NAME"
     exit 2
 fi

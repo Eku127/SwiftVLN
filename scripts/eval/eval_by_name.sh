@@ -64,6 +64,16 @@ VLN_ROOT="${SWIFTVLN_ROOT}/src/swiftvln"
 OUTPUT_ROOT="${SWIFTVLN_ROOT}/output"
 source "${SCRIPT_DIR}/eval_lib.sh"
 
+PYTHON_EXECUTABLE="${PYTHON_EXECUTABLE:-python}"
+if ! command -v "$PYTHON_EXECUTABLE" >/dev/null 2>&1; then
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_EXECUTABLE=python3
+    else
+        print_error "找不到可用的 Python（尝试了 python 和 python3）"
+        exit 1
+    fi
+fi
+
 # ============================================================================
 # 参数检查
 # ============================================================================
@@ -91,7 +101,7 @@ fi
 
 # Parse and validate the name in the lightweight Python source of truth.
 if ! PARSED_ASSIGNMENTS=$(
-    python -m swiftvln.experiment parse-name "$MODEL_NAME" --format shell
+    "$PYTHON_EXECUTABLE" -m swiftvln.experiment parse-name "$MODEL_NAME" --format shell
 ); then
     print_error "无法解析 SwiftVLN 模型名称: $MODEL_NAME"
     exit 1
