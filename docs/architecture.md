@@ -89,6 +89,10 @@ stride = NUM_FRAMES - NUM_OVERLAP
 per-frame + pooling，并要求 `EMBEDDING_MODE=none`。默认 map cache 从数据根推导为
 `{dataset_root}/map_cache`，也可通过 `SWIFTVLN_MAP_CACHE_DIR` 覆盖或关闭。
 
+地图记忆的公共入口仍为 `modeling/memory/satnav_map.py`；内部按职责分为
+`metadata.py`（episode 元数据）、`geometry.py`（坐标与 footprint）、`render.py`
+（mask 与 global/local 合成）和 `cache.py`（content-addressed cache）。
+
 ## Embedding enhancement：严格四选一
 
 `EMBEDDING_MODE` 是训练、评测、模型名、loader 与运行时的唯一开关：
@@ -143,9 +147,11 @@ Pose MLP 的最后一层零初始化，因此训练开始时与 `none` 的视觉
 
 ## 推理与评测
 
-`SwiftVLNInferenceSession` 管理当前窗口、历史特征、overlap context、map memory、
-pose history、动作 history 和视觉编码缓存。`EnvironmentEpisodeLoop` 只负责
-reset/predict/step 状态机，以及按需收集可视化帧；环境差异由 wrapper 隔离。
+`SwiftVLNInferenceSession` 是保持稳定调用面的推理编排 facade；具体职责位于
+`evaluation/inference/prompt.py`、`encoding.py` 和 `window.py`。它们分别负责 prompt
+与 embedding 组装、当前/历史视觉编码，以及窗口/overlap/pose 状态。
+`EnvironmentEpisodeLoop` 只负责 reset/predict/step 状态机，以及按需收集可视化帧；
+环境差异由 wrapper 隔离。
 
 `SwiftVLNEvaluationRunner` 负责：
 
