@@ -1,4 +1,4 @@
-# Habitat 训练数据
+# Habitat 训练数据准备
 
 本文的数据生产方法参考
 [StreamVLN](https://github.com/InternRobotics/StreamVLN)：在 Matterport3D（MP3D）场景中

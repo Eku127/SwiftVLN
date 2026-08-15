@@ -1,4 +1,4 @@
-# SatNav 训练数据
+# SatNav 训练数据准备
 
 SwiftVLN 使用 SatNav 生成的离线 expert trajectory 进行训练。数据准备流程为：
 
