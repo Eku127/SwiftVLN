@@ -10,8 +10,10 @@
 
 1. [安装](getting-started/INSTALLATION.md)：分别准备训练环境与评测环境；
 2. [快速开始](getting-started/QUICKSTART.md)：完成配置检查、最小训练和单 Episode 评测；
-3. [SatNav 训练数据](data/TRAINING_DATA_SATNAV.md)：准备 Episode、GeoTIFF 和离线轨迹；
-4. [Habitat 训练数据](data/TRAINING_DATA_HABITAT.md)：准备 R2R、RxR 和 EnvDrop 轨迹。
+3. [模型与 Checkpoint](getting-started/CHECKPOINTS.md)：下载 Qwen 基础模型和 SwiftVLN checkpoint；
+4. [SatNav 训练数据](data/TRAINING_DATA_SATNAV.md)：准备 Episode、GeoTIFF 和离线轨迹；
+5. [Habitat 训练数据](data/TRAINING_DATA_HABITAT.md)：准备 R2R、RxR 和 EnvDrop 轨迹；
+6. [评测数据准备](data/EVALUATION_DATA.md)：准备 SatNav 与 Habitat 在线评测数据。
 
 ## 2. 理解 SwiftVLN
 
@@ -22,7 +24,9 @@
 
 ## 3. 训练
 
-- [SwiftVLN 训练](training/README.md)：主线模型的 dry run、smoke、完整训练和恢复；
+- [模型与 Checkpoint](getting-started/CHECKPOINTS.md)：准备基础模型或已训练的 SatNav 模型；
+- [SwiftVLN 训练](training/README.md)：主线模型的训练配置、完整训练和恢复；
+- [Memory 训练配置](training/MEMORY.md)：配置历史帧采样、输入增强与长期 Memory 压缩；
 - [S2R Stage-A](training/S2R_STAGE_A.md)：SatDronePair 数据、adapter 训练、retrieval 评测和
   Stage-B 接入；
 - [SatNav 训练数据](data/TRAINING_DATA_SATNAV.md)：生成并校验 SatNav 离线轨迹；
@@ -30,6 +34,8 @@
 
 ## 4. 评测
 
+- [模型与 Checkpoint](getting-started/CHECKPOINTS.md)：下载 SatNav 默认模型与 ablation checkpoint；
+- [评测数据准备](data/EVALUATION_DATA.md)：准备 SatNav Episode、GeoTIFF、R2R 和 MP3D；
 - [SwiftVLN 评测](evaluation/README.md)：SatNav/Habitat、单卡/多卡、resume、视频和指标；
 - [输出格式](reference/OUTPUTS.md)：训练 checkpoint、逐 Episode JSONL、汇总文件与恢复语义；
 - [实验命名](reference/EXPERIMENT_NAMING.md)：从模型名恢复训练配置。
@@ -51,9 +57,12 @@
 | --- | --- |
 | 从源码安装 | [安装](getting-started/INSTALLATION.md) |
 | 跑通最小链路 | [快速开始](getting-started/QUICKSTART.md) |
+| 下载基础模型或 checkpoint | [模型与 Checkpoint](getting-started/CHECKPOINTS.md) |
 | 准备 SatNav 训练轨迹 | [SatNav 训练数据](data/TRAINING_DATA_SATNAV.md) |
 | 准备 Habitat 训练轨迹 | [Habitat 训练数据](data/TRAINING_DATA_HABITAT.md) |
+| 准备 SatNav/Habitat 评测数据 | [评测数据准备](data/EVALUATION_DATA.md) |
 | 训练 SwiftVLN | [SwiftVLN 训练](training/README.md) |
+| 配置 Memory 实验 | [Memory 训练配置](training/MEMORY.md) |
 | 训练 S2R adapter | [S2R Stage-A](training/S2R_STAGE_A.md) |
 | 评测 checkpoint | [SwiftVLN 评测](evaluation/README.md) |
 | 查询参数约束 | [配置参考](reference/CONFIGURATION.md) |

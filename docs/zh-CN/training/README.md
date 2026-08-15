@@ -1,7 +1,7 @@
 # SwiftVLN 训练
 
-SwiftVLN 使用离线 expert trajectory 进行监督微调。SatNav 与 Habitat 共用训练入口；
-每次训练通过 `VLN_ENV_TYPE` 选择一种环境。
+SwiftVLN 使用离线 expert trajectory 进行监督微调。SatNav 与 Habitat 共用训练入口，
+通过 `VLN_ENV_TYPE` 选择训练环境。
 
 ```text
 trajectory annotations + RGB frames
@@ -10,7 +10,7 @@ trajectory annotations + RGB frames
           SwiftVLNDataset
                   │
                   ▼
-       trajectory window + history
+       trajectory window + memory
                   │
                   ▼
           ms-swift full SFT
@@ -23,6 +23,7 @@ trajectory annotations + RGB frames
 
 按照[安装](../getting-started/INSTALLATION.md)创建 `swiftvln-train` 环境，并完成所需数据准备：
 
+- [模型与 Checkpoint](../getting-started/CHECKPOINTS.md)
 - [SatNav 训练数据](../data/TRAINING_DATA_SATNAV.md)
 - [Habitat 训练数据](../data/TRAINING_DATA_HABITAT.md)
 
@@ -51,42 +52,7 @@ export MODEL_PATH="${SWIFTVLN_QWEN3_MODEL_PATH}"
 export USE_LIGER_KERNEL=false
 ```
 
-## 2. 选择训练任务
-
-一次训练只运行以下一种配置。
-
-### 2.1 SatNav
-
-```bash
-export VLN_ENV_TYPE=satnav
-export VLN_DATA_PATH="${SWIFTVLN_SATNAV_TRAIN_DATA_PATH}"
-
-test -f "${VLN_DATA_PATH}/annotations.json"
-```
-
-SatNav 的 `history` 训练读取 `annotations.json` 和 `images/`。`map` 训练还会读取 train
-Episode、GeoTIFF 场景与 `summary.json`。
-
-### 2.2 Habitat
-
-完整 Habitat 训练组合 R2R、RxR 和 EnvDrop：
-
-```bash
-export VLN_ENV_TYPE=habitat
-export VLN_DATA_PATH="${SWIFTVLN_HABITAT_R2R_TRAIN_PATH},${SWIFTVLN_HABITAT_RXR_TRAIN_PATH},${SWIFTVLN_HABITAT_ENVDROP_TRAIN_PATH}"
-
-test -f "${SWIFTVLN_HABITAT_R2R_TRAIN_PATH}/annotations.json"
-test -f "${SWIFTVLN_HABITAT_RXR_TRAIN_PATH}/annotations.json"
-test -f "${SWIFTVLN_HABITAT_ENVDROP_TRAIN_PATH}/annotations.json"
-```
-
-仅使用部分数据集时，按逗号连接对应的 trajectory 目录：
-
-```bash
-export VLN_DATA_PATH="${SWIFTVLN_HABITAT_R2R_TRAIN_PATH},${SWIFTVLN_HABITAT_RXR_TRAIN_PATH}"
-```
-
-## 3. 默认训练配置
+## 2. 默认训练配置
 
 训练入口为：
 
@@ -94,26 +60,52 @@ export VLN_DATA_PATH="${SWIFTVLN_HABITAT_R2R_TRAIN_PATH},${SWIFTVLN_HABITAT_RXR_
 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
-主线配置如下：
+主线训练参数如下：
 
-| 参数 | 默认值 |
-| --- | --- |
-| 模型 | Qwen2.5-VL 3B |
-| 训练方式 | Full SFT |
-| Epoch | `1` |
-| 轨迹窗口 | `NUM_FRAMES=32` |
-| 每轮预测动作数 | `NUM_FUTURE_STEPS=4` |
-| 相邻窗口重叠 | `NUM_OVERLAP=0` |
-| Memory | `MEMORY_METHOD=history` |
-| History processor | `HISTORY_PROCESSOR_TYPE=per_frame` |
-| 历史帧数 | `NUM_HISTORY=8` |
-| 历史帧压缩 | `COMPRESS_STRIDE=2`，average pooling |
-| 每卡 batch size | `BATCH_SIZE=8` |
-| 梯度累积 | `GRAD_ACCUM_STEPS=1` |
-| Learning rate | `2e-5` |
-| Precision | `bfloat16` |
-| Attention | FlashAttention 2 |
-| 分布式优化 | DeepSpeed ZeRO-2 |
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `MODEL_FAMILY` | `qwen2_5_vl` | 基础模型系列 |
+| `TRAIN_TYPE` | `full` | 使用 Full SFT 更新模型参数 |
+| `NUM_EPOCHS` | `1` | 完整训练轮数 |
+| `NUM_FRAMES` | `32` | 每个训练样本包含的动作帧数 |
+| `NUM_FUTURE_STEPS` | `4` | 每轮根据当前观测预测的动作数 |
+| `NUM_OVERLAP` | `0` | 相邻训练窗口重叠的动作数 |
+| `BATCH_SIZE` | `8` | 每张 GPU 的 batch size |
+| `GRAD_ACCUM_STEPS` | `1` | 梯度累积步数 |
+| `LEARNING_RATE` | `2e-5` | 初始 learning rate |
+| `MAX_LENGTH` | `32768` | 单个训练样本的最大 token 长度 |
+| Precision | `bfloat16` | 训练精度 |
+| `ATTN_IMPL` | `flash_attn` | Attention 实现 |
+| `DEEPSPEED_CONFIG` | `zero2` | DeepSpeed 分布式优化配置 |
+
+### 2.1 轨迹窗口
+
+长轨迹按照 `NUM_FRAMES` 切分为训练窗口。相邻窗口的 stride 为：
+
+```text
+window stride = NUM_FRAMES - NUM_OVERLAP
+```
+
+`NUM_OVERLAP` 的单位是动作数。非首个窗口中的重叠动作只提供上下文，对应 assistant
+turn 的 loss 会被 mask：
+
+```text
+masked turns = NUM_OVERLAP / NUM_FUTURE_STEPS
+```
+
+在默认 `NUM_FRAMES=32`、`NUM_FUTURE_STEPS=4` 下：
+
+| `NUM_OVERLAP` | Window stride | Masked turns |
+| ---: | ---: | ---: |
+| `0` | `32` | `0` |
+| `4` | `28` | `1` |
+| `8` | `24` | `2` |
+| `16` | `16` | `4` |
+
+`NUM_OVERLAP` 必须小于 `NUM_FRAMES`，并且能够被 `NUM_FUTURE_STEPS` 整除。模型名中的
+`overlap<N>` 记录重叠动作数。
+
+### 2.2 GPU 与有效 batch size
 
 有效 batch size 为：
 
@@ -133,262 +125,125 @@ TRAIN_NUM_GPUS=8 bash scripts/train/train_swiftvln_qwen_vl.sh
 TRAIN_CUDA_DEVICES=0,2,4,6 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
-## 4. Dry run
+## 3. Memory 训练配置
 
-Dry run 解析 GPU、模型、数据路径、训练参数和实验名称，不加载模型或启动 `torchrun`：
+默认 SatNav 训练使用 per-frame history。SwiftVLN 还支持随机或时间偏置历史帧采样、
+Map memory、GTC、Segment-GTC、初始观测、相对位姿与 S2R Stage-A adapter 等配置。
+
+各项超参数与训练命令见 [Memory 训练配置](MEMORY.md)。Habitat 的 Memory 配置
+尚未经过测试。
+
+## 4. SatNav 训练
+
+### 4.1 配置训练数据
 
 ```bash
-TRAIN_NUM_GPUS=1 \
-TRAIN_DRY_RUN=true \
-USE_SWANLAB=false \
-bash scripts/train/train_swiftvln_qwen_vl.sh
+export VLN_ENV_TYPE=satnav
+export VLN_DATA_PATH="${SWIFTVLN_SATNAV_TRAIN_DATA_PATH}"
+
+test -f "${VLN_DATA_PATH}/annotations.json"
 ```
 
-输出中应包含当前选择的环境和数据：
+SatNav 的 `history` 训练读取 `annotations.json` 和 `images/`。`map` 训练还会读取 train
+Episode、GeoTIFF 场景与 `summary.json`。
+
+### 4.2 启动完整训练
+
+使用 8 张 GPU 启动训练：
+
+```bash
+TRAIN_NUM_GPUS=8 bash scripts/train/train_swiftvln_qwen_vl.sh
+```
+
+### 4.3 输出模型名称
+
+上述配置生成的模型名称为：
 
 ```text
-SwiftVLN Training
-Model Family: qwen2_5_vl
-Environment: satnav|habitat
-Data: <trajectory path>
-Memory Method: history
-[INFO] TRAIN_DRY_RUN=true, skip torchrun launch after config validation.
+swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-<HHMMSS>
 ```
 
-## 5. Smoke 训练
-
-使用 16 个训练 sample 运行 2 个 optimizer step：
-
-```bash
-export SMOKE_OUTPUT="output/swiftvln/smoke-${VLN_ENV_TYPE}"
-
-TRAIN_NUM_GPUS=2 \
-MAX_SAMPLES=16 \
-MAX_STEPS=2 \
-BATCH_SIZE=1 \
-GRAD_ACCUM_STEPS=1 \
-SAVE_STEPS=1 \
-SAVE_TOTAL_LIMIT=1 \
-LOGGING_STEPS=1 \
-DATALOADER_NUM_WORKERS=2 \
-DATALOADER_PREFETCH_FACTOR=2 \
-DATASET_NUM_PROC=1 \
-OUTPUT_DIR_OVERRIDE="${SMOKE_OUTPUT}" \
-USE_SWANLAB=false \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-检查 optimizer step 和 checkpoint：
-
-```bash
-python - "${SMOKE_OUTPUT}" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-root = Path(sys.argv[1])
-states = sorted(root.glob("v*/checkpoint-*/trainer_state.json"))
-assert states, f"checkpoint not found: {root}"
-state = json.loads(states[-1].read_text(encoding="utf-8"))
-assert state["global_step"] > 0, state["global_step"]
-print("checkpoint", states[-1].parent)
-print("global_step", state["global_step"])
-PY
-```
-
-## 6. 完整训练
-
-以下命令使用 8 张 GPU、1 个 epoch 和默认 history 配置。
-
-### 6.1 SatNav
-
-```bash
-VLN_ENV_TYPE=satnav \
-VLN_DATA_PATH="${SWIFTVLN_SATNAV_TRAIN_DATA_PATH}" \
-MODEL_FAMILY=qwen2_5_vl \
-MODEL_PATH="${SWIFTVLN_QWEN25_MODEL_PATH}" \
-MEMORY_METHOD=history \
-HISTORY_PROCESSOR_TYPE=per_frame \
-NUM_HISTORY=8 \
-NUM_EPOCHS=1 \
-BATCH_SIZE=8 \
-GRAD_ACCUM_STEPS=1 \
-LEARNING_RATE=2e-5 \
-TRAIN_NUM_GPUS=8 \
-USE_SWANLAB=false \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-### 6.2 Habitat
-
-```bash
-VLN_ENV_TYPE=habitat \
-VLN_DATA_PATH="${SWIFTVLN_HABITAT_R2R_TRAIN_PATH},${SWIFTVLN_HABITAT_RXR_TRAIN_PATH},${SWIFTVLN_HABITAT_ENVDROP_TRAIN_PATH}" \
-MODEL_FAMILY=qwen2_5_vl \
-MODEL_PATH="${SWIFTVLN_QWEN25_MODEL_PATH}" \
-MEMORY_METHOD=history \
-HISTORY_PROCESSOR_TYPE=per_frame \
-NUM_HISTORY=8 \
-NUM_EPOCHS=1 \
-BATCH_SIZE=8 \
-GRAD_ACCUM_STEPS=1 \
-LEARNING_RATE=2e-5 \
-TRAIN_NUM_GPUS=8 \
-USE_SWANLAB=false \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-## 7. Memory 配置
-
-以下变量可以加入完整训练命令。
-
-### 7.1 Per-frame history
-
-```bash
-MEMORY_METHOD=history \
-HISTORY_PROCESSOR_TYPE=per_frame \
-NUM_HISTORY=8 \
-LOG_BASE=1.0 \
-COMPRESS_STRIDE=2 \
-USE_TOME=false \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-`NUM_HISTORY=0` 对应 no-memory：
-
-```bash
-MEMORY_METHOD=history \
-HISTORY_PROCESSOR_TYPE=per_frame \
-NUM_HISTORY=0 \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-### 7.2 GTC
-
-```bash
-MEMORY_METHOD=history \
-HISTORY_PROCESSOR_TYPE=gtc \
-GTC_OUTPUT_TOKENS=512 \
-GTC_TEMPERATURE=0.1 \
-GTC_NUM_ITERATIONS=1 \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-分段 GTC 使用：
-
-```bash
-MEMORY_METHOD=history \
-HISTORY_PROCESSOR_TYPE=segment_gtc \
-GTC_OUTPUT_TOKENS=512 \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-### 7.3 SatNav map memory
-
-Map memory 仅用于 SatNav，并与 per-frame pooling 配合使用：
-
-```bash
-VLN_ENV_TYPE=satnav \
-VLN_DATA_PATH="${SWIFTVLN_SATNAV_TRAIN_DATA_PATH}" \
-MEMORY_METHOD=map \
-HISTORY_PROCESSOR_TYPE=per_frame \
-USE_RANDOM=false \
-USE_TOME=false \
-EMBEDDING_MODE=none \
-MAP_GLOBAL_SIDE_M=1000 \
-MAP_LOCAL_SIDE_M=400 \
-MAP_RENDER_PX=448 \
-MAP_MASK_METHOD=dilate20 \
-MAP_CACHE_DIR=auto \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-默认 cache 位于 SatNav 数据集目录下的 `map_cache/`。指定其他目录：
-
-```bash
-MAP_CACHE_DIR=/path/to/map_cache bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-## 8. Embedding enhancement
-
-`EMBEDDING_MODE` 每次选择一种模式：
-
-| 模式 | 配置 |
+| 名称片段 | 含义 |
 | --- | --- |
-| 无 enhancement | `EMBEDDING_MODE=none` |
-| Additive pose embedding | `EMBEDDING_MODE=pose` |
-| FiLM pose embedding | `EMBEDDING_MODE=posefilm` |
-| S2R Stage-A adapter | `EMBEDDING_MODE=uav` |
+| `swiftvln-satnav` | SwiftVLN SatNav 模型 |
+| `3b` | Qwen2.5-VL 3B |
+| `1ep` | 训练一个 epoch |
+| `f32s4` | 每个轨迹窗口包含 32 帧，每轮预测 4 个动作 |
+| `overlap0` | 相邻窗口不重叠 |
+| `pf-h8-b1.0` | Per-frame memory，使用 8 张历史帧与均匀采样 |
+| `pool-s2` | Average pooling，压缩 stride 为 2 |
+| `noembed` | 不使用 embedding enhancement |
+| `bs64` | 有效 batch size |
+| `lr2e-5` | Learning rate |
+| `<HHMMSS>` | 训练启动时间 |
 
-Pose embedding：
-
-```bash
-EMBEDDING_MODE=pose \
-POSE_NORM_SCALE=100 \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-FiLM pose embedding：
-
-```bash
-EMBEDDING_MODE=posefilm \
-POSE_NORM_SCALE=100 \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-加载 [S2R Stage-A](S2R_STAGE_A.md) adapter：
-
-```bash
-EMBEDDING_MODE=uav \
-UAV_ADAPTER_PATH=/path/to/stage-a-checkpoint.pt \
-UAV_ADAPTER_TYPE=transformer_v1 \
-UAV_ADAPTER_APPLY_SCOPE=all_images \
-bash scripts/train/train_swiftvln_qwen_vl.sh
-```
-
-## 9. 训练输出
-
-默认输出目录由实验配置自动命名：
+模型保存至：
 
 ```text
-output/swiftvln/
-└── swiftvln-<env>-<model>-<training-config>-<timestamp>/
-    └── v0-<date>-<time>/
-        ├── args.json
-        ├── logging.jsonl
-        ├── runs/
-        ├── images/
-        └── checkpoint-<step>/
-            ├── config.json
-            ├── model*.safetensors
-            ├── trainer_state.json
-            ├── scheduler.pt
-            ├── rng_state_*.pth
-            └── global_step<step>/
+output/swiftvln/<model-name>/
 ```
 
-列出一次训练生成的 checkpoint：
+模型名称记录训练与评测共用的配置。评测时保留完整名称，
+`eval_by_name.sh` 会从中恢复对应参数。
+
+## 5. Habitat 训练
+
+> 当前状态：Habitat 的所有 memory 相关配置均尚未经过测试，包括
+> `MEMORY_METHOD=history`、history processor、历史帧采样、压缩方式以及 GTC/Segment-GTC。
+
+### 5.1 配置训练数据
+
+完整 Habitat 训练组合 R2R、RxR 和 EnvDrop：
 
 ```bash
-find output/swiftvln -type d -name 'checkpoint-*' -print
+export VLN_ENV_TYPE=habitat
+export VLN_DATA_PATH="${SWIFTVLN_HABITAT_R2R_TRAIN_PATH},${SWIFTVLN_HABITAT_RXR_TRAIN_PATH},${SWIFTVLN_HABITAT_ENVDROP_TRAIN_PATH}"
+
+test -f "${SWIFTVLN_HABITAT_R2R_TRAIN_PATH}/annotations.json"
+test -f "${SWIFTVLN_HABITAT_RXR_TRAIN_PATH}/annotations.json"
+test -f "${SWIFTVLN_HABITAT_ENVDROP_TRAIN_PATH}/annotations.json"
 ```
 
-设置固定输出根目录：
+仅使用部分数据集时，按逗号连接对应的 trajectory 目录：
 
 ```bash
-OUTPUT_DIR_OVERRIDE=/path/to/output/run-name \
-bash scripts/train/train_swiftvln_qwen_vl.sh
+export VLN_DATA_PATH="${SWIFTVLN_HABITAT_R2R_TRAIN_PATH},${SWIFTVLN_HABITAT_RXR_TRAIN_PATH}"
 ```
 
-启用 SwanLab：
+### 5.2 启动完整训练
+
+使用 8 张 GPU 启动训练：
 
 ```bash
-USE_SWANLAB=true \
-SWANLAB_PROJECT=SwiftVLN \
-bash scripts/train/train_swiftvln_qwen_vl.sh
+TRAIN_NUM_GPUS=8 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
-## 10. 恢复训练
+### 5.3 输出模型名称
+
+上述配置生成的模型名称为：
+
+```text
+swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-b1.0-pool-s2-noembed-bs64-lr2e-5-<HHMMSS>
+```
+
+| 名称片段 | 含义 |
+| --- | --- |
+| `swiftvln-habitat` | SwiftVLN Habitat 模型 |
+| `3b` | Qwen2.5-VL 3B |
+| `1ep` | 训练一个 epoch |
+| `f32s4` | 每个轨迹窗口包含 32 帧，每轮预测 4 个动作 |
+| `overlap0` | 相邻窗口不重叠 |
+| `pf-h8-b1.0` | Per-frame memory，使用 8 张历史帧与均匀采样 |
+| `pool-s2` | Average pooling，压缩 stride 为 2 |
+| `noembed` | 不使用 embedding enhancement |
+| `bs64` | 有效 batch size |
+| `lr2e-5` | Learning rate |
+| `<HHMMSS>` | 训练启动时间 |
+
+模型保存在 `output/swiftvln/<model-name>/`。`habitat` 标识用于评测时选择 Habitat backend；
+其余片段记录训练时使用的模型与轨迹窗口配置。
+
+## 6. 恢复训练
 
 完整恢复会加载模型、optimizer、scheduler、随机数状态和 global step。重新使用原训练任务、
 模型、数据、GPU 数量与训练参数：
@@ -414,8 +269,9 @@ RESUME_ONLY_MODEL=true \
 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
-## 11. 下一步
+## 7. 下一步
 
+- [Memory 训练配置](MEMORY.md)
 - [SwiftVLN 评测](../evaluation/README.md)
 - [配置参考](../reference/CONFIGURATION.md)
 - [实验命名](../reference/EXPERIMENT_NAMING.md)
