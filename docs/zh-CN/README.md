@@ -19,8 +19,10 @@
 - [模型与 Checkpoint](getting-started/CHECKPOINTS.md)：准备基础模型或已训练的 SatNav 模型；
 - [SwiftVLN 训练](training/README.md)：主线模型的训练配置、完整训练和恢复；
 - [Memory 训练配置](training/MEMORY.md)：配置历史帧采样、输入增强与长期 Memory 压缩；
-- [S2R Stage-A](training/S2R_STAGE_A.md)：SatDronePair 数据、adapter 训练、retrieval 评测和
-  Stage-B 接入；
+- [S2R Stage-A](training/S2R_STAGE_A.md)：SatDronePair manifest、adapter 训练和
+  retrieval 评测；
+- [SatDronePair 数据生产](data/SATDRONEPAIR.md)：生成 S2R Stage-A 使用的 UAV–Satellite
+  配对数据；
 - [SatNav 训练数据](data/TRAINING_DATA_SATNAV.md)：生成并校验 SatNav 离线轨迹；
 - [Habitat 训练数据](data/TRAINING_DATA_HABITAT.md)：生成并校验 R2R、RxR 和 EnvDrop 轨迹。
 
@@ -47,6 +49,7 @@
 | 准备 SatNav/Habitat 评测数据 | [评测数据准备](data/EVALUATION_DATA.md) |
 | 训练 SwiftVLN | [SwiftVLN 训练](training/README.md) |
 | 配置 Memory 实验 | [Memory 训练配置](training/MEMORY.md) |
+| 准备 S2R SatDronePair 数据 | [SatDronePair 数据生产](data/SATDRONEPAIR.md) |
 | 训练 S2R adapter | [S2R Stage-A](training/S2R_STAGE_A.md) |
 | 评测 checkpoint | [SwiftVLN 评测](evaluation/README.md) |
 | 修改核心代码 | [代码架构](development/ARCHITECTURE.md) |
