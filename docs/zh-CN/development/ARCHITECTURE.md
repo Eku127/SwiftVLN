@@ -23,14 +23,12 @@ SwiftVLN/
 │   ├── queue/                 # 文件队列
 │   └── lib/                   # Shell 公共函数
 ├── tools/s2r/                 # SatDronePair 与 S2R Stage-A 离线工具
-├── baseline/                  # 外部 VLN baseline 的 SatNav 适配
 ├── environments/             # swiftvln-train / swiftvln-eval 环境定义
-├── tests/                     # 结构、配置和运行 contract
 ├── third_party/               # 固定版本的外部源码
 └── docs/                      # 用户与开发文档
 ```
 
-`src/swiftvln` 是可安装 Python package。Shell 启动器、离线 S2R 工具、baseline 和文档
+`src/swiftvln` 是可安装 Python package。Shell 启动器、离线 S2R 工具和文档
 属于仓库级资产，不进入核心 Python package。
 
 ## 2. 配置与模型名称
