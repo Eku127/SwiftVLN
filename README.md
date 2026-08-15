@@ -1,19 +1,23 @@
 # SwiftVLN
 
-SwiftVLN 是当前 `swiftvln` 主线模型的视觉语言导航训练与评测代码仓库。
+SwiftVLN 是面向视觉语言导航的训练与在线评测代码库，支持 SatNav 与 Habitat
+环境、Qwen2.5-VL 与 Qwen3-VL 模型族，以及多种历史记忆和视觉 embedding 增强方式。
 
-## 文档入口
+> 中文开源文档正在重写。当前目录已经建立新的信息架构，正文将按页面逐步补齐。
 
-- [环境安装](docs/installation.md)
-- [S2R SatDronePair 离线工具](tools/s2r/data_generation/README.md)
+## 文档
 
-`reports/`、`tests/`、`.codex/`、`AGENTS.md` 以及 `.local/` 是维护者本地内容，
-不会进入公开仓库。
+- [中文文档导航](docs/zh-CN/README.md)
+- [安装](docs/zh-CN/getting-started/INSTALLATION.md)
+- [快速开始](docs/zh-CN/getting-started/QUICKSTART.md)
+- [训练](docs/zh-CN/training/README.md)
+- [评测](docs/zh-CN/evaluation/README.md)
+- [Baseline](docs/zh-CN/baselines/README.md)
 
-## 本地路径配置
+旧文档保存在 [`docs/legacy/`](docs/legacy/)，仅作为重写时的事实线索，不再作为
+公开使用入口。
 
-公开脚本保留了可直接修改的相对路径/模型 ID 默认值，同时支持被 Git 忽略的本地
-覆盖层。推荐复制模板后填写本机的模型、SatNav 数据、Conda 和缓存路径：
+## 本地配置
 
 ```bash
 mkdir -p .local
@@ -21,12 +25,5 @@ cp local.env.example .local/env.sh
 ${EDITOR:-vi} .local/env.sh
 ```
 
-训练和评测入口会自动加载 `.local/env.sh`。也可以不创建该文件，改为在 shell 中
-导出同名环境变量，或直接修改脚本/配置文件里的公开默认值。四个 baseline 还各自
-提供 `baseline/<name>/local.env.example`；复制到对应的
-`baseline/<name>/.local/env.sh` 后，会在共享配置之后自动加载。
-
-## 环境安装
-
-训练与评测环境的完整安装说明统一维护在
-[docs/installation.md](docs/installation.md)。
+训练和评测脚本会读取 `.local/env.sh`。模型、数据、外部仓库、缓存与输出路径均应
+保存在该本地配置或调用命令的环境变量中。
