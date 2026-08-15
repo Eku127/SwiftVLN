@@ -7,24 +7,8 @@ sampling、input augmentation 和 long-term Memory compression。
 
 ## 1. 适用环境
 
-SatNav 与 Habitat 共用 history-based Memory 接口。Habitat 已完成 8 卡训练、checkpoint
-加载和跨窗口评测 smoke，结果见
-[Habitat Memory Smoke Test](../../../reports/habitat_memory_smoke_73_2026-08-15.md)。
-
-| 配置 | SatNav | Habitat |
-| --- | --- | --- |
-| Per-frame reference | 已验证 | 已验证 |
-| Short-term only / no-memory | 已验证 | 已验证 |
-| Random sampling | 已验证 | 已验证 |
-| Temporal-biased sampling | 已验证 | 已验证 |
-| Initial observation | 已验证 | 已验证 |
-| FiLM pose embedding | 已验证 | 已验证 |
-| GTC | 已验证 | 已验证 |
-| Segment-GTC / STC | 已验证 | 已验证 |
-| GridToMe | 已验证 | 已验证 |
-| Additive pose embedding | 已验证 | 已验证 |
-| S2R Stage-A adapter | 已验证 | 不支持 |
-| Map memory | 已验证 | 不支持 |
+除 S2R Stage-A adapter 和 Map memory 为 SatNav 专用外，其余 history-based Memory 配置
+均同时支持 SatNav 与 Habitat。
 
 ## 2. Memory necessity
 
