@@ -27,10 +27,6 @@ swanlog/
 /reports/
 /tests/
 
-# External source checkouts
-/third_party/*
-!/third_party/README.md
-
 # Host/server operations are intentionally local-only
 /src/swiftvln/scripts/docker/
 /src/swiftvln/scripts/data_sync/

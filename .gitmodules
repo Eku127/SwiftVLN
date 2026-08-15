@@ -1,0 +1,9 @@
+[submodule "ms-swift"]
+	path = third_party/ms-swift
+	url = https://github.com/modelscope/ms-swift.git
+[submodule "SatNav"]
+	path = third_party/SatNav
+	url = https://github.com/Eku127/SatNav.git
+[submodule "habitat-lab"]
+	path = third_party/habitat-lab-0.2.4
+	url = https://github.com/facebookresearch/habitat-lab.git

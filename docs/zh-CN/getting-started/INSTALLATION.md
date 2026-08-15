@@ -1,7 +1,7 @@
 # 安装
 
 SwiftVLN 从源码运行。训练与在线评测使用两套独立环境：训练环境面向 Qwen-VL
-监督微调与 S2R Stage-A 训练，评测环境同时提供 SatNav 与 Habitat 运行时。
+监督微调与 S2R Stage-A 训练，评测环境用于 SatNav 或 Habitat 在线评测。
 
 | 用途 | Conda 环境 | Python | 主要入口 |
 | --- | --- | --- | --- |
@@ -35,40 +35,49 @@ Habitat 室内导航评测使用 Python 3.9 和 NumPy 1.26.1，与 Habitat 0.2.4
 
 ## 2. 获取源码
 
-外部源码统一放在 SwiftVLN 仓库的 `third_party/` 目录。该目录中的 checkout
-不进入 SwiftVLN 版本控制。
+SwiftVLN 使用 Git Submodule 管理 `third_party/` 中的外部源码。先克隆主仓库：
 
 ```bash
 git clone https://github.com/Eku127/SwiftVLN.git
 cd SwiftVLN
 export SWIFTVLN_ROOT="${PWD}"
-
-mkdir -p third_party
-git clone https://github.com/modelscope/ms-swift.git third_party/ms-swift
-git -C third_party/ms-swift checkout ad7d5c5157b59afa1faceb04266274392f145745
 ```
 
-在线评测还需要 SatNav 和 Habitat-Lab：
+训练只需要初始化官方 ms-swift：
 
 ```bash
-cd "${SWIFTVLN_ROOT}"
-
-git clone https://github.com/Eku127/SatNav.git third_party/SatNav
-git -C third_party/SatNav checkout c0c0e72ea4575b36d74a5e8f777942172978938e
-
-git clone https://github.com/facebookresearch/habitat-lab.git \
-  third_party/habitat-lab-0.2.4
-git -C third_party/habitat-lab-0.2.4 checkout \
-  1639e1ae732ba1e84199a1a04b79c7243c3f8586
+git submodule update --init third_party/ms-swift
 ```
 
-以上 revision 是当前 SwiftVLN 环境使用的源码组合：
+仅运行 SatNav 评测时，初始化 ms-swift 和 SatNav：
 
-| 仓库 | Revision |
-| --- | --- |
-| ms-swift | `ad7d5c5157b59afa1faceb04266274392f145745` |
-| SatNav | `c0c0e72ea4575b36d74a5e8f777942172978938e` |
-| Habitat-Lab | `v0.2.4` / `1639e1ae732ba1e84199a1a04b79c7243c3f8586` |
+```bash
+git submodule update --init \
+  third_party/ms-swift \
+  third_party/SatNav
+```
+
+运行 Habitat 评测时，初始化 ms-swift 和 Habitat-Lab：
+
+```bash
+git submodule update --init \
+  third_party/ms-swift \
+  third_party/habitat-lab-0.2.4
+```
+
+同时运行 SatNav 和 Habitat 评测时，初始化全部子模块：
+
+```bash
+git submodule update --init --recursive
+```
+
+Submodule 会检出当前 SwiftVLN 版本记录的 commit：
+
+| 仓库 | 来源 | Commit |
+| --- | --- | --- |
+| ms-swift | `modelscope/ms-swift` 官方仓库 | `ad7d5c5157b59afa1faceb04266274392f145745` |
+| SatNav | `Eku127/SatNav` 的 `master` | `4bd6652c875af00236a09730d76c4b391046e6a4` |
+| Habitat-Lab | `facebookresearch/habitat-lab` 的 `v0.2.4` | `1639e1ae732ba1e84199a1a04b79c7243c3f8586` |
 
 ## 3. 安装训练环境
 
@@ -150,7 +159,20 @@ export PATH="${CUDA_HOME}/bin:${PATH}"
 MAX_JOBS=8 python -m pip install flash-attn==2.8.3 --no-build-isolation
 ```
 
-依次安装评测所需的本地仓库：
+安装 ms-swift 和 SwiftVLN：
+
+```bash
+python -m pip install -e "${SWIFTVLN_ROOT}/third_party/ms-swift"
+python -m pip install -e "${SWIFTVLN_ROOT}"
+```
+
+SatNav 评测安装 SatNav：
+
+```bash
+python -m pip install -e "${SWIFTVLN_ROOT}/third_party/SatNav"
+```
+
+Habitat 评测安装 Habitat-Lab 和 Habitat-Baselines：
 
 ```bash
 python -m pip install -e \
@@ -158,10 +180,6 @@ python -m pip install -e \
 
 python -m pip install -e \
   "${SWIFTVLN_ROOT}/third_party/habitat-lab-0.2.4/habitat-baselines"
-
-python -m pip install -e "${SWIFTVLN_ROOT}/third_party/SatNav"
-python -m pip install -e "${SWIFTVLN_ROOT}/third_party/ms-swift"
-python -m pip install -e "${SWIFTVLN_ROOT}"
 ```
 
 ## 5. 配置本机路径
@@ -270,11 +288,8 @@ import importlib.metadata as metadata
 import sys
 
 import flash_attn
-import habitat
-import habitat_sim
 import swiftvln
 import torch
-from satnav.core.env import Env as SatNavEnv
 
 print("python", sys.version.split()[0])
 print("torch", torch.__version__)
@@ -284,17 +299,38 @@ for package in (
     "ms-swift",
     "transformers",
     "flash-attn",
-    "habitat-lab",
-    "habitat-sim",
     "numpy",
     "protobuf",
 ):
     print(package, metadata.version(package))
 print("swiftvln", swiftvln.__file__)
-print("satnav", SatNavEnv.__module__)
 PY
 
 python -m swiftvln.evaluation --help
+```
+
+SatNav 评测环境继续检查：
+
+```bash
+python - <<'PY'
+from satnav.core.env import Env
+
+print("satnav", Env.__module__)
+PY
+```
+
+Habitat 评测环境继续检查：
+
+```bash
+python - <<'PY'
+import importlib.metadata as metadata
+
+import habitat
+import habitat_sim
+
+print("habitat", metadata.version("habitat-lab"), habitat.__file__)
+print("habitat_sim", metadata.version("habitat-sim"), habitat_sim.__file__)
+PY
 ```
 
 关键输出应包含：
@@ -307,12 +343,12 @@ cuda_available True
 ms-swift 4.2.0.dev0
 transformers 4.57.3
 flash-attn 2.8.3
-habitat-lab 0.2.4
-habitat-sim 0.2.4
 numpy 1.26.1
 protobuf 3.20.1
-satnav satnav.core.env
 ```
+
+SatNav 检查输出包含 `satnav satnav.core.env`；Habitat 检查输出中的
+`habitat-lab` 与 `habitat-sim` 版本均为 `0.2.4`。
 
 ## 8. 安装问题定位
 
