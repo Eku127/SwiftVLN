@@ -10,7 +10,8 @@
 
 1. [安装](getting-started/INSTALLATION.md)：分别准备训练环境与评测环境；
 2. [快速开始](getting-started/QUICKSTART.md)：完成配置检查、最小训练和单 Episode 评测；
-3. [训练数据](data/TRAINING_DATA.md)：确认轨迹目录和 annotation 字段。
+3. [SatNav 训练数据](data/TRAINING_DATA_SATNAV.md)：准备 Episode、GeoTIFF 和离线轨迹；
+4. [Habitat 训练数据](data/TRAINING_DATA_HABITAT.md)：准备 R2R、RxR 和 EnvDrop 轨迹。
 
 ## 2. 理解 SwiftVLN
 
@@ -24,7 +25,8 @@
 - [SwiftVLN 训练](training/README.md)：主线模型的 dry run、smoke、完整训练和恢复；
 - [S2R Stage-A](training/S2R_STAGE_A.md)：SatDronePair 数据、adapter 训练、retrieval 评测和
   Stage-B 接入；
-- [训练数据](data/TRAINING_DATA.md)：SatNav/Habitat 离线轨迹输入。
+- [SatNav 训练数据](data/TRAINING_DATA_SATNAV.md)：生成并校验 SatNav 离线轨迹；
+- [Habitat 训练数据](data/TRAINING_DATA_HABITAT.md)：生成并校验 R2R、RxR 和 EnvDrop 轨迹。
 
 ## 4. 评测
 
@@ -49,7 +51,8 @@
 | --- | --- |
 | 从源码安装 | [安装](getting-started/INSTALLATION.md) |
 | 跑通最小链路 | [快速开始](getting-started/QUICKSTART.md) |
-| 准备训练轨迹 | [训练数据](data/TRAINING_DATA.md) |
+| 准备 SatNav 训练轨迹 | [SatNav 训练数据](data/TRAINING_DATA_SATNAV.md) |
+| 准备 Habitat 训练轨迹 | [Habitat 训练数据](data/TRAINING_DATA_HABITAT.md) |
 | 训练 SwiftVLN | [SwiftVLN 训练](training/README.md) |
 | 训练 S2R adapter | [S2R Stage-A](training/S2R_STAGE_A.md) |
 | 评测 checkpoint | [SwiftVLN 评测](evaluation/README.md) |

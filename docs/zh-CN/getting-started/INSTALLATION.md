@@ -201,6 +201,7 @@ python -c "import habitat, habitat_sim; print(habitat.__file__, habitat_sim.__fi
 ## 6. 下一步
 
 - [快速开始](QUICKSTART.md)
-- [训练数据](../data/TRAINING_DATA.md)
+- [SatNav 训练数据](../data/TRAINING_DATA_SATNAV.md)
+- [Habitat 训练数据](../data/TRAINING_DATA_HABITAT.md)
 - [SwiftVLN 训练](../training/README.md)
 - [SwiftVLN 评测](../evaluation/README.md)
