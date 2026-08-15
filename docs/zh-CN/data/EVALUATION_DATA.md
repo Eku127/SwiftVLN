@@ -150,8 +150,3 @@ swiftvln validate-evaluation-data --env-type habitat
 ```
 
 命令检查 Episode 数量、字段、重复 ID，以及 MP3D `.glb` 与 `.navmesh` 场景文件。
-
-## 4. 下一步
-
-- [模型与 Checkpoint](../getting-started/CHECKPOINTS.md)
-- [SwiftVLN 评测](../evaluation/README.md)

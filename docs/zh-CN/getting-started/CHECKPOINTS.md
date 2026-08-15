@@ -140,11 +140,3 @@ swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
 ### 4.1 Checkpoint
 
 TBD。SwiftVLN Habitat checkpoint 尚未发布。
-
-## 5. 下一步
-
-- [SatNav 训练数据](../data/TRAINING_DATA_SATNAV.md)
-- [Habitat 训练数据](../data/TRAINING_DATA_HABITAT.md)
-- [评测数据准备](../data/EVALUATION_DATA.md)
-- [SwiftVLN 训练](../training/README.md)
-- [SwiftVLN 评测](../evaluation/README.md)

@@ -265,10 +265,3 @@ results/eval/swiftvln/<model-name>/<split>/<timestamp>/
 | `total_episodes` | 参与汇总的 Episode 数量 |
 
 单条 Episode 发生运行错误时，结果保留在 JSONL 中，并包含 `error` 字段。
-
-## 8. 下一步
-
-- [模型与 Checkpoint](../getting-started/CHECKPOINTS.md)
-- [评测数据准备](../data/EVALUATION_DATA.md)
-- [实验命名](../reference/EXPERIMENT_NAMING.md)
-- [输出格式](../reference/OUTPUTS.md)

@@ -269,11 +269,3 @@ RESUME_FROM_CHECKPOINT=/path/to/checkpoint-1000 \
 RESUME_ONLY_MODEL=true \
 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
-
-## 7. 下一步
-
-- [Memory 训练配置](MEMORY.md)
-- [SwiftVLN 评测](../evaluation/README.md)
-- [配置参考](../reference/CONFIGURATION.md)
-- [实验命名](../reference/EXPERIMENT_NAMING.md)
-- [输出格式](../reference/OUTPUTS.md)

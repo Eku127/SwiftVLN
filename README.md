@@ -9,10 +9,8 @@ SwiftVLN 是面向视觉语言导航的训练与在线评测代码库，支持 S
 
 - [中文文档导航](docs/zh-CN/README.md)
 - [安装](docs/zh-CN/getting-started/INSTALLATION.md)
-- [快速开始](docs/zh-CN/getting-started/QUICKSTART.md)
 - [训练](docs/zh-CN/training/README.md)
 - [评测](docs/zh-CN/evaluation/README.md)
-- [Baseline](docs/zh-CN/baselines/README.md)
 
 旧文档保存在 [`docs/legacy/`](docs/legacy/)，仅作为重写时的事实线索，不再作为
 公开使用入口。
