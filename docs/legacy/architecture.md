@@ -117,7 +117,7 @@ UAV mode 当前只支持 `UAV_ADAPTER_APPLY_SCOPE=all_images`。
 ```
 
 - SatNav：forward 10m，turn 15°。
-- Habitat：forward 0.25m，turn 30°。
+- Habitat：forward 0.25m，turn 15°。
 - 位置分量使用 `tanh(value / POSE_NORM_SCALE)`；默认 scale 为 `100.0`。
 - 朝向的 sin/cos 已在 `[-1, 1]`，不再缩放。
 

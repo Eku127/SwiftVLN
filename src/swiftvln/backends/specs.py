@@ -33,7 +33,7 @@ class EnvironmentSpec:
 HABITAT_SPEC = EnvironmentSpec(
     name="habitat",
     forward_step_m=0.25,
-    turn_angle_deg=30.0,
+    turn_angle_deg=15.0,
     config_argument="habitat_config_path",
     prompt_template=(
         "You are an autonomous navigation assistant. Your task is to {instruction}. "
