@@ -189,8 +189,8 @@ output/swiftvln/<model-name>/
 ## 5. Habitat 训练
 
 > Habitat 已验证 per-frame reference、no-memory、random、temporal-biased、initial、
-> PoseFiLM、GTC 与 Segment-GTC。GridToMe、Additive pose 和 S2R Stage-A adapter 尚未验证；
-> Map memory 不支持 Habitat。
+> PoseFiLM、GridToMe、Additive pose、GTC 与 Segment-GTC。S2R Stage-A adapter 与 Map
+> memory 不支持 Habitat。
 
 ### 5.1 配置训练数据
 

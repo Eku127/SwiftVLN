@@ -21,9 +21,9 @@ SatNav 与 Habitat 共用 history-based Memory 接口。Habitat 已完成 8 卡�
 | FiLM pose embedding | 已验证 | 已验证 |
 | GTC | 已验证 | 已验证 |
 | Segment-GTC / STC | 已验证 | 已验证 |
-| GridToMe | 已验证 | 尚未验证 |
-| Additive pose embedding | 已验证 | 尚未验证 |
-| S2R Stage-A adapter | 已验证 | 尚未验证 |
+| GridToMe | 已验证 | 已验证 |
+| Additive pose embedding | 已验证 | 已验证 |
+| S2R Stage-A adapter | 已验证 | 不支持 |
 | Map memory | 已验证 | 不支持 |
 
 ## 2. Memory necessity
@@ -54,8 +54,7 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 | `COMPRESS_STRIDE` | `2` | 每个空间维度按 stride 2 压缩，视觉 token 数约为原来的 `1/4` |
 | `USE_TOME` | `false` | 使用 average pooling；设为 `true` 时使用 GridToMe |
 
-Reference 中的 average pooling 已在 SatNav 和 Habitat 验证。GridToMe 已在 SatNav 验证，
-Habitat 尚未验证。
+Reference 中的 average pooling 与 GridToMe 均已在 SatNav 和 Habitat 验证。
 
 ### 2.2 Short-term only
 
@@ -169,8 +168,7 @@ POSE_NORM_SCALE=100 \
 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
-FiLM pose embedding 已在 SatNav 和 Habitat 验证；Additive pose embedding 已在 SatNav
-验证，Habitat 尚未验证。
+FiLM 与 Additive pose embedding 均已在 SatNav 和 Habitat 验证。
 
 ### 4.3 S2R Stage-A adapter
 
@@ -190,7 +188,7 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 | `UAV_ADAPTER_TYPE` | `transformer_v1` | Adapter 结构 |
 | `UAV_ADAPTER_APPLY_SCOPE` | `all_images` | 将 adapter 应用于全部输入图像 |
 
-S2R Stage-A adapter 已在 SatNav 验证，Habitat 尚未验证。
+S2R Stage-A adapter 仅支持 SatNav；Habitat 不支持，本次未测试。
 
 ## 5. Long-term Memory compression
 
