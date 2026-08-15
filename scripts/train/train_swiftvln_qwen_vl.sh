@@ -175,7 +175,7 @@ VLN_DATA_PATH_OVERRIDE="${VLN_DATA_PATH:-}"
 # Define data paths for each environment
 HABITAT_DATA_PATHS=(
     "${SWIFTVLN_HABITAT_R2R_TRAIN_PATH:-data/habitat/trajectory_data/R2R}"
-    "${SWIFTVLN_HABITAT_RXR_TRAIN_PATH:-data/habitat/trajectory_data/RxR_new}"
+    "${SWIFTVLN_HABITAT_RXR_TRAIN_PATH:-data/habitat/trajectory_data/RxR}"
 )
 SATNAV_DATA_PATHS=(
     "${SWIFTVLN_SATNAV_TRAIN_DATA_PATH:-data/satnav/SatNav-v0.1/trajectory_data}"
