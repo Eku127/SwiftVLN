@@ -18,7 +18,7 @@ swiftvln_load_local_env
 # ============================================================================
 # Conda Environment
 # ============================================================================
-SWIFTVLN_TRAIN_CONDA_ENV="${SWIFTVLN_TRAIN_CONDA_ENV:-swift-vln-train-update}"
+SWIFTVLN_TRAIN_CONDA_ENV="${SWIFTVLN_TRAIN_CONDA_ENV:-swiftvln-train}"
 swiftvln_activate_conda "$SWIFTVLN_TRAIN_CONDA_ENV"
 
 export PYTHONPATH="${SWIFTVLN_ROOT}/src:${PYTHONPATH:-}"

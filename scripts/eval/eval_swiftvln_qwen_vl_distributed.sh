@@ -28,7 +28,7 @@ export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.js
 # ============================================================================
 # Conda Environment
 # ============================================================================
-SWIFTVLN_EVAL_CONDA_ENV="${SWIFTVLN_EVAL_CONDA_ENV:-swift-vln-eval-update}"
+SWIFTVLN_EVAL_CONDA_ENV="${SWIFTVLN_EVAL_CONDA_ENV:-swiftvln-eval}"
 swiftvln_activate_conda "$SWIFTVLN_EVAL_CONDA_ENV"
 
 # ============================================================================

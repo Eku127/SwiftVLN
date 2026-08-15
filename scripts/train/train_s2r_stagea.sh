@@ -8,7 +8,7 @@ SWIFTVLN_ROOT="${REPO_ROOT}"
 # shellcheck source=../lib/local_env.sh
 source "${REPO_ROOT}/scripts/lib/local_env.sh"
 swiftvln_load_local_env
-swiftvln_activate_conda "${SWIFTVLN_TRAIN_CONDA_ENV:-swift-vln-train-update}"
+swiftvln_activate_conda "${SWIFTVLN_TRAIN_CONDA_ENV:-swiftvln-train}"
 cd "${REPO_ROOT}"
 
 MANIFEST_PATH="${MANIFEST_PATH:-runtime/s2r/manifests/manifest_v1.jsonl}"
