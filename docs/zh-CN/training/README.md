@@ -130,8 +130,8 @@ TRAIN_CUDA_DEVICES=0,2,4,6 bash scripts/train/train_swiftvln_qwen_vl.sh
 默认 SatNav 训练使用 per-frame history。SwiftVLN 还支持随机或时间偏置历史帧采样、
 Map memory、GTC、Segment-GTC、初始观测、相对位姿与 S2R Stage-A adapter 等配置。
 
-各项超参数与训练命令见 [Memory 训练配置](MEMORY.md)。Habitat 的 Memory 配置
-尚未经过测试。
+SatNav 与 Habitat 共用的配置及各项训练命令见 [Memory 训练配置](MEMORY.md)。Map memory
+仅支持 SatNav。
 
 ## 4. SatNav 训练
 
@@ -188,8 +188,9 @@ output/swiftvln/<model-name>/
 
 ## 5. Habitat 训练
 
-> 当前状态：Habitat 的所有 memory 相关配置均尚未经过测试，包括
-> `MEMORY_METHOD=history`、history processor、历史帧采样、压缩方式以及 GTC/Segment-GTC。
+> Habitat 已验证 per-frame reference、no-memory、random、temporal-biased、initial、
+> PoseFiLM、GTC 与 Segment-GTC。GridToMe、Additive pose 和 S2R Stage-A adapter 尚未验证；
+> Map memory 不支持 Habitat。
 
 ### 5.1 配置训练数据
 

@@ -3,12 +3,32 @@
 SwiftVLN 将当前轨迹窗口之外的观测组织为 Memory。Memory 配置包括 history-frame
 sampling、input augmentation 和 long-term Memory compression。
 
-以下配置面向 SatNav。Habitat 共用相同的参数接口，但相关 Memory 配置尚未经过测试。
 运行命令前先完成 [SwiftVLN 训练](README.md)中的环境、模型和数据设置。
 
-## 1. Memory necessity
+## 1. 适用环境
 
-### 1.1 SwiftVLN reference
+SatNav 与 Habitat 共用 history-based Memory 接口。Habitat 已完成 8 卡训练、checkpoint
+加载和跨窗口评测 smoke，结果见
+[Habitat Memory Smoke Test](../../../reports/habitat_memory_smoke_73_2026-08-15.md)。
+
+| 配置 | SatNav | Habitat |
+| --- | --- | --- |
+| Per-frame reference | 已验证 | 已验证 |
+| Short-term only / no-memory | 已验证 | 已验证 |
+| Random sampling | 已验证 | 已验证 |
+| Temporal-biased sampling | 已验证 | 已验证 |
+| Initial observation | 已验证 | 已验证 |
+| FiLM pose embedding | 已验证 | 已验证 |
+| GTC | 已验证 | 已验证 |
+| Segment-GTC / STC | 已验证 | 已验证 |
+| GridToMe | 已验证 | 尚未验证 |
+| Additive pose embedding | 已验证 | 尚未验证 |
+| S2R Stage-A adapter | 已验证 | 尚未验证 |
+| Map memory | 已验证 | 不支持 |
+
+## 2. Memory necessity
+
+### 2.1 SwiftVLN reference
 
 Reference 配置使用 per-frame Memory，从当前窗口之前的观测中均匀采样 8 帧，并分别压缩
 每帧的视觉 token：
@@ -34,7 +54,10 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 | `COMPRESS_STRIDE` | `2` | 每个空间维度按 stride 2 压缩，视觉 token 数约为原来的 `1/4` |
 | `USE_TOME` | `false` | 使用 average pooling；设为 `true` 时使用 GridToMe |
 
-### 1.2 Short-term only
+Reference 中的 average pooling 已在 SatNav 和 Habitat 验证。GridToMe 已在 SatNav 验证，
+Habitat 尚未验证。
+
+### 2.2 Short-term only
 
 Short-term only 保留当前轨迹窗口，但不再向模型提供窗口之前的历史观测：
 
@@ -49,7 +72,7 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 `NUM_HISTORY=0` 是当前实现中的 no-memory 配置。此时 prompt 中不插入
 `<history_memory>`，训练目标与当前轨迹窗口保持不变。
 
-## 2. History-frame sampling
+## 3. History-frame sampling
 
 Per-frame Memory 使用 `NUM_HISTORY` 控制历史帧数量，并通过 `USE_RANDOM` 和 `LOG_BASE`
 选择采样策略。
@@ -69,7 +92,7 @@ t = 1 - (1 - u)^LOG_BASE
 
 `LOG_BASE=1.0` 在完整历史区间内均匀取样；数值增大时，更多采样点分布在近期观测。
 
-### 2.1 Random sampling
+### 3.1 Random sampling
 
 ```bash
 MEMORY_METHOD=history \
@@ -81,7 +104,7 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 
 模型名中的配置片段为 `pf-h8-random`。
 
-### 2.2 Temporal-biased sampling
+### 3.2 Temporal-biased sampling
 
 Temporal-biased sampling 使用 `LOG_BASE=2.0`：
 
@@ -96,7 +119,7 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 
 模型名中的配置片段为 `pf-h8-b2.0`。
 
-## 3. Input augmentation
+## 4. Input augmentation
 
 Input augmentation 在 reference Memory 之上加入初始观测、相对位姿或 S2R Stage-A
 adapter。其余 Memory 参数保持 reference 配置。
@@ -110,7 +133,7 @@ adapter。其余 Memory 参数保持 reference 配置。
 | FiLM pose embedding | `EMBEDDING_MODE=posefilm` |
 | S2R Stage-A adapter | `EMBEDDING_MODE=uav` |
 
-### 3.1 Initial observation
+### 4.1 Initial observation
 
 ```bash
 SYSTEM_PROMPT_SETTING=initial \
@@ -119,9 +142,10 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
 `SYSTEM_PROMPT_SETTING=initial` 将 Episode 第一帧作为未压缩图像放入 system prompt；
-`vanilla` 不添加该观测。对应模型名包含 `initial-noembed`。
+`vanilla` 不添加该观测。对应模型名包含 `initial-noembed`。两种环境均已验证 initial
+observation 的训练与跨窗口评测。
 
-### 3.2 Relative pose
+### 4.2 Relative pose
 
 ```bash
 SYSTEM_PROMPT_SETTING=vanilla \
@@ -145,7 +169,10 @@ POSE_NORM_SCALE=100 \
 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
-### 3.3 S2R Stage-A adapter
+FiLM pose embedding 已在 SatNav 和 Habitat 验证；Additive pose embedding 已在 SatNav
+验证，Habitat 尚未验证。
+
+### 4.3 S2R Stage-A adapter
 
 加载 [S2R Stage-A](S2R_STAGE_A.md) adapter：
 
@@ -163,9 +190,11 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 | `UAV_ADAPTER_TYPE` | `transformer_v1` | Adapter 结构 |
 | `UAV_ADAPTER_APPLY_SCOPE` | `all_images` | 将 adapter 应用于全部输入图像 |
 
-## 4. Long-term Memory compression
+S2R Stage-A adapter 已在 SatNav 验证，Habitat 尚未验证。
 
-### 4.1 Map memory
+## 5. Long-term Memory compression
+
+### 5.1 Map memory
 
 Map memory 使用 SatNav 已探索区域的全局图和局部图替代历史 RGB：
 
@@ -196,7 +225,7 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 Map memory 仅支持 SatNav。`MAP_LOCAL_SIDE_M` 不得大于 `MAP_GLOBAL_SIDE_M`，并且该配置
 不与随机历史采样、GridToMe 或 embedding enhancement 组合使用。
 
-### 4.2 Global token clustering（GTC）
+### 5.2 Global token clustering（GTC）
 
 GTC 将全部历史帧的视觉 token 视为一个集合，通过 Soft K-Means 压缩为固定数量的 token：
 
@@ -211,7 +240,9 @@ GTC_NUM_ITERATIONS=1 \
 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
 
-### 4.3 Segment token clustering（STC）
+GTC 已在 SatNav 和 Habitat 验证。
+
+### 5.3 Segment token clustering（STC）
 
 STC 在仓库中实现为 Segment-GTC，即 `HISTORY_PROCESSOR_TYPE=segment_gtc`。
 当前实现将历史帧固定划分为 8 个时间段，在每个时间段内执行 GTC，再按时间顺序拼接结果：
@@ -237,9 +268,10 @@ GTC 与 Segment-GTC 共用以下参数：
 
 这两种 processor 不使用 `NUM_HISTORY` 控制帧数。数据管线按照训练时的动作预测间隔读取
 历史帧，再执行 token clustering。GTC 直接聚类全部历史 token；Segment-GTC 通过分段
-保留粗粒度时间顺序。模型名分别使用 `gtc-k512` 和 `sgtc-k512`。
+保留粗粒度时间顺序。模型名分别使用 `gtc-k512` 和 `sgtc-k512`。Segment-GTC 已在
+SatNav 和 Habitat 验证。
 
-## 5. 配置与模型对应关系
+## 6. 配置与模型对应关系
 
 | 配置 | 关键参数 | 模型名中的配置片段 |
 | --- | --- | --- |
