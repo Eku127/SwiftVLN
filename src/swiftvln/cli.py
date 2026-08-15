@@ -31,6 +31,12 @@ def _run_validate_habitat_trajectories(extra_args: Sequence[str]) -> int:
     return validate_main(list(extra_args))
 
 
+def _run_validate_evaluation_data(extra_args: Sequence[str]) -> int:
+    from swiftvln.data.evaluation_data_validation import main as validate_main
+
+    return validate_main(list(extra_args))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="swiftvln", description="SwiftVLN command line")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -55,6 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
         add_help=False,
         help="Validate offline Habitat training trajectories",
     )
+    subparsers.add_parser(
+        "validate-evaluation-data",
+        add_help=False,
+        help="Validate SatNav or Habitat online evaluation data",
+    )
 
     return parser
 
@@ -71,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_generate_habitat_trajectories(extra)
     if args.command == "validate-habitat-trajectories":
         return _run_validate_habitat_trajectories(extra)
+    if args.command == "validate-evaluation-data":
+        return _run_validate_evaluation_data(extra)
     parser.error(f"Unknown command: {args.command}")
     return 2
 
