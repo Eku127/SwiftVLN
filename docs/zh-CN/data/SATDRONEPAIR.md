@@ -1,6 +1,8 @@
-# S2R SatDronePair 数据生产
+# Satellite-to-UAV SatDronePair 数据生产
 
-本章将 DenseUAV、GTA-UAV、SUES-200 和 UAV-VisLoc 转换为 S2R Stage-A 使用的
+简体中文 | [English](../../en-US/data/SATDRONEPAIR.md)
+
+本章将 DenseUAV、GTA-UAV、SUES-200 和 UAV-VisLoc 转换为 Satellite-to-UAV Stage-A 使用的
 UAV–Satellite 配对数据：
 
 ```text
@@ -146,7 +148,7 @@ Split 按位置分组：DenseUAV 按基础位置、GTA-UAV 按 Satellite tile、
 `scene_id`、UAV-VisLoc 按 `seq_id`。当前完整数据生成 19,365 条记录：DenseUAV
 5,464、GTA-UAV 5,102、SUES-200 1,497、UAV-VisLoc 7,302。
 
-Stage-A 的训练与 retrieval 评测见 [S2R Stage-A 训练](../training/S2R_STAGE_A.md)。
+Stage-A 的训练与 retrieval 评测见 [Satellite-to-UAV Stage-A 训练](../training/S2R_STAGE_A.md)。
 
 ## 4. 质量检查
 

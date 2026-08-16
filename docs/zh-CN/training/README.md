@@ -1,5 +1,7 @@
 # SwiftVLN 训练
 
+简体中文 | [English](../../en-US/training/README.md)
+
 SwiftVLN 使用离线 expert trajectory 进行监督微调。SatNav 与 Habitat 共用训练入口，
 通过 `VLN_ENV_TYPE` 选择训练环境。
 
@@ -128,7 +130,7 @@ TRAIN_CUDA_DEVICES=0,2,4,6 bash scripts/train/train_swiftvln_qwen_vl.sh
 ## 3. Memory 训练配置
 
 默认 SatNav 训练使用 per-frame history。SwiftVLN 还支持随机或时间偏置历史帧采样、
-Map memory、GTC、Segment-GTC、初始观测、相对位姿与 S2R Stage-A adapter 等配置。
+Map memory、GTC、Segment-GTC、初始观测、相对位姿与 Satellite-to-UAV Stage-A adapter 等配置。
 
 SatNav 与 Habitat 共用的配置及各项训练命令见 [Memory 训练配置](MEMORY.md)。Map memory
 仅支持 SatNav。
@@ -189,7 +191,7 @@ output/swiftvln/<model-name>/
 ## 5. Habitat 训练
 
 > Habitat 已验证 per-frame reference、no-memory、random、temporal-biased、initial、
-> PoseFiLM、GridToMe、Additive pose、GTC 与 Segment-GTC。S2R Stage-A adapter 与 Map
+> PoseFiLM、GridToMe、Additive pose、GTC 与 Segment-GTC。Satellite-to-UAV Stage-A adapter 与 Map
 > memory 不支持 Habitat。
 
 ### 5.1 配置训练数据

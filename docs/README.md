@@ -1,8 +1,9 @@
 # SwiftVLN Documentation
 
-当前文档语言：
+SwiftVLN documentation is available in the following languages:
 
+- [English](en-US/README.md)
 - [简体中文](zh-CN/README.md)
 
-后续语言版本使用 BCP 47 目录名，并与 `zh-CN/` 保持相同的信息层级。图片、视频和
-其他跨语言资源统一放在 `docs/assets/`。
+Language directories use BCP 47 names and share the same information architecture. Cross-language images,
+videos, and other reusable assets belong under `docs/assets/`.

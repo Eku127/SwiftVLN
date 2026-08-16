@@ -1,19 +1,18 @@
-# 评测数据准备
+# Evaluation Data
 
-简体中文 | [English](../../en-US/data/EVALUATION_DATA.md)
+[简体中文](../../zh-CN/data/EVALUATION_DATA.md) | English
 
 
-## 1. 复用训练数据
+## 1. Reuse prepared training data
 
-完成对应环境的 [SatNav 训练数据](TRAINING_DATA_SATNAV.md)或
-[Habitat 训练数据](TRAINING_DATA_HABITAT.md)准备后，以下资源可以直接用于评测：
+Complete the [SatNav training data](TRAINING_DATA_SATNAV.md)or [After the Habitat training data](TRAINING_DATA_HABITAT.md)is prepared, the following resources can be used directly for evaluation:
 
-| 环境 | 评测复用资源 | 评测不需要 |
+| Environment | Evaluation reuse resources | Not required for evaluation |
 | --- | --- | --- |
-| SatNav | SatNav-v0.1 `val_seen` / `val_unseen` Episode、GeoTIFF 场景 | `trajectory_data/` |
-| Habitat | R2R VLN-CE v1-3 `val_seen` / `val_unseen` Episode、MP3D 场景 | R2R / RxR / EnvDrop 离线轨迹 |
+| SatNav | SatNav-v0.1 `val_seen`/`val_unseen` Episode, GeoTIFF scene |`trajectory_data/`|
+| Habitat | R2R VLN-CE v1-3 `val_seen`/`val_unseen` Episode, MP3D scene | R2R / RxR / EnvDrop offline trajectory |
 
-此时只需在 `${SWIFTVLN_ROOT}/.local/env.sh` 中补充评测路径：
+At this time, you only need to add the evaluation path in `${SWIFTVLN_ROOT}/.local/env.sh`:
 
 ```bash
 # SatNav
@@ -26,29 +25,24 @@ export SWIFTVLN_HABITAT_SCENES_DIR="${SWIFTVLN_HABITAT_DATA_ROOT}/scene_datasets
 export SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/datasets/r2r/{split}/{split}.json.gz"
 ```
 
-完成上述配置后，无需继续阅读本章，直接进入 [SwiftVLN 评测](../evaluation/README.md)。
-以下章节面向仅准备评测数据的研究者。
+If these resources are already configured, proceed directly to [SwiftVLN evaluation](../evaluation/README.md). The remaining sections are for users preparing evaluation data without the training datasets.
 
-## 2. SatNav 评测数据
+## 2. SatNav evaluation data
 
-### 2.1 下载 Episode
+### 2.1 Download episodes
 
-按照 SatNav 的
-[Episode 数据下载](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/zh-CN/dataset/DATA_DOWNLOAD.md)
-下载并校验 SatNav-Episodes-v0.1。评测使用：
+Follow SatNav’s [Episode data download](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/en-US/dataset/DATA_DOWNLOAD.md) Download and verify SatNav-Episodes-v0.1. Evaluation uses:
 
 | Split | Episodes |
 | --- | ---: |
 | `val_seen` | 4,574 |
 | `val_unseen` | 8,756 |
 
-### 2.2 准备 GeoTIFF 场景
+### 2.2 Prepare GeoTIFF scenes
 
-按照 SatNav 的
-[卫星场景下载](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/zh-CN/applications/MAP_DOWNLOAD.md)
-根据 `SatNav-v0.1/scenes_list.yaml` 准备 59 个 GeoTIFF 场景。
+Follow SatNav’s [Satellite scene download](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/en-US/applications/MAP_DOWNLOAD.md) Prepare 59 GeoTIFF scenes based on `SatNav-v0.1/scenes_list.yaml`.
 
-评测数据目录如下：
+The evaluation data directory is as follows:
 
 ```text
 satnav_datasets/
@@ -63,7 +57,7 @@ satnav_datasets/
     └── ...
 ```
 
-### 2.3 配置路径
+### 2.3 Configure paths
 
 ```bash
 export SWIFTVLN_SATNAV_DATA_ROOT="/path/to/satnav_datasets"
@@ -73,26 +67,25 @@ export SWIFTVLN_SATNAV_EVAL_DATA_PATH="${SWIFTVLN_SATNAV_EVAL_ROOT}/{split}/all_
 export SWIFTVLN_SATNAV_SCENES_DIR="${SWIFTVLN_SATNAV_DATA_ROOT}/scenes"
 ```
 
-### 2.4 校验数据
+### 2.4 Validate the data
 
 ```bash
 swiftvln validate-evaluation-data --env-type satnav
 ```
 
-命令检查 Episode 数量、字段、重复 ID、场景引用和 GeoTIFF 文件。
+The command checks episode numbers, fields, duplicate IDs, scene references, and GeoTIFF files.
 
-## 3. Habitat 评测数据
+## 3. Habitat evaluation data
 
-### 3.1 准备 MP3D 场景
+### 3.1 Prepare MP3D scenes
 
-按照 [Matterport3D 官方说明](https://niessner.github.io/Matterport/)申请并下载 Habitat 场景，
-将 90 个场景保存至：
+Follow [Matterport3D official instructions](https://niessner.github.io/Matterport/)to apply and download the Habitat scene, Save 90 scenes to:
 
 ```text
 /path/to/streamvln_datasets/scene_datasets/mp3d/
 ```
 
-每个场景包含 Habitat 使用的 `.glb` 和 `.navmesh`：
+Each scene contains `.glb` and `.navmesh` used by Habitat:
 
 ```text
 scene_datasets/mp3d/
@@ -102,10 +95,9 @@ scene_datasets/mp3d/
 └── ...
 ```
 
-### 3.2 下载 R2R VLN-CE v1-3
+### 3.2 Download R2R VLN-CE v1-3
 
-从 [VLN-CE 数据页](https://jacobkrantz.github.io/vlnce/data)下载
-`R2R_VLNCE_v1-3.zip`：
+Download from [VLN-CE data page](https://jacobkrantz.github.io/vlnce/data) `R2R_VLNCE_v1-3.zip`:
 
 ```bash
 python -m pip install gdown
@@ -117,14 +109,14 @@ unzip R2R_VLNCE_v1-3.zip
 mv R2R_VLNCE_v1-3 r2r
 ```
 
-评测使用：
+Evaluation uses:
 
-| Split | Episodes | 路径 |
+| Split | Episodes | Path |
 | --- | ---: | --- |
 | `val_seen` | 778 | `datasets/r2r/val_seen/val_seen.json.gz` |
 | `val_unseen` | 1,839 | `datasets/r2r/val_unseen/val_unseen.json.gz` |
 
-完整目录如下：
+The complete catalog is as follows:
 
 ```text
 streamvln_datasets/
@@ -137,7 +129,7 @@ streamvln_datasets/
         └── <scene-id>.navmesh
 ```
 
-### 3.3 配置路径
+### 3.3 Configure paths
 
 ```bash
 export SWIFTVLN_HABITAT_DATA_ROOT="/path/to/streamvln_datasets"
@@ -145,10 +137,10 @@ export SWIFTVLN_HABITAT_SCENES_DIR="${SWIFTVLN_HABITAT_DATA_ROOT}/scene_datasets
 export SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/datasets/r2r/{split}/{split}.json.gz"
 ```
 
-### 3.4 校验数据
+### 3.4 Validate the data
 
 ```bash
 swiftvln validate-evaluation-data --env-type habitat
 ```
 
-命令检查 Episode 数量、字段、重复 ID，以及 MP3D `.glb` 与 `.navmesh` 场景文件。
+The command checks Episode numbers, fields, duplicate IDs, and MP3D `.glb` and `.navmesh` scene files.

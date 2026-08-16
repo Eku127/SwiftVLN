@@ -1,5 +1,7 @@
 # 模型与 Checkpoint
 
+简体中文 | [English](../../en-US/getting-started/CHECKPOINTS.md)
+
 本章介绍 SwiftVLN 基础模型与已训练 checkpoint 的下载和配置。
 
 ## 1. 安装下载工具

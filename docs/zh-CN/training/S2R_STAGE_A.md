@@ -1,13 +1,15 @@
-# S2R Stage-A 训练
+# Satellite-to-UAV Stage-A 训练
 
-S2R Stage-A 使用 UAV–Satellite 配对图像训练 sim-to-real adapter。Qwen2.5-VL
+简体中文 | [English](../../en-US/training/S2R_STAGE_A.md)
+
+Satellite-to-UAV Stage-A 使用 UAV–Satellite 配对图像训练 Satellite-to-UAV adapter。Qwen2.5-VL
 视觉塔在训练期间保持冻结，adapter 仅作用于 UAV 视觉 token，使其与对应的卫星图像
 特征对齐。
 
 | 组件 | Stage-A 中的作用 |
 | --- | --- |
 | Qwen2.5-VL 视觉塔 | 同时编码 UAV 与 Satellite 图像，参数冻结 |
-| S2R adapter | 变换 UAV 视觉 token，参与训练 |
+| Satellite-to-UAV adapter | 变换 UAV 视觉 token，参与训练 |
 | Projection head | 计算对比学习与 retrieval 指标，参与训练 |
 
 训练目标为双向 UAV–Satellite 对比损失与全局 cosine alignment loss 之和。Retrieval

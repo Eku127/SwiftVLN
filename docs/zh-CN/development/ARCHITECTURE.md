@@ -1,5 +1,7 @@
 # 代码架构
 
+简体中文 | [English](../../en-US/development/ARCHITECTURE.md)
+
 SwiftVLN 将训练、在线评测、模型扩展和模拟器适配划分为独立模块。训练读取离线
 trajectory，评测通过 Backend 连接 SatNav 或 Habitat；两条链路共享模型、Memory
 处理、embedding enhancement 与实验配置。
@@ -22,13 +24,13 @@ SwiftVLN/
 │   ├── eval/                  # 评测启动脚本
 │   ├── queue/                 # 文件队列
 │   └── lib/                   # Shell 公共函数
-├── tools/s2r/                 # SatDronePair 与 S2R Stage-A 离线工具
+├── tools/s2r/                 # SatDronePair 与 Satellite-to-UAV Stage-A 离线工具
 ├── environments/             # swiftvln-train / swiftvln-eval 环境定义
 ├── third_party/               # 固定版本的外部源码
 └── docs/                      # 用户与开发文档
 ```
 
-`src/swiftvln` 是可安装 Python package。Shell 启动器、离线 S2R 工具和文档
+`src/swiftvln` 是可安装 Python package。Shell 启动器、离线 Satellite-to-UAV 工具和文档
 属于仓库级资产，不进入核心 Python package。
 
 ## 2. 配置与模型名称
@@ -253,9 +255,9 @@ experiment name 和 run URL。
 Rank 0 等待全部完成标记后，从 `result.jsonl` 离线生成最终结果和汇总。再次使用同一未完成
 输出目录时，已经存在的 `scene_id::episode_id` 会被跳过。
 
-## 8. S2R 依赖方向
+## 8. Satellite-to-UAV 依赖方向
 
-S2R Stage-A 的数据转换、Manifest、训练和 retrieval 评测位于 `tools/s2r/`，仅从仓库
+Satellite-to-UAV Stage-A 的数据转换、Manifest、训练和 retrieval 评测位于 `tools/s2r/`，仅从仓库
 checkout 运行。SwiftVLN package 中只保留运行模型所需的 adapter 结构和 checkpoint
 loader：
 

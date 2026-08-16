@@ -1,5 +1,7 @@
 # 扩展 SwiftVLN
 
+简体中文 | [English](../../en-US/development/EXTENDING.md)
+
 SwiftVLN 的训练与评测共享实验配置、模型名称、Memory 和 embedding 实现。新增能力时，
 需要同时保持训练参数、在线推理、checkpoint 和模型名称的一致性。各模块关系见
 [代码架构](ARCHITECTURE.md)。

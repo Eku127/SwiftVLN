@@ -1,27 +1,22 @@
-# Habitat 训练数据准备
+# Habitat Training Data
 
-简体中文 | [English](../../en-US/data/TRAINING_DATA_HABITAT.md)
+[简体中文](../../zh-CN/data/TRAINING_DATA_HABITAT.md) | English
 
-本文的数据生产方法参考
-[StreamVLN](https://github.com/InternRobotics/StreamVLN)：在 Matterport3D（MP3D）场景中
-运行 Habitat，使用 `ShortestPathFollower` 沿 VLN-CE Episode 的 `reference_path` 生成离散
-动作与 RGB observation。实际生产使用 SwiftVLN 自带的 trajectory generation CLI，不需要
-安装 StreamVLN。
+This data-generation workflow follows [StreamVLN](https://github.com/InternRobotics/StreamVLN). It runs Habitat in Matterport3D (MP3D) scenes and uses `ShortestPathFollower` to generate discrete actions and RGB observations along each VLN-CE episode's `reference_path`. Generation is handled by SwiftVLN's own trajectory CLI; the StreamVLN repository is not required.
 
-> R2R 固定使用 `R2R_VLNCE_v1-3`。不要使用 `R2R_VLNCE_v1`，也不要混用旧版 R2R
-> trajectory annotation。
+> R2R uses `R2R_VLNCE_v1-3`. Do not use `R2R_VLNCE_v1` or mix trajectories generated from older R2R annotations.
 
-本文生产以下三组训练数据：
+This article produces the following three sets of training data:
 
-| 数据集 | VLN-CE Episode | 训练轨迹数 |
+| Dataset | VLN-CE Episode | Number of training trajectories |
 | --- | --- | ---: |
 | R2R | `R2R_VLNCE_v1-3/train` | 10,819 |
-| RxR | `RxR_VLNCE_v0/train_guide` 中的英语 Episode | 19,990 |
+| RxR | English Episode in `RxR_VLNCE_v0/train_guide`| 19,990 |
 | EnvDrop | `R2R_VLNCE_v1-3_preprocessed/envdrop` | 146,304 |
 
-## 1. 准备生成环境
+## 1. Prepare the generation environment
 
-完成[环境安装](../getting-started/INSTALLATION.md)后，进入 Habitat 评测环境：
+After completing [environment installation](../getting-started/INSTALLATION.md), enter the Habitat evaluation environment:
 
 ```bash
 cd "${SWIFTVLN_ROOT}"
@@ -31,30 +26,27 @@ swiftvln generate-habitat-trajectories --help
 swiftvln validate-habitat-trajectories --help
 ```
 
-该 CLI 使用 SwiftVLN 的 Habitat 配置，生成参数为：
+The CLI uses SwiftVLN’s Habitat configuration, and the generated parameters are:
 
-| 参数 | 值 |
+| Parameter | Value |
 | --- | --- |
-| RGB 分辨率 | `640 × 480` |
-| 前进步长 | `0.25 m` |
-| 转向角 | `15°` |
+| RGB Resolution |`640 × 480`|
+| Forward step |`0.25 m`|
+| Turn angle |`15°`|
 | Expert | Habitat `ShortestPathFollower` |
-| 最长轨迹 | 498 个 observation-action pair |
+| Longest trajectory | 498 observation-action pairs |
 
-`swiftvln generate-habitat-trajectories` 默认使用单进程，适合单 Episode smoke。完整 R2R、
-RxR 和 EnvDrop 应使用 `torchrun` 并行生成；尤其是 EnvDrop 包含 146,304 个 Episode，并会
-产生约千万张 RGB，单进程生产会持续很久。
+`swiftvln generate-habitat-trajectories` uses one process by default and is suitable for a one-episode smoke test. Generate complete R2R, RxR, and EnvDrop datasets in parallel with `torchrun`. EnvDrop alone contains 146,304 episodes and produces roughly ten million RGB images, so single-process generation takes a long time.
 
-## 2. 准备 MP3D 场景
+## 2. Prepare MP3D scenes
 
-按照 [Matterport3D 官方说明](https://niessner.github.io/Matterport/)申请并下载 Habitat
-场景文件，将 90 个场景保存至：
+Follow [Matterport3D official instructions](https://niessner.github.io/Matterport/)to apply and download Habitat Scene files, save 90 scenes to:
 
 ```text
 /path/to/streamvln_datasets/scene_datasets/mp3d/
 ```
 
-场景目录格式如下：
+The scene directory format is as follows:
 
 ```text
 scene_datasets/mp3d/
@@ -65,9 +57,9 @@ scene_datasets/mp3d/
 └── ...
 ```
 
-## 3. 准备 VLN-CE Episode
+## 3. Prepare VLN-CE episodes
 
-安装下载工具并创建数据目录：
+Install the download tool and create the data directory:
 
 ```bash
 conda activate swiftvln-eval
@@ -79,8 +71,7 @@ cd /path/to/streamvln_datasets/datasets
 
 ### 3.1 R2R v1-3
 
-从 [VLN-CE 数据页](https://jacobkrantz.github.io/vlnce/data)下载
-`R2R_VLNCE_v1-3.zip`：
+Download from [VLN-CE data page](https://jacobkrantz.github.io/vlnce/data) `R2R_VLNCE_v1-3.zip`:
 
 ```bash
 gdown --id 1T9SjqZWyR2PCLSXYkFckfDeIs6Un0Rjm
@@ -88,7 +79,7 @@ unzip R2R_VLNCE_v1-3.zip
 mv R2R_VLNCE_v1-3 r2r
 ```
 
-训练 Episode 路径为：
+The training Episode path is:
 
 ```text
 datasets/r2r/train/train.json.gz
@@ -96,7 +87,7 @@ datasets/r2r/train/train.json.gz
 
 ### 3.2 RxR v0
 
-下载 `RxR_VLNCE_v0.zip`：
+Download `RxR_VLNCE_v0.zip`:
 
 ```bash
 gdown --id 145xzLjxBaNTbVgBfQ8e9EsBAV8W-SM0t
@@ -104,18 +95,17 @@ unzip RxR_VLNCE_v0.zip
 mv RxR_VLNCE_v0 rxr
 ```
 
-下载包提供 multilingual guide train split：
+The archive provides the multilingual guide training split:
 
 ```text
 datasets/rxr/train/train_guide.json.gz
 ```
 
-生成时使用 `--instruction-language en` 选取其中 19,996 个英语 Episode。生成器按照
-StreamVLN 的数据规则移除动作数超过 498 的 6 条轨迹，最终保留 19,990 条训练轨迹。
+Use `--instruction-language en` to select the 19,996 English episodes. Following the StreamVLN data rule, the generator removes six trajectories with more than 498 actions and retains 19,990 training trajectories.
 
 ### 3.3 EnvDrop
 
-下载 `R2R_VLNCE_v1-3_preprocessed.zip`：
+Download `R2R_VLNCE_v1-3_preprocessed.zip`:
 
 ```bash
 gdown --id 1fo8F4NKgZDH-bPSdVU3cONAkt5EW-tyr
@@ -123,15 +113,15 @@ unzip R2R_VLNCE_v1-3_preprocessed.zip
 mv R2R_VLNCE_v1-3_preprocessed/envdrop envdrop
 ```
 
-训练 Episode 路径为：
+The training Episode path is:
 
 ```text
 datasets/envdrop/envdrop.json.gz
 ```
 
-## 4. 生成 R2R 轨迹
+## 4. Generate R2R trajectories
 
-先生成一个 Episode，检查 Habitat、MP3D 和 VLN-CE Episode 是否能够正常加载：
+First generate an episode and check whether Habitat, MP3D and VLN-CE episodes can be loaded normally:
 
 ```bash
 swiftvln generate-habitat-trajectories \
@@ -142,8 +132,7 @@ swiftvln generate-habitat-trajectories \
   --episode-id 1
 ```
 
-完整生产使用一张 GPU 对应一个进程。以下命令使用 8 张 GPU；使用其他 GPU 数量时同步修改
-`--nproc_per_node`：
+Full generation uses one GPU per process. The following command uses eight GPUs; set `--nproc_per_node` to the number of GPUs you want to use:
 
 ```bash
 torchrun --standalone --nproc_per_node=8 \
@@ -154,11 +143,9 @@ torchrun --standalone --nproc_per_node=8 \
   --output-dir /path/to/streamvln_datasets/trajectory_data/R2R
 ```
 
-每个 rank 创建独立的 Habitat Env，并按照 scene 分组后使用
-`episodes[rank::world_size]` 分配 Episode。各 rank 完成后，rank 0 自动合并
-`annotations_<rank>.json`，生成训练入口 `annotations.json`。
+Each rank creates an independent Habitat environment. Episodes are grouped by scene and assigned with `episodes[rank::world_size]`. After all ranks finish, rank 0 merges `annotations_<rank>.json` into the training entry point, `annotations.json`.
 
-## 5. 生成 RxR 轨迹
+## 5. Generate RxR trajectories
 
 ```bash
 torchrun --standalone --nproc_per_node=8 \
@@ -170,7 +157,7 @@ torchrun --standalone --nproc_per_node=8 \
   --output-dir /path/to/streamvln_datasets/trajectory_data/RxR
 ```
 
-## 6. 生成 EnvDrop 轨迹
+## 6. Generate EnvDrop trajectories
 
 ```bash
 torchrun --standalone --nproc_per_node=8 \
@@ -181,8 +168,7 @@ torchrun --standalone --nproc_per_node=8 \
   --output-dir /path/to/streamvln_datasets/trajectory_data/EnvDrop
 ```
 
-任务中断后，使用相同的进程数和输出目录，并增加 `--resume`。生成器会读取每个 rank 的
-annotation shard 或 journal，跳过已经完成的 Episode：
+After the task is interrupted, use the same number of processes and output directory, and increase `--resume`. The generator reads each rank's annotation shard or journal, skipping completed Episodes:
 
 ```bash
 torchrun --standalone --nproc_per_node=8 \
@@ -194,9 +180,9 @@ torchrun --standalone --nproc_per_node=8 \
   --resume
 ```
 
-## 7. 轨迹格式
+## 7. Trajectory format
 
-每个数据集的输出目录包含：
+The output directory for each dataset contains:
 
 ```text
 trajectory_data/R2R/
@@ -215,7 +201,7 @@ trajectory_data/R2R/
             └── ...
 ```
 
-单条 annotation 格式如下：
+The format of a single annotation is as follows:
 
 ```json
 {
@@ -226,35 +212,34 @@ trajectory_data/R2R/
 }
 ```
 
-| 字段 | 说明 |
+| Field | Description |
 | --- | --- |
 | `id` | VLN-CE Episode ID |
-| `video` | Episode 图像目录相对于当前 trajectory 根目录的路径 |
-| `instructions` | 导航指令列表 |
-| `actions` | 与 RGB 帧一一对应的 Habitat 离散动作 |
+|`video`| The path of the Episode image directory relative to the current trajectory root directory |
+|`instructions`| Navigation command list |
+|`actions`| Habitat discrete actions corresponding one-to-one to RGB frames |
 
-动作编码如下：
+The action is coded as follows:
 
 | ID | Action |
 | ---: | --- |
 | -1 | `INIT` |
-| 0 | `STOP`，原始 annotation 中省略 |
-| 1 | `MOVE_FORWARD`，前进 0.25 m |
-| 2 | `TURN_LEFT`，左转 15° |
-| 3 | `TURN_RIGHT`，右转 15° |
+| 0 |`STOP`, omitted from the original annotation |
+| 1 |`MOVE_FORWARD`, forward 0.25 m |
+| 2 |`TURN_LEFT`, turn left 15° |
+| 3 |`TURN_RIGHT`, turn right 15° |
 
-每条轨迹满足：
+Each trajectory satisfies:
 
 ```text
-JPEG 数量 = len(actions)
+JPEG count = len(actions)
 ```
 
-SwiftVLN 训练时移除开头的 `INIT`，并在序列末尾补充 `STOP`。
+During SwiftVLN training, `INIT` at the beginning is removed and `STOP` is added at the end of the sequence.
 
-## 8. 校验轨迹
+## 8. Validate trajectories
 
-使用 SwiftVLN 校验器检查 annotation 字段、Episode ID、动作编码、图像目录、孤立目录以及
-逐轨迹的 RGB/action 数量：
+Use SwiftVLN validators to check annotation fields, Episode IDs, action encodings, image directories, orphan directories, and Number of RGB/actions per trajectory:
 
 ```bash
 swiftvln validate-habitat-trajectories \
@@ -270,11 +255,11 @@ swiftvln validate-habitat-trajectories \
   --expected-count 146304
 ```
 
-增加 `--decode-images` 可以逐张解码 JPEG；完整数据解码会显著增加校验时间。
+Add `--decode-images` to decode JPEGs frame by frame; full data decoding will significantly increase the checksum time.
 
-## 9. 整理目录并配置 SwiftVLN
+## 9. Organize directories and configure SwiftVLN
 
-完成生成后，目录结构如下：
+After the generation is completed, the directory structure is as follows:
 
 ```text
 streamvln_datasets/
@@ -296,7 +281,7 @@ streamvln_datasets/
         └── images/<episode>/rgb/*.jpg
 ```
 
-在 `${SWIFTVLN_ROOT}/.local/env.sh` 中设置训练路径：
+Set the training path in `${SWIFTVLN_ROOT}/.local/env.sh`:
 
 ```bash
 export SWIFTVLN_HABITAT_DATA_ROOT="/path/to/streamvln_datasets"
@@ -305,11 +290,11 @@ export SWIFTVLN_HABITAT_RXR_TRAIN_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/trajectory
 export SWIFTVLN_HABITAT_ENVDROP_TRAIN_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/trajectory_data/EnvDrop"
 ```
 
-训练时通过 `VLN_DATA_PATH` 选择数据组合：
+Use `VLN_DATA_PATH` to select the data combination during training:
 
 ```bash
 export VLN_ENV_TYPE=habitat
 export VLN_DATA_PATH="${SWIFTVLN_HABITAT_R2R_TRAIN_PATH},${SWIFTVLN_HABITAT_RXR_TRAIN_PATH},${SWIFTVLN_HABITAT_ENVDROP_TRAIN_PATH}"
 ```
 
-数据配置完成后，进入 [SwiftVLN 训练](../training/README.md)。
+After the data configuration is completed, enter [SwiftVLN training](../training/README.md).

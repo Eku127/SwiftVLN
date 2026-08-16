@@ -1,5 +1,7 @@
 # Memory 训练配置
 
+简体中文 | [English](../../en-US/training/MEMORY.md)
+
 SwiftVLN 将当前轨迹窗口之外的观测组织为 Memory。Memory 配置包括 history-frame
 sampling、input augmentation 和 long-term Memory compression。
 
@@ -7,7 +9,7 @@ sampling、input augmentation 和 long-term Memory compression。
 
 ## 1. 适用环境
 
-除 S2R Stage-A adapter 和 Map memory 为 SatNav 专用外，其余 history-based Memory 配置
+除 Satellite-to-UAV Stage-A adapter 和 Map memory 为 SatNav 专用外，其余 history-based Memory 配置
 均同时支持 SatNav 与 Habitat。
 
 ## 2. Memory necessity
@@ -104,7 +106,7 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 
 ## 4. Input augmentation
 
-Input augmentation 在 reference Memory 之上加入初始观测、相对位姿或 S2R Stage-A
+Input augmentation 在 reference Memory 之上加入初始观测、相对位姿或 Satellite-to-UAV Stage-A
 adapter。其余 Memory 参数保持 reference 配置。
 
 `EMBEDDING_MODE` 每次选择一种模式：
@@ -114,7 +116,7 @@ adapter。其余 Memory 参数保持 reference 配置。
 | 无 embedding enhancement | `EMBEDDING_MODE=none` |
 | Additive pose embedding | `EMBEDDING_MODE=pose` |
 | FiLM pose embedding | `EMBEDDING_MODE=posefilm` |
-| S2R Stage-A adapter | `EMBEDDING_MODE=uav` |
+| Satellite-to-UAV Stage-A adapter | `EMBEDDING_MODE=uav` |
 
 ### 4.1 Initial observation
 
@@ -154,9 +156,9 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 
 FiLM 与 Additive pose embedding 均已在 SatNav 和 Habitat 验证。
 
-### 4.3 S2R Stage-A adapter
+### 4.3 Satellite-to-UAV Stage-A adapter
 
-加载 [S2R Stage-A](S2R_STAGE_A.md) adapter：
+加载 [Satellite-to-UAV Stage-A](S2R_STAGE_A.md) adapter：
 
 ```bash
 EMBEDDING_MODE=uav \
@@ -172,7 +174,7 @@ bash scripts/train/train_swiftvln_qwen_vl.sh
 | `UAV_ADAPTER_TYPE` | `transformer_v1` | Adapter 结构 |
 | `UAV_ADAPTER_APPLY_SCOPE` | `all_images` | 将 adapter 应用于全部输入图像 |
 
-S2R Stage-A adapter 仅支持 SatNav；Habitat 不支持，本次未测试。
+Satellite-to-UAV Stage-A adapter 仅支持 SatNav；Habitat 不支持，本次未测试。
 
 ## 5. Long-term Memory compression
 
@@ -264,7 +266,7 @@ SatNav 和 Habitat 验证。
 | Initial observation | `SYSTEM_PROMPT_SETTING=initial` | `initial-noembed` |
 | Relative pose | `EMBEDDING_MODE=posefilm` | `posefilm` |
 | Additive pose | `EMBEDDING_MODE=pose` | `pose` |
-| S2R Stage-A adapter | `EMBEDDING_MODE=uav` | `uav` |
+| Satellite-to-UAV Stage-A adapter | `EMBEDDING_MODE=uav` | `uav` |
 | Map memory | `MEMORY_METHOD=map` | `map-g1000-l400-r448-d20-s2` |
 | GTC | `HISTORY_PROCESSOR_TYPE=gtc` | `gtc-k512` |
 | STC / Segment-GTC | `HISTORY_PROCESSOR_TYPE=segment_gtc` | `sgtc-k512` |

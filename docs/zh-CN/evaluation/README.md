@@ -1,5 +1,7 @@
 # SwiftVLN 评测
 
+简体中文 | [English](../../en-US/evaluation/README.md)
+
 SwiftVLN 使用统一入口在 SatNav 和 Habitat 中执行在线评测。评测脚本从模型名称恢复训练
 配置，加载对应 checkpoint，并将 Episode 分配到指定 GPU。
 

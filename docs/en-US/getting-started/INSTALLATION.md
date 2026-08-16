@@ -1,19 +1,19 @@
-# 安装
+# Installation
 
-简体中文 | [English](../../en-US/getting-started/INSTALLATION.md)
+[简体中文](../../zh-CN/getting-started/INSTALLATION.md) | English
 
-SwiftVLN 使用两套 Conda 环境：
+SwiftVLN uses two Conda environments:
 
-| 用途 | Conda 环境 | Python |
+| Purpose | Conda Environment | Python |
 | --- | --- | --- |
-| 监督微调与 Satellite-to-UAV Stage-A 训练 | `swiftvln-train` | 3.10 |
-| SatNav / Habitat 在线评测 | `swiftvln-eval` | 3.9 |
+| Supervised fine-tuning and Satellite-to-UAV Stage-A training |`swiftvln-train`| 3.10 |
+| SatNav / Habitat Online Evaluation |`swiftvln-eval`| 3.9 |
 
-> SatNav 训练可以使用 Python 3.10；Habitat 在线评测需要使用 Python 3.9。
+> SatNav training can use Python 3.10; Habitat online evaluation requires Python 3.9.
 
-## 1. 获取源码
+## 1. Get the source code
 
-克隆 SwiftVLN：
+Clone SwiftVLN:
 
 ```bash
 git clone https://github.com/Eku127/SwiftVLN.git
@@ -21,30 +21,30 @@ cd SwiftVLN
 export SWIFTVLN_ROOT="${PWD}"
 ```
 
-根据任务拉取所需子模块：
+Pull the required submodules according to the task:
 
 ```bash
-# 训练
+# Training
 git submodule update --init third_party/ms-swift
 
-# SatNav 评测
+# SatNav Evaluation
 git submodule update --init third_party/ms-swift third_party/SatNav
 
-# Habitat 评测
+# Habitat Evaluation
 git submodule update --init \
   third_party/ms-swift \
   third_party/habitat-lab-0.2.4
 ```
 
-同时需要使用 SatNav 和 Habitat 时，可以拉取全部子模块：
+When you need to use SatNav and Habitat at the same time, you can pull all submodules:
 
 ```bash
 git submodule update --init --recursive
 ```
 
-## 2. 安装训练环境
+## 2. Install the training environment
 
-创建并激活训练环境：
+Create and activate the training environment:
 
 ```bash
 source /path/to/miniconda3/etc/profile.d/conda.sh
@@ -55,7 +55,7 @@ conda activate swiftvln-train
 python -m pip install --upgrade pip setuptools wheel
 ```
 
-安装 PyTorch CUDA 12.8：
+Install PyTorch CUDA 12.8:
 
 ```bash
 python -m pip install \
@@ -65,7 +65,7 @@ python -m pip install \
   --index-url https://download.pytorch.org/whl/cu128
 ```
 
-安装 ms-swift、训练依赖和 SwiftVLN：
+Install ms-swift, training dependencies, and SwiftVLN:
 
 ```bash
 python -m pip install -e "${SWIFTVLN_ROOT}/third_party/ms-swift"
@@ -78,9 +78,9 @@ MAX_JOBS=8 python -m pip install flash-attn==2.8.3 --no-build-isolation
 python -m pip install -e "${SWIFTVLN_ROOT}"
 ```
 
-## 3. 安装评测环境
+## 3. Install the evaluation environment
 
-创建并激活评测环境：
+Create and activate the evaluation environment:
 
 ```bash
 source /path/to/miniconda3/etc/profile.d/conda.sh
@@ -91,7 +91,7 @@ conda activate swiftvln-eval
 python -m pip install --upgrade pip setuptools wheel
 ```
 
-安装 PyTorch CUDA 12.8 和评测依赖：
+Install PyTorch CUDA 12.8 and evaluation dependencies:
 
 ```bash
 python -m pip install \
@@ -107,20 +107,20 @@ export PATH="${CUDA_HOME}/bin:${PATH}"
 MAX_JOBS=8 python -m pip install flash-attn==2.8.3 --no-build-isolation
 ```
 
-安装 ms-swift 和 SwiftVLN：
+Install ms-swift and SwiftVLN:
 
 ```bash
 python -m pip install -e "${SWIFTVLN_ROOT}/third_party/ms-swift"
 python -m pip install -e "${SWIFTVLN_ROOT}"
 ```
 
-SatNav 评测还需安装 SatNav：
+SatNav evaluation also requires SatNav to be installed:
 
 ```bash
 python -m pip install -e "${SWIFTVLN_ROOT}/third_party/SatNav"
 ```
 
-Habitat 评测还需安装 Habitat-Lab 和 Habitat-Baselines：
+Habitat evaluation also requires Habitat-Lab and Habitat-Baselines to be installed:
 
 ```bash
 python -m pip install -e \
@@ -129,9 +129,9 @@ python -m pip install -e \
   "${SWIFTVLN_ROOT}/third_party/habitat-lab-0.2.4/habitat-baselines"
 ```
 
-## 4. 配置本机路径
+## 4. Configure the local path
 
-复制本机配置模板：
+Copy the local configuration template:
 
 ```bash
 cd "${SWIFTVLN_ROOT}"
@@ -140,19 +140,18 @@ cp local.env.example .local/env.sh
 ${EDITOR:-vi} .local/env.sh
 ```
 
-在 `.local/env.sh` 中填写 Conda、模型、数据集和场景路径。训练与评测脚本会自动
-加载该文件。
+Fill in the Conda, model, dataset, and scene paths in `.local/env.sh`. The training and evaluation scripts load this file automatically.
 
-模型路径可以使用 Hugging Face 模型 ID，也可以指向本地目录：
+The model path can use the Hugging Face model ID or point to a local directory:
 
 ```bash
 export SWIFTVLN_QWEN25_MODEL_PATH="Qwen/Qwen2.5-VL-3B-Instruct"
 export SWIFTVLN_QWEN3_MODEL_PATH="Qwen/Qwen3-VL-2B-Instruct"
 ```
 
-## 5. 验证安装
+## 5. Verify installation
 
-验证训练环境：
+Verify training environment:
 
 ```bash
 conda activate swiftvln-train
@@ -172,7 +171,7 @@ swiftvln --help
 python -m swiftvln.experiment --help
 ```
 
-验证评测环境：
+Verify evaluation environment:
 
 ```bash
 conda activate swiftvln-eval
@@ -190,7 +189,7 @@ PY
 python -m swiftvln.evaluation --help
 ```
 
-根据评测平台检查 SatNav 或 Habitat：
+Verify the platform you plan to evaluate:
 
 ```bash
 # SatNav
