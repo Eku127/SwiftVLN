@@ -1,5 +1,5 @@
 # SwiftVLN mainline training Conda environment.
-name: swift-vln-train-update
+name: swiftvln-train
 channels:
   - nvidia
   - conda-forge

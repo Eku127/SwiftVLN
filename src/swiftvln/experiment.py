@@ -15,6 +15,8 @@ from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Dict, Optional, Sequence
 
+from swiftvln.backends.specs import get_environment_spec
+
 
 MODEL_FAMILIES = ("qwen2_5_vl", "qwen3_vl")
 ENV_TYPES = ("habitat", "satnav")
@@ -193,8 +195,10 @@ class SwiftVLNExperimentSpec:
                 f"system_prompt_setting must be one of {SYSTEM_PROMPTS}"
             )
         if self.memory_method == "map":
-            if self.env_type != "satnav":
-                raise ExperimentNameError("map memory is supported only for SatNav")
+            if not get_environment_spec(self.env_type).supports_map_memory:
+                raise ExperimentNameError(
+                    f"map memory is supported only for SatNav (got {self.env_type})"
+                )
             if self.history_processor_type != "per_frame":
                 raise ExperimentNameError(
                     "map memory requires history_processor_type='per_frame'"
