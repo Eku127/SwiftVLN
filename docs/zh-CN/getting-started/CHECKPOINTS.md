@@ -22,7 +22,7 @@ SwiftVLN 支持以下基础模型：
 
 ### 2.2 下载 Checkpoint
 
-当前发布的 SatNav checkpoint 均基于 Qwen2.5-VL 3B。下载该基础模型：
+SatNav 默认模型与 ablation 模型基于 Qwen2.5-VL 3B。下载该基础模型：
 
 ```bash
 export SWIFTVLN_MODEL_ROOT=/path/to/models
@@ -110,7 +110,36 @@ test -f "${SWIFTVLN_SATNAV_MODEL_PATH}/model.safetensors.index.json"
 | [`swiftvln-satnav-3b-1ep-f32s4-overlap0-gtc-k512-noembed`](https://huggingface.co/Eku127/swiftvln-satnav-3b-1ep-f32s4-overlap0-gtc-k512-noembed) | GTC history processor，输出 512 个 token |
 | [`swiftvln-satnav-3b-1ep-f32s4-overlap0-sgtc-k512-noembed`](https://huggingface.co/Eku127/swiftvln-satnav-3b-1ep-f32s4-overlap0-sgtc-k512-noembed) | Segment-GTC history processor，输出 512 个 token |
 
-### 3.3 模型名称
+### 3.3 Backbone 模型
+
+以下模型使用相同的 SwiftVLN reference memory 配置，用于比较不同 Qwen-VL backbone：
+
+| 模型 | Backbone | 起始 Checkpoint |
+| --- | --- | --- |
+| [`swiftvln-satnav-7b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`](https://huggingface.co/Eku127/swiftvln-satnav-7b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed) | Qwen2.5-VL 7B | `Qwen/Qwen2.5-VL-7B-Instruct` |
+| [`swiftvln-satnav-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`](https://huggingface.co/Eku127/swiftvln-satnav-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed) | Qwen3-VL 2B | `Qwen/Qwen3-VL-2B-Instruct` |
+| [`swiftvln-satnav-qwen3vl-8b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`](https://huggingface.co/Eku127/swiftvln-satnav-qwen3vl-8b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed) | Qwen3-VL 8B | `Qwen/Qwen3-VL-8B-Instruct` |
+
+
+选择需要的模型名称并下载：
+
+```bash
+export MODEL_NAME=swiftvln-satnav-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export SWIFTVLN_BACKBONE_MODEL_ROOT="${SWIFTVLN_ROOT}/output/model_zoo/backbones/HF_model"
+export MODEL_PATH="${SWIFTVLN_BACKBONE_MODEL_ROOT}/${MODEL_NAME}"
+
+hf download "Eku127/${MODEL_NAME}" \
+  --local-dir "${MODEL_PATH}"
+```
+
+评测 backbone 模型时显式传入下载路径：
+
+```bash
+MODEL_PATH="${MODEL_PATH}" \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+### 3.4 模型名称
 
 模型名称是 SwiftVLN 评测配置的一部分。`eval_by_name.sh` 从名称中解析环境、模型族、轨迹
 窗口、overlap、memory、history processor、system prompt 和 embedding enhancement。
