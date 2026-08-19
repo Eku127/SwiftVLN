@@ -45,6 +45,19 @@ export MODEL_NAME=swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
 python -m swiftvln.experiment parse-name "${MODEL_NAME}" --format json
 ```
 
+Habitat Qwen2.5-VL 3B model:
+
+```bash
+export MODEL_NAME=swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+python -m swiftvln.experiment parse-name "${MODEL_NAME}" --format json
+```
+
+For Qwen3-VL 2B, set:
+
+```bash
+export MODEL_NAME=swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+```
+
 `eval_by_name.sh` finds models in the following order:
 
 | Priority | Model Position |
@@ -53,7 +66,7 @@ python -m swiftvln.experiment parse-name "${MODEL_NAME}" --format json
 | 2 | checkpoint in `output/swiftvln/<model-name>/`|
 | 3 | `output/model_zoo/swiftvln/HF_model/<model-name>/` |
 
-After downloading the default model according to the checkpoint document, you can use the standard directory directly:
+After downloading a model according to the checkpoint guide, use the standard directory directly:
 
 ```bash
 export MODEL_PATH="${SWIFTVLN_ROOT}/output/model_zoo/swiftvln/HF_model/${MODEL_NAME}"
@@ -190,9 +203,131 @@ bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
 
 ## 5. Habitat evaluation
 
-> TBD
+### 5.1 Evaluation configuration
 
-## 6. Visualization and performance analysis
+Habitat evaluation is configured in the following locations:
+
+| Configuration | Location | Content |
+| --- | --- | --- |
+| Task configuration | `src/swiftvln/configs/habitat/r2r.yaml` | Habitat simulator, RGB sensor, actions, success distance, metrics, and default R2R paths |
+| Local paths | `.local/env.sh` | R2R episodes and MP3D scenes |
+| Model configuration | SwiftVLN model name | Model family, trajectory window, Memory, history processor, system prompt, and embedding enhancement |
+| Runtime configuration | Launch-command environment variables | Split, GPUs, output directory, and video |
+
+`eval_by_name.sh` selects the default task configuration automatically. To use a custom Habitat configuration:
+
+```bash
+export EVAL_CONFIG_PATH=/path/to/habitat_r2r_eval.yaml
+```
+
+Set the R2R and MP3D paths in `.local/env.sh`:
+
+```bash
+export SWIFTVLN_HABITAT_DATA_ROOT="/path/to/streamvln_datasets"
+export SWIFTVLN_HABITAT_SCENES_DIR="${SWIFTVLN_HABITAT_DATA_ROOT}/scene_datasets"
+export SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/datasets/r2r/{split}/{split}.json.gz"
+```
+
+Habitat evaluates `val_unseen` by default. Set `EVAL_SPLIT=val_seen` explicitly to evaluate `val_seen`.
+
+### 5.2 Evaluation scripts
+
+Habitat and SatNav use the same evaluation entry points:
+
+| Script | Purpose |
+| --- | --- |
+| `scripts/eval/eval_by_name.sh` | Recommended entry point; restores Habitat, model-family, and Memory configuration from the model name and locates the checkpoint |
+| `scripts/eval/eval_swiftvln_qwen_vl_distributed.sh` | Low-level entry point using an explicit Habitat configuration, model path, and inference parameters |
+| `scripts/queue/enqueue_eval.sh`, `scripts/queue/eval_queue.sh` | Add multiple models to the file queue and evaluate them sequentially |
+
+After downloading the Qwen2.5-VL 3B model, set:
+
+```bash
+export MODEL_NAME=swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export MODEL_PATH="${SWIFTVLN_ROOT}/output/model_zoo/swiftvln/HF_model/${MODEL_NAME}"
+```
+
+For Qwen3-VL 2B, only the model name changes; `eval_by_name.sh` sets `MODEL_FAMILY=qwen3_vl`
+automatically:
+
+```bash
+export MODEL_NAME=swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export MODEL_PATH="${SWIFTVLN_ROOT}/output/model_zoo/swiftvln/HF_model/${MODEL_NAME}"
+```
+
+Check the evaluation configuration:
+
+```bash
+CHECK_ONLY=true \
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0 \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+When calling the low-level script directly, pass the Habitat environment and model parameters explicitly:
+
+```bash
+ENV_TYPE=habitat \
+MODEL_NAME="${MODEL_NAME}" \
+MODEL_PATH="${MODEL_PATH}" \
+MODEL_FAMILY=qwen2_5_vl \
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0 \
+bash scripts/eval/eval_swiftvln_qwen_vl_distributed.sh
+```
+
+Set `MODEL_FAMILY=qwen3_vl` when directly evaluating the Qwen3-VL 2B model.
+
+Queue a locally trained model for evaluation:
+
+```bash
+bash scripts/queue/enqueue_eval.sh "${MODEL_NAME}"
+CUDA_DEVICES=0,1,2,3 bash scripts/queue/eval_queue.sh
+```
+
+### 5.3 Single- and multi-GPU evaluation
+
+Evaluate `val_unseen` on one GPU:
+
+```bash
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0 \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+Evaluate `val_unseen` on multiple GPUs:
+
+```bash
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0,1,2,3,4,5,6,7 \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+Evaluate `val_seen` followed by `val_unseen`:
+
+```bash
+for split in val_seen val_unseen; do
+  EVAL_SPLIT="${split}" \
+  CUDA_DEVICES=0,1,2,3,4,5,6,7 \
+  bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+done
+```
+
+Set `MAX_EPISODES` to evaluate a small number of episodes:
+
+```bash
+MAX_EPISODES=1 \
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0 \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+Habitat results use the shared directory and metric formats described in Section 7.
+
+## 6. SatNav visualization and performance analysis
+
+Visualization and performance analysis are currently available only for SatNav evaluation. Run Habitat evaluation
+as described in Section 5 without the options in this section.
 
 Save RGB, top-down map and navigation command visualization video:
 

@@ -164,6 +164,79 @@ swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
 
 ## 4. Habitat models
 
-### 4.1 Checkpoint
+### 4.1 Released models
 
-TBD. SwiftVLN Habitat checkpoint has not been released yet.
+SwiftVLN provides two Habitat models using the reference Memory configuration:
+
+| Model | Backbone | Starting checkpoint |
+| --- | --- | --- |
+| [`swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`](https://huggingface.co/Eku127/swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed) | Qwen2.5-VL 3B | `Qwen/Qwen2.5-VL-3B-Instruct` |
+| [`swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`](https://huggingface.co/Eku127/swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed) | Qwen3-VL 2B | `Qwen/Qwen3-VL-2B-Instruct` |
+
+Both models share the following training configuration:
+
+| Configuration | Value |
+| --- | --- |
+| Environment | Habitat |
+| Training data | R2R, RxR, and EnvDrop expert trajectories |
+| Epochs | `1` |
+| Trajectory window | `NUM_FRAMES=32` |
+| Actions per turn | `NUM_FUTURE_STEPS=4` |
+| Window overlap | `NUM_OVERLAP=0` |
+| Memory | Uniformly sample 8 history frames, per-frame average pooling, stride 2 |
+| Embedding enhancement | `none` |
+| Learning rate | `2e-5` |
+
+### 4.2 Download checkpoints
+
+Select a model and download it to the SwiftVLN model directory. The following command downloads the
+Qwen2.5-VL 3B model:
+
+```bash
+export MODEL_NAME=swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export SWIFTVLN_HF_MODEL_ROOT="${SWIFTVLN_ROOT}/output/model_zoo/swiftvln/HF_model"
+export SWIFTVLN_HABITAT_MODEL_PATH="${SWIFTVLN_HF_MODEL_ROOT}/${MODEL_NAME}"
+
+hf download "Eku127/${MODEL_NAME}" \
+  --local-dir "${SWIFTVLN_HABITAT_MODEL_PATH}"
+```
+
+To download the Qwen3-VL 2B model, replace the model name:
+
+```bash
+export MODEL_NAME=swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export SWIFTVLN_HABITAT_MODEL_PATH="${SWIFTVLN_HF_MODEL_ROOT}/${MODEL_NAME}"
+
+hf download "Eku127/${MODEL_NAME}" \
+  --local-dir "${SWIFTVLN_HABITAT_MODEL_PATH}"
+```
+
+Verify the model configuration and weight index:
+
+```bash
+test -f "${SWIFTVLN_HABITAT_MODEL_PATH}/config.json"
+test -f "${SWIFTVLN_HABITAT_MODEL_PATH}/model.safetensors.index.json"
+```
+
+The downloaded model can be used directly for online Habitat evaluation or as the initialization checkpoint
+for further training. See [SwiftVLN evaluation](../evaluation/README.md) and
+[SwiftVLN training](../training/README.md) for commands.
+
+### 4.3 Model names
+
+The shared name fields describe the common Habitat training and Memory configuration:
+
+```text
+swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+         │        │   │     │        │     │     │       └─ no embedding enhancement
+         │        │   │     │        │     │     └───────── pooling stride 2
+         │        │   │     │        │     └─────────────── per-frame, 8 history frames
+         │        │   │     │        └───────────────────── non-overlapping windows
+         │        │   │     └────────────────────────────── 32-frame window, 4 actions per turn
+         │        │   └──────────────────────────────────── trained for 1 epoch
+         │        └──────────────────────────────────────── Qwen2.5-VL 3B
+         └───────────────────────────────────────────────── Habitat
+```
+
+The Qwen3-VL model uses `qwen3vl-2b` to identify its model family and size. Keep the full Hugging Face
+repository name during evaluation so that `eval_by_name.sh` can select the correct model family and Habitat backend.
