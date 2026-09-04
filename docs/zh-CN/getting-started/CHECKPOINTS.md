@@ -168,6 +168,77 @@ swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
 
 ## 4. Habitat 模型
 
-### 4.1 Checkpoint
+### 4.1 已发布模型
 
-TBD。SwiftVLN Habitat checkpoint 尚未发布。
+SwiftVLN 已发布两个采用 reference Memory 配置的 Habitat 模型：
+
+| 模型 | Backbone | 起始 Checkpoint |
+| --- | --- | --- |
+| [`swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`](https://huggingface.co/Eku127/swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed) | Qwen2.5-VL 3B | `Qwen/Qwen2.5-VL-3B-Instruct` |
+| [`swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed`](https://huggingface.co/Eku127/swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed) | Qwen3-VL 2B | `Qwen/Qwen3-VL-2B-Instruct` |
+
+两个模型共享以下训练配置：
+
+| 配置 | 值 |
+| --- | --- |
+| 训练环境 | Habitat |
+| 训练数据 | R2R、RxR、EnvDrop expert trajectories |
+| Epoch | `1` |
+| 轨迹窗口 | `NUM_FRAMES=32` |
+| 每轮动作数 | `NUM_FUTURE_STEPS=4` |
+| 窗口重叠 | `NUM_OVERLAP=0` |
+| Memory | 均匀采样 8 张历史帧，per-frame average pooling，stride 2 |
+| Embedding enhancement | `none` |
+| Learning rate | `2e-5` |
+
+### 4.2 下载 Checkpoint
+
+选择模型并下载到 SwiftVLN 模型目录。以下命令下载 Qwen2.5-VL 3B 模型：
+
+```bash
+export MODEL_NAME=swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export SWIFTVLN_HF_MODEL_ROOT="${SWIFTVLN_ROOT}/output/model_zoo/swiftvln/HF_model"
+export SWIFTVLN_HABITAT_MODEL_PATH="${SWIFTVLN_HF_MODEL_ROOT}/${MODEL_NAME}"
+
+hf download "Eku127/${MODEL_NAME}" \
+  --local-dir "${SWIFTVLN_HABITAT_MODEL_PATH}"
+```
+
+下载 Qwen3-VL 2B 模型时替换模型名称：
+
+```bash
+export MODEL_NAME=swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export SWIFTVLN_HABITAT_MODEL_PATH="${SWIFTVLN_HF_MODEL_ROOT}/${MODEL_NAME}"
+
+hf download "Eku127/${MODEL_NAME}" \
+  --local-dir "${SWIFTVLN_HABITAT_MODEL_PATH}"
+```
+
+检查模型配置与权重索引：
+
+```bash
+test -f "${SWIFTVLN_HABITAT_MODEL_PATH}/config.json"
+test -f "${SWIFTVLN_HABITAT_MODEL_PATH}/model.safetensors.index.json"
+```
+
+下载后的模型可以直接用于 Habitat 在线评测，也可以作为后续训练的初始化 checkpoint。
+具体命令见 [SwiftVLN 评测](../evaluation/README.md)和[SwiftVLN 训练](../training/README.md)。
+
+### 4.3 模型名称
+
+两个模型名称中的公共字段表示相同的 Habitat 训练与 Memory 配置：
+
+```text
+swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+         │        │   │     │        │     │     │       └─ 无 embedding enhancement
+         │        │   │     │        │     │     └───────── pooling stride 2
+         │        │   │     │        │     └─────────────── per-frame，8 张历史帧
+         │        │   │     │        └───────────────────── 窗口无重叠
+         │        │   │     └────────────────────────────── 32 帧窗口，每轮 4 个动作
+         │        │   └──────────────────────────────────── 训练 1 epoch
+         │        └──────────────────────────────────────── Qwen2.5-VL 3B
+         └───────────────────────────────────────────────── Habitat
+```
+
+Qwen3-VL 模型使用 `qwen3vl-2b` 标识模型族与规模。评测时保留 Hugging Face 仓库中的
+完整模型名称，`eval_by_name.sh` 会自动选择对应模型族与 Habitat backend。

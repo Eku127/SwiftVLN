@@ -34,6 +34,15 @@ MASTER_PORT="${MASTER_PORT:-29500}"            # Master port for distributed tra
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"  # Optional full training resume checkpoint
 RESUME_ONLY_MODEL="${RESUME_ONLY_MODEL:-false}"       # true = load weights only from resume checkpoint
 OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR_OVERRIDE:-}"        # Optional output root override before versioning
+PRUNE_DEEPSPEED_AFTER_SUCCESS="${PRUNE_DEEPSPEED_AFTER_SUCCESS:-true}"  # Keep resume state during training, prune after success
+
+case "$PRUNE_DEEPSPEED_AFTER_SUCCESS" in
+    true|false) ;;
+    *)
+        echo "[ERROR] PRUNE_DEEPSPEED_AFTER_SUCCESS must be true or false, got: $PRUNE_DEEPSPEED_AFTER_SUCCESS" >&2
+        exit 1
+        ;;
+esac
 
 normalize_cuda_device_list() {
     local raw="$1"
@@ -513,6 +522,7 @@ fi
 echo "------------------------------------------"
 echo "Freeze ViT: $FREEZE_VIT | LLM: $FREEZE_LLM | Aligner: $FREEZE_ALIGNER"
 echo "DeepSpeed: $USE_DEEPSPEED ($DEEPSPEED_CONFIG)"
+echo "Prune DeepSpeed resume state after successful training: $PRUNE_DEEPSPEED_AFTER_SUCCESS"
 echo "------------------------------------------"
 echo "Acceleration:"
 echo "  dataloader_num_workers: $DATALOADER_NUM_WORKERS"
@@ -592,6 +602,7 @@ if [[ "$USE_SWANLAB" == "true" && "$SWANLAB_DIRECT_NETWORK" == "true" ]]; then
 fi
 
 TORCH_DTYPE="${TORCH_DTYPE:-bfloat16}"
+TRAINING_START_EPOCH_SECONDS=$(date +%s)
 
 torchrun \
     --nnodes=1 \
@@ -679,4 +690,17 @@ if [ "$USE_SWANLAB" = true ]; then
     _SWANLAB_EXP="$SWANLAB_EXP_NAME" \
     _OUTPUT_DIR="$OUTPUT_DIR" \
     python3 "${SWIFTVLN_ROOT}/scripts/train/_write_train_metadata.py" 2>/dev/null || true
+fi
+
+# DeepSpeed checkpoints are kept intact while torchrun is active so a failed or
+# preempted job can resume exactly. Once torchrun exits successfully, validate
+# the standard model artifacts and prune only the large ZeRO resume state.
+if [[ "$USE_DEEPSPEED" == "true" && "$PRUNE_DEEPSPEED_AFTER_SUCCESS" == "true" ]]; then
+    echo "[INFO] Validating completed checkpoints before pruning DeepSpeed resume state..."
+    if ! python3 "${SWIFTVLN_ROOT}/scripts/train/_prune_deepspeed_state.py" \
+        --output-dir "$OUTPUT_DIR" \
+        --not-before-epoch "$TRAINING_START_EPOCH_SECONDS" \
+        --apply; then
+        echo "[WARNING] Training completed, but DeepSpeed cleanup did not complete; resume state was retained where possible." >&2
+    fi
 fi

@@ -47,6 +47,19 @@ export MODEL_NAME=swiftvln-satnav-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
 python -m swiftvln.experiment parse-name "${MODEL_NAME}" --format json
 ```
 
+Habitat Qwen2.5-VL 3B 模型：
+
+```bash
+export MODEL_NAME=swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+python -m swiftvln.experiment parse-name "${MODEL_NAME}" --format json
+```
+
+使用 Qwen3-VL 2B 时设置：
+
+```bash
+export MODEL_NAME=swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+```
+
 `eval_by_name.sh` 按以下顺序查找模型：
 
 | 优先级 | 模型位置 |
@@ -55,7 +68,7 @@ python -m swiftvln.experiment parse-name "${MODEL_NAME}" --format json
 | 2 | `output/swiftvln/<model-name>/` 中的 checkpoint |
 | 3 | `output/model_zoo/swiftvln/HF_model/<model-name>/` |
 
-按照 checkpoint 文档下载默认模型后，可以直接使用标准目录：
+按照 checkpoint 文档下载模型后，可以直接使用标准目录：
 
 ```bash
 export MODEL_PATH="${SWIFTVLN_ROOT}/output/model_zoo/swiftvln/HF_model/${MODEL_NAME}"
@@ -195,9 +208,130 @@ bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
 
 ## 5. Habitat 评测
 
-> TBD
+### 5.1 评测配置
 
-## 6. 可视化与性能分析
+Habitat 评测配置分布在以下位置：
+
+| 配置 | 位置 | 内容 |
+| --- | --- | --- |
+| 任务配置 | `src/swiftvln/configs/habitat/r2r.yaml` | Habitat simulator、RGB sensor、动作、成功距离、指标与 R2R 数据集默认路径 |
+| 本机路径 | `.local/env.sh` | R2R Episode 与 MP3D 场景路径 |
+| 模型配置 | SwiftVLN 模型名称 | 模型族、轨迹窗口、memory、history processor、system prompt 和 embedding enhancement |
+| 运行配置 | 启动命令的环境变量 | split、GPU、输出目录和视频 |
+
+默认任务配置由 `eval_by_name.sh` 自动选择。使用自定义 Habitat 配置时指定：
+
+```bash
+export EVAL_CONFIG_PATH=/path/to/habitat_r2r_eval.yaml
+```
+
+在 `.local/env.sh` 中设置 R2R 与 MP3D 路径：
+
+```bash
+export SWIFTVLN_HABITAT_DATA_ROOT="/path/to/streamvln_datasets"
+export SWIFTVLN_HABITAT_SCENES_DIR="${SWIFTVLN_HABITAT_DATA_ROOT}/scene_datasets"
+export SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/datasets/r2r/{split}/{split}.json.gz"
+```
+
+Habitat 默认评测 `val_unseen`。评测 `val_seen` 时显式设置 `EVAL_SPLIT=val_seen`。
+
+### 5.2 评测脚本
+
+Habitat 与 SatNav 使用相同的评测入口：
+
+| 脚本 | 用途 |
+| --- | --- |
+| `scripts/eval/eval_by_name.sh` | 推荐入口；从模型名称恢复 Habitat、模型族与 Memory 配置并定位 checkpoint |
+| `scripts/eval/eval_swiftvln_qwen_vl_distributed.sh` | 底层执行入口；使用显式提供的 Habitat 配置、模型路径与推理参数 |
+| `scripts/queue/enqueue_eval.sh`、`scripts/queue/eval_queue.sh` | 将多个模型加入文件队列并串行评测 |
+
+下载 Qwen2.5-VL 3B 模型后设置：
+
+```bash
+export MODEL_NAME=swiftvln-habitat-3b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export MODEL_PATH="${SWIFTVLN_ROOT}/output/model_zoo/swiftvln/HF_model/${MODEL_NAME}"
+```
+
+使用 Qwen3-VL 2B 模型时只需替换模型名称；`eval_by_name.sh` 会自动设置
+`MODEL_FAMILY=qwen3_vl`：
+
+```bash
+export MODEL_NAME=swiftvln-habitat-qwen3vl-2b-1ep-f32s4-overlap0-pf-h8-pool-s2-noembed
+export MODEL_PATH="${SWIFTVLN_ROOT}/output/model_zoo/swiftvln/HF_model/${MODEL_NAME}"
+```
+
+运行配置检查：
+
+```bash
+CHECK_ONLY=true \
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0 \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+直接调用底层脚本时，需要显式传入 Habitat 环境和模型参数：
+
+```bash
+ENV_TYPE=habitat \
+MODEL_NAME="${MODEL_NAME}" \
+MODEL_PATH="${MODEL_PATH}" \
+MODEL_FAMILY=qwen2_5_vl \
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0 \
+bash scripts/eval/eval_swiftvln_qwen_vl_distributed.sh
+```
+
+直接评测 Qwen3-VL 2B 模型时将 `MODEL_FAMILY` 设置为 `qwen3_vl`。
+
+批量评测本地训练模型：
+
+```bash
+bash scripts/queue/enqueue_eval.sh "${MODEL_NAME}"
+CUDA_DEVICES=0,1,2,3 bash scripts/queue/eval_queue.sh
+```
+
+### 5.3 单卡与多卡评测
+
+单卡评测 `val_unseen`：
+
+```bash
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0 \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+多卡评测 `val_unseen`：
+
+```bash
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0,1,2,3,4,5,6,7 \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+依次评测 `val_seen` 与 `val_unseen`：
+
+```bash
+for split in val_seen val_unseen; do
+  EVAL_SPLIT="${split}" \
+  CUDA_DEVICES=0,1,2,3,4,5,6,7 \
+  bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+done
+```
+
+评测少量 Episode 时增加 `MAX_EPISODES`：
+
+```bash
+MAX_EPISODES=1 \
+EVAL_SPLIT=val_unseen \
+CUDA_DEVICES=0 \
+bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
+```
+
+评测结果使用第 7 节所述的统一目录和指标格式。
+
+## 6. SatNav 可视化与性能分析
+
+可视化与性能分析目前仅用于 SatNav 评测。
 
 保存 RGB、top-down map 与导航指令可视化视频：
 
