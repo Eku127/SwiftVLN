@@ -13,11 +13,11 @@
 
 本文生产以下三组训练数据：
 
-| 数据集 | VLN-CE Episode | 训练轨迹数 |
-| --- | --- | ---: |
-| R2R | `R2R_VLNCE_v1-3/train` | 10,819 |
-| RxR | `RxR_VLNCE_v0/train_guide` 中的英语 Episode | 19,990 |
-| EnvDrop | `R2R_VLNCE_v1-3_preprocessed/envdrop` | 146,304 |
+| 数据集 | VLN-CE Episode | 训练轨迹数 | 下载链接 |
+| --- | --- | ---: | --- |
+| R2R | `R2R_VLNCE_v1-3/train` | 10,819 | [Google Drive](https://drive.google.com/file/d/1T9SjqZWyR2PCLSXYkFckfDeIs6Un0Rjm/view) |
+| RxR | `RxR_VLNCE_v0/train_guide` 中的英语 Episode | 19,990 | [Google Drive](https://drive.google.com/file/d/145xzLjxBaNTbVgBfQ8e9EsBAV8W-SM0t/view) |
+| EnvDrop | `R2R_VLNCE_v1-3_preprocessed/envdrop` | 146,304 | [Google Drive](https://drive.google.com/file/d/1fo8F4NKgZDH-bPSdVU3cONAkt5EW-tyr/view) |
 
 ## 1. 准备生成环境
 
