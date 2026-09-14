@@ -271,3 +271,47 @@ RESUME_FROM_CHECKPOINT=/path/to/checkpoint-1000 \
 RESUME_ONLY_MODEL=true \
 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
+
+## 7. 原语动作组指标
+
+普通 SFT 日志只记录 loss。对于原语执行器数据集，训练脚本可以在训练结束后对每个已保存的
+checkpoint 进行自回归动作预测，并记录全部动作准确率、`MOVE_FORWARD` / `TURN_LEFT` /
+`TURN_RIGHT` 分类准确率、`STOP` 准确率，以及整个动作组的 exact match。
+
+必须提供一个独立的原语验证集，格式仍为普通 SwiftVLN 的 `annotations.json` 和
+`images/<sample>/rgb`；不要将训练集传给该设置。原语动作组配方固定使用 history memory、
+每次输出一个动作且不重叠：
+
+```bash
+export VLN_ENV_TYPE=satnav
+export MEMORY_METHOD=history
+export NUM_FRAMES=8
+export NUM_HISTORY=0
+export NUM_FUTURE_STEPS=1
+export NUM_OVERLAP=0
+export EMBEDDING_MODE=none
+
+export PRIMITIVE_METRICS_ENABLED=true
+export PRIMITIVE_METRICS_DATA_PATH=/path/to/primitive-heldout
+# 可选的快速检查；0 表示评估全部验证动作组。
+export PRIMITIVE_METRICS_MAX_SAMPLES=0
+
+bash scripts/train/train_swiftvln_qwen_vl.sh
+```
+
+指标会在 SFT 训练进程结束后执行，每个已保存 checkpoint 评估一次。默认
+`SAVE_TOTAL_LIMIT=1` 只会保留一个 checkpoint，因此报告只有一个点；如需对比训练曲线，可设置
+例如 `SAVE_STEPS=500 SAVE_TOTAL_LIMIT=4`。输出位于
+`output/swiftvln/<model-name>/primitive_metrics/`：
+
+- `metrics.jsonl`：追加式指标历史，每个 checkpoint 一行；
+- `predictions_checkpoint-*.jsonl`：逐动作真值/预测对，供诊断使用；
+- `latest.json`：最新 checkpoint 的完整指标记录；
+- `report.html`：无需额外依赖的可视化报告，包含指标曲线、逐动作准确率和最新混淆矩阵。
+
+已有指标账本时，可不重新推理而仅重新生成可视化报告：
+
+```bash
+python -m swiftvln.training.sft.primitive_metrics visualize \
+  --metrics-dir output/swiftvln/<model-name>/primitive_metrics
+```

@@ -330,7 +330,7 @@ class SwiftVLNInferenceSession(
             input_ids=dummy_input_ids,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            max_new_tokens=64,
+            max_new_tokens=getattr(self.args, "max_new_tokens", 64),
             do_sample=False,
             use_cache=True,
         )

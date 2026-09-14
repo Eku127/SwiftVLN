@@ -262,3 +262,55 @@ RESUME_FROM_CHECKPOINT=/path/to/checkpoint-1000 \
 RESUME_ONLY_MODEL=true \
 bash scripts/train/train_swiftvln_qwen_vl.sh
 ```
+
+## 7. Primitive action-group metrics
+
+The normal SFT logger records loss.  For the primitive executor dataset, the
+training script can additionally run autoregressive action prediction on every
+saved checkpoint after training.  It records accuracy across all actions,
+per-class `MOVE_FORWARD` / `TURN_LEFT` / `TURN_RIGHT` accuracy, `STOP`
+accuracy, and exact match of the complete action group.
+
+Use a held-out primitive dataset in the ordinary `annotations.json` plus
+`images/<sample>/rgb` layout.  Do not point this setting at the training set.
+The action-group recipe must use history memory, one output action at a time,
+and no overlapping windows:
+
+```bash
+export VLN_ENV_TYPE=satnav
+export MEMORY_METHOD=history
+export NUM_FRAMES=8
+export NUM_HISTORY=0
+export NUM_FUTURE_STEPS=1
+export NUM_OVERLAP=0
+export EMBEDDING_MODE=none
+
+export PRIMITIVE_METRICS_ENABLED=true
+export PRIMITIVE_METRICS_DATA_PATH=/path/to/primitive-heldout
+# Optional quick verification; 0 evaluates all held-out action groups.
+export PRIMITIVE_METRICS_MAX_SAMPLES=0
+
+bash scripts/train/train_swiftvln_qwen_vl.sh
+```
+
+The metrics run after the SFT process completes, once per saved checkpoint.
+The default `SAVE_TOTAL_LIMIT=1` retains only one checkpoint and therefore
+produces a single report point. Keep multiple checkpoints when comparing a
+training curve, for example `SAVE_STEPS=500 SAVE_TOTAL_LIMIT=4`.
+They write the following files under
+`output/swiftvln/<model-name>/primitive_metrics/`:
+
+- `metrics.jsonl`: append-only metric history, one row per checkpoint;
+- `predictions_checkpoint-*.jsonl`: action-level gold/prediction pairs for
+  diagnosis;
+- `latest.json`: newest full metric record;
+- `report.html`: self-contained visual report with metric curves, per-action
+  accuracy, and the latest confusion matrix.
+
+Regenerate the visual report from an existing metric ledger without rerunning
+inference:
+
+```bash
+python -m swiftvln.training.sft.primitive_metrics visualize \
+  --metrics-dir output/swiftvln/<model-name>/primitive_metrics
+```

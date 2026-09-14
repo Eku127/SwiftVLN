@@ -136,11 +136,33 @@ class SwiftVLNDataset(Dataset):
         # Load navigation data from multiple paths (comma-separated)
         self.video_folders = [p.strip() for p in data_path.split(',') if p.strip()]
         self.nav_data = []
+        primitive_action_group_episodes = 0
         for vf in self.video_folders:
             anno_path = os.path.join(vf, 'annotations.json')
             if not os.path.exists(anno_path):
                 print(f"Warning: {anno_path} not found, skipping...")
                 continue
+
+            # Primitive-SFT datasets deliberately represent a short action group as
+            # an independent episode.  Their dataset card is the explicit contract
+            # that permits two raw actions: INITIAL plus one supervised action.  The
+            # shifted labels will then be ``[action, STOP]``.  Keep the historical
+            # four-action minimum for every other SwiftVLN dataset.
+            is_primitive_action_group_dataset = False
+            dataset_card_path = os.path.join(vf, 'dataset_card.json')
+            if os.path.isfile(dataset_card_path):
+                try:
+                    with open(dataset_card_path, 'r') as card_file:
+                        dataset_card = json.load(card_file)
+                    dataset_format = str(dataset_card.get('format', ''))
+                    is_primitive_action_group_dataset = dataset_format.startswith(
+                        'swiftvln_primitive_sft_'
+                    )
+                except (OSError, json.JSONDecodeError) as exc:
+                    _print_rank0(
+                        f"Warning: could not read dataset card {dataset_card_path}: {exc}. "
+                        "Using the default minimum action length."
+                    )
 
             map_resolver = None
             if self.memory_method == "map":
@@ -174,6 +196,7 @@ class SwiftVLNDataset(Dataset):
                 anno_json = json.load(f)
             for tdata in anno_json:
                 tdata['video'] = os.path.join(vf, tdata['video'])
+                tdata['_is_primitive_action_group'] = is_primitive_action_group_dataset
                 if map_resolver is not None:
                     map_meta = map_resolver.resolve(tdata)
                     tdata['_map_scene_id'] = map_meta.scene_id
@@ -181,6 +204,8 @@ class SwiftVLNDataset(Dataset):
                     tdata['_map_start_position'] = map_meta.start_position
                     tdata['_map_start_rotation'] = map_meta.start_rotation
             self.nav_data += anno_json
+            if is_primitive_action_group_dataset:
+                primitive_action_group_episodes += len(anno_json)
             _print_rank0(f"Loaded {len(anno_json)} episodes from {vf}")
         
         # Build data index with sliding window overlap
@@ -189,13 +214,16 @@ class SwiftVLNDataset(Dataset):
         adjusted_samples = 0
         skipped_redundant_samples = 0
         skipped_no_new_samples = 0
+        skipped_too_short = 0
         
         for ep_id, item in enumerate(self.nav_data):
             instructions = item.get('instructions', [])
             actions = item.get('actions', [])
             actions_len = len(actions)
-            
-            if actions_len < 4:
+
+            minimum_actions = 2 if item.get('_is_primitive_action_group', False) else 4
+            if actions_len < minimum_actions:
+                skipped_too_short += 1
                 continue
             
             if not isinstance(instructions, list):
@@ -258,6 +286,14 @@ class SwiftVLNDataset(Dataset):
                              f"with no new trainable actions after overlap")
         else:
             _print_rank0(f"[SwiftVLN] No overlap (stride={self.stride})")
+
+        if primitive_action_group_episodes > 0:
+            _print_rank0(
+                "[SwiftVLN] Primitive action-group dataset: accepting episodes with "
+                "actions_len >= 2 (INITIAL + one action); other datasets retain actions_len >= 4."
+            )
+        if skipped_too_short > 0:
+            _print_rank0(f"[SwiftVLN] Skipped {skipped_too_short} episodes below their minimum action length")
         
         # Limit samples if max_samples is specified
         if self.max_samples is None:

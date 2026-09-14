@@ -429,6 +429,20 @@ SWANLAB_EXP_NAME="${EXP_NAME}"
 SWANLAB_MODE="${SWANLAB_MODE:-cloud}"
 
 # ============================================================================
+# Primitive action-group metrics (optional post-checkpoint evaluation)
+# ============================================================================
+# The normal SFT logger records loss but cannot report whether a generated
+# action sequence matches a primitive action group.  Enable this only when a
+# held-out dataset in the ordinary SwiftVLN annotations/images format is
+# available.  Each saved checkpoint is evaluated after training and contributes
+# one row to <OUTPUT_DIR>/primitive_metrics/metrics.jsonl plus report.html.
+PRIMITIVE_METRICS_ENABLED="${PRIMITIVE_METRICS_ENABLED:-false}"
+PRIMITIVE_METRICS_DATA_PATH="${PRIMITIVE_METRICS_DATA_PATH:-}"
+PRIMITIVE_METRICS_MAX_SAMPLES="${PRIMITIVE_METRICS_MAX_SAMPLES:-0}"
+PRIMITIVE_METRICS_MAX_NEW_TOKENS="${PRIMITIVE_METRICS_MAX_NEW_TOKENS:-16}"
+PRIMITIVE_METRICS_SEED="${PRIMITIVE_METRICS_SEED:-42}"
+
+# ============================================================================
 # Environment Setup
 # ============================================================================
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -529,6 +543,11 @@ echo "  dataloader_num_workers: $DATALOADER_NUM_WORKERS"
 echo "  dataloader_pin_memory: $DATALOADER_PIN_MEMORY"
 echo "  padding_free: $PADDING_FREE (must be false for SwiftVLN)"
 echo "  use_liger_kernel: $USE_LIGER_KERNEL"
+echo "  primitive_metrics: $PRIMITIVE_METRICS_ENABLED"
+if [[ "$PRIMITIVE_METRICS_ENABLED" == "true" ]]; then
+    echo "    dataset: $PRIMITIVE_METRICS_DATA_PATH"
+    echo "    max_samples: $PRIMITIVE_METRICS_MAX_SAMPLES (0 means all)"
+fi
 echo "=========================================="
 
 # ============================================================================
@@ -669,6 +688,67 @@ torchrun \
     $HISTORY_ARGS \
     $RESUME_ARGS \
     $MAX_STEPS_ARG
+
+# ============================================================================
+# Primitive action-group metrics
+# ============================================================================
+if [[ "$PRIMITIVE_METRICS_ENABLED" == "true" ]]; then
+    if [[ -z "$PRIMITIVE_METRICS_DATA_PATH" ]]; then
+        echo "[ERROR] PRIMITIVE_METRICS_DATA_PATH is required when PRIMITIVE_METRICS_ENABLED=true." >&2
+        exit 2
+    fi
+    if [[ ! -f "$PRIMITIVE_METRICS_DATA_PATH/annotations.json" ]]; then
+        echo "[ERROR] Primitive metric annotations not found: $PRIMITIVE_METRICS_DATA_PATH/annotations.json" >&2
+        exit 2
+    fi
+    if [[ "$NUM_FUTURE_STEPS" != "1" || "$NUM_OVERLAP" != "0" ]]; then
+        echo "[ERROR] Primitive metrics require NUM_FUTURE_STEPS=1 and NUM_OVERLAP=0." >&2
+        exit 2
+    fi
+    if [[ "$MEMORY_METHOD" != "history" ]]; then
+        echo "[ERROR] Primitive metrics require MEMORY_METHOD=history." >&2
+        exit 2
+    fi
+
+    PRIMITIVE_METRICS_DIR="$OUTPUT_DIR/primitive_metrics"
+    mkdir -p "$PRIMITIVE_METRICS_DIR"
+    PRIMITIVE_MAX_SAMPLES_ARG=()
+    if [[ "$PRIMITIVE_METRICS_MAX_SAMPLES" -gt 0 ]]; then
+        PRIMITIVE_MAX_SAMPLES_ARG=(--max-samples "$PRIMITIVE_METRICS_MAX_SAMPLES")
+    fi
+    mapfile -t PRIMITIVE_CHECKPOINTS < <(find "$OUTPUT_DIR" -type d -name 'checkpoint-*' -print | sort -V)
+    if [[ "${#PRIMITIVE_CHECKPOINTS[@]}" -eq 0 ]]; then
+        echo "[ERROR] No saved checkpoints found under $OUTPUT_DIR for primitive metric evaluation." >&2
+        exit 1
+    fi
+    for PRIMITIVE_CHECKPOINT in "${PRIMITIVE_CHECKPOINTS[@]}"; do
+        PRIMITIVE_CHECKPOINT_NAME="$(basename "$PRIMITIVE_CHECKPOINT")"
+        PRIMITIVE_PREDICTIONS="$PRIMITIVE_METRICS_DIR/predictions_${PRIMITIVE_CHECKPOINT_NAME}.jsonl"
+        if [[ -f "$PRIMITIVE_PREDICTIONS" ]]; then
+            echo "[INFO] Primitive metrics already exist for $PRIMITIVE_CHECKPOINT_NAME; skipping."
+            continue
+        fi
+        echo "[INFO] Evaluating primitive action metrics: $PRIMITIVE_CHECKPOINT_NAME"
+        python -m swiftvln.training.sft.primitive_metrics evaluate \
+            --model-path "$PRIMITIVE_CHECKPOINT" \
+            --dataset-path "$PRIMITIVE_METRICS_DATA_PATH" \
+            --output-dir "$PRIMITIVE_METRICS_DIR" \
+            --model-type "$MODEL_TYPE" \
+            --num-frames "$NUM_FRAMES" \
+            --num-history "$NUM_HISTORY" \
+            --num-future-steps "$NUM_FUTURE_STEPS" \
+            --num-overlap "$NUM_OVERLAP" \
+            --history-processor-type "$HISTORY_PROCESSOR_TYPE" \
+            --compress-stride "$COMPRESS_STRIDE" \
+            --log-base "$LOG_BASE" \
+            --system-prompt-setting "$SYSTEM_PROMPT_SETTING" \
+            --embedding-mode "$EMBEDDING_MODE" \
+            --max-new-tokens "$PRIMITIVE_METRICS_MAX_NEW_TOKENS" \
+            --seed "$PRIMITIVE_METRICS_SEED" \
+            --attn-impl "$ATTN_IMPL" \
+            "${PRIMITIVE_MAX_SAMPLES_ARG[@]}"
+    done
+fi
 
 echo "=========================================="
 echo "Training completed!"
