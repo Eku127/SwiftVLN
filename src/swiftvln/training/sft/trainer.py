@@ -214,6 +214,7 @@ class SwiftVLNSft(SwiftSft):
             "history_processor_type": self.args.history_processor_type,
             "log_base": self.args.log_base,
             "system_prompt_setting": self.args.system_prompt_setting,
+            "navigation_prompt_style": self.args.navigation_prompt_style,
             "need_frame_poses": embedding_uses_pose(self.args.embedding_mode),
             "memory_method": self.args.memory_method,
             "map_global_side_m": self.args.map_global_side_m,
@@ -243,6 +244,7 @@ class SwiftVLNSft(SwiftSft):
             f"stride={self.args.num_frames - self.args.num_overlap}"
         )
         self._log(f"system_prompt_setting={self.args.system_prompt_setting}")
+        self._log(f"navigation_prompt_style={self.args.navigation_prompt_style}")
         if self.args.memory_method == "map":
             self._log(
                 f"map: global={self.args.map_global_side_m}m, "
@@ -253,6 +255,7 @@ class SwiftVLNSft(SwiftSft):
 
     def _log_dataset_summary(self, dataset):
         self._log(f"system_prompt_setting: {dataset.system_prompt_setting}")
+        self._log(f"navigation_prompt_style: {dataset.navigation_prompt_style}")
         self._log(f"memory_method: {dataset.memory_method}")
         if dataset.system_prompt_setting == "initial":
             self._log(

@@ -6,7 +6,11 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from swiftvln.experiment import EMBEDDING_MODES, SwiftVLNExperimentSpec
+from swiftvln.experiment import (
+    EMBEDDING_MODES,
+    NAVIGATION_PROMPT_STYLES,
+    SwiftVLNExperimentSpec,
+)
 
 DEFAULT_MODEL_TYPE = "swiftvln_qwen2_5_vl"
 
@@ -78,6 +82,12 @@ def create_eval_parser() -> argparse.ArgumentParser:
         default="vanilla",
         choices=["vanilla", "initial"],
     )
+    window.add_argument(
+        "--navigation_prompt_style",
+        "--navigation-prompt-style",
+        default="standard",
+        choices=NAVIGATION_PROMPT_STYLES,
+    )
 
     map_group = parser.add_argument_group("map memory")
     map_group.add_argument("--map_global_side_m", type=float, default=1000.0)
@@ -137,6 +147,7 @@ def validate_eval_args(args: argparse.Namespace) -> None:
         map_render_px=args.map_render_px,
         map_mask_method=args.map_mask_method,
         system_prompt_setting=args.system_prompt_setting,
+        navigation_prompt_style=args.navigation_prompt_style,
         embedding=args.embedding_mode,
     )
 
@@ -150,6 +161,7 @@ def build_summary_extras(args: Any) -> dict[str, Any]:
         "num_overlap",
         "history_processor_type",
         "system_prompt_setting",
+        "navigation_prompt_style",
         "memory_method",
         "embedding_mode",
     )

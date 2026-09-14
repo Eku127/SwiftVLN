@@ -261,6 +261,23 @@ NUM_OVERLAP="${NUM_OVERLAP:-0}"
 #   as the initial observation at the starting point of the journey
 SYSTEM_PROMPT_SETTING="${SYSTEM_PROMPT_SETTING:-vanilla}"
 
+# Navigation prompt content: standard (original short prompt) or primitive
+# (one-action primitive semantics and execution rules).
+NAVIGATION_PROMPT_STYLE="${NAVIGATION_PROMPT_STYLE:-standard}"
+case "$NAVIGATION_PROMPT_STYLE" in
+    standard|primitive) ;;
+    *)
+        echo "[ERROR] Invalid NAVIGATION_PROMPT_STYLE=$NAVIGATION_PROMPT_STYLE. Expected standard|primitive."
+        exit 2
+        ;;
+esac
+if [ "$NAVIGATION_PROMPT_STYLE" = "primitive" ]; then
+    if [ "$VLN_ENV_TYPE" != "satnav" ] || [ "$NUM_FUTURE_STEPS" -ne 1 ]; then
+        echo "[ERROR] NAVIGATION_PROMPT_STYLE=primitive requires VLN_ENV_TYPE=satnav and NUM_FUTURE_STEPS=1."
+        exit 2
+    fi
+fi
+
 # ---------- Memory method ----------
 # history: original historical RGB frames
 # map: SatNav explored-map memory (global + local), replaces history frames
@@ -385,6 +402,7 @@ EXP_NAME=$(
         --map-render-px "$MAP_RENDER_PX" \
         --map-mask-method "$MAP_MASK_METHOD" \
         --system-prompt-setting "$SYSTEM_PROMPT_SETTING" \
+        --navigation-prompt-style "$NAVIGATION_PROMPT_STYLE" \
         --embedding-mode "$EMBEDDING_MODE" \
         --effective-batch-size "$EFFECTIVE_BATCH_SIZE" \
         --learning-rate "$LEARNING_RATE" \
@@ -523,6 +541,7 @@ fi
 echo "Overlap: num_overlap=$NUM_OVERLAP, window_stride=$WINDOW_STRIDE"
 echo "  First $((NUM_OVERLAP / NUM_FUTURE_STEPS)) turns masked for samples with start_idx > 0"
 echo "System Prompt: $SYSTEM_PROMPT_SETTING"
+echo "Navigation Prompt Style: $NAVIGATION_PROMPT_STYLE"
 echo "Embedding Mode: $EMBEDDING_MODE"
 if [[ "$EMBEDDING_MODE" == "pose" || "$EMBEDDING_MODE" == "posefilm" ]]; then
     echo "  Pose norm scale: $POSE_NORM_SCALE"
@@ -671,6 +690,7 @@ torchrun \
     --compress_stride $COMPRESS_STRIDE \
     --num_overlap $NUM_OVERLAP \
     --system_prompt_setting $SYSTEM_PROMPT_SETTING \
+    --navigation_prompt_style $NAVIGATION_PROMPT_STYLE \
     $MEMORY_ARGS \
     --embedding_mode $EMBEDDING_MODE \
     --uav_adapter_path "$UAV_ADAPTER_PATH" \
@@ -742,6 +762,7 @@ if [[ "$PRIMITIVE_METRICS_ENABLED" == "true" ]]; then
             --compress-stride "$COMPRESS_STRIDE" \
             --log-base "$LOG_BASE" \
             --system-prompt-setting "$SYSTEM_PROMPT_SETTING" \
+            --navigation-prompt-style "$NAVIGATION_PROMPT_STYLE" \
             --embedding-mode "$EMBEDDING_MODE" \
             --max-new-tokens "$PRIMITIVE_METRICS_MAX_NEW_TOKENS" \
             --seed "$PRIMITIVE_METRICS_SEED" \

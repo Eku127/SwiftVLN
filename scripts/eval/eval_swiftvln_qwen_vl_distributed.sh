@@ -122,6 +122,14 @@ GTC_NUM_ITERATIONS="${GTC_NUM_ITERATIONS:-1}"
 # - vanilla: Standard prompt without initial view image (must match training)
 # - initial: Add first frame (uncompressed) as initial observation
 SYSTEM_PROMPT_SETTING="${SYSTEM_PROMPT_SETTING:-vanilla}"
+NAVIGATION_PROMPT_STYLE="${NAVIGATION_PROMPT_STYLE:-standard}"
+case "$NAVIGATION_PROMPT_STYLE" in
+    standard|primitive) ;;
+    *)
+        echo "[ERROR] Invalid NAVIGATION_PROMPT_STYLE=$NAVIGATION_PROMPT_STYLE. Expected standard|primitive."
+        exit 2
+        ;;
+esac
 MEMORY_METHOD="${MEMORY_METHOD:-history}"
 MAP_GLOBAL_SIDE_M="${MAP_GLOBAL_SIDE_M:-1000}"
 MAP_LOCAL_SIDE_M="${MAP_LOCAL_SIDE_M:-400}"
@@ -328,6 +336,7 @@ elif [ "$MEMORY_METHOD" != "map" ] && [ "$HISTORY_PROCESSOR_TYPE" = "segment_gtc
     echo "  Num Segments: 8 (fixed)"
 fi
 echo "System Prompt:   ${SYSTEM_PROMPT_SETTING}"
+echo "Navigation Prompt Style: ${NAVIGATION_PROMPT_STYLE}"
 echo "Embedding Mode:  ${EMBEDDING_MODE}"
 if [[ "$EMBEDDING_MODE" == "pose" || "$EMBEDDING_MODE" == "posefilm" ]]; then
     echo "  Pose norm scale: ${POSE_NORM_SCALE}"
@@ -434,6 +443,7 @@ EVAL_CMD=(
     --num_future_steps "${NUM_FUTURE_STEPS}"
     --num_overlap "${NUM_OVERLAP}"
     --system_prompt_setting "${SYSTEM_PROMPT_SETTING}"
+    --navigation_prompt_style "${NAVIGATION_PROMPT_STYLE}"
     --memory_method "${MEMORY_METHOD}"
     --map_global_side_m "${MAP_GLOBAL_SIDE_M}"
     --map_local_side_m "${MAP_LOCAL_SIDE_M}"

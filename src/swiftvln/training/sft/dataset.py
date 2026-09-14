@@ -21,7 +21,10 @@ import numpy as np
 from typing import Dict, Any, List, Optional
 from torch.utils.data import Dataset
 
-from swiftvln.backends.specs import get_environment_spec
+from swiftvln.backends.specs import (
+    NAVIGATION_PROMPT_STYLES,
+    get_environment_spec,
+)
 from swiftvln.modeling.constants import (
     DEFAULT_CONJUNCTIONS,
     HISTORY_MEMORY_TOKEN,
@@ -76,6 +79,7 @@ class SwiftVLNDataset(Dataset):
         history_processor_type: str = "per_frame",  # History sampling strategy
         log_base: float = 1.0,  # Sampling distribution (1.0=uniform, >1.0=logarithmic)
         system_prompt_setting: str = "vanilla",  # System prompt strategy: "vanilla" or "initial"
+        navigation_prompt_style: str = "standard",
         need_frame_poses: bool = False,
         memory_method: str = "history",
         map_global_side_m: float = 1000.0,
@@ -102,6 +106,7 @@ class SwiftVLNDataset(Dataset):
         self.history_processor_type = history_processor_type.lower()
         self.log_base = log_base  # Sampling distribution
         self.system_prompt_setting = system_prompt_setting.lower()  # "vanilla" or "initial"
+        self.navigation_prompt_style = navigation_prompt_style.lower()
         self.need_frame_poses = bool(need_frame_poses)
         self.memory_method = memory_method.lower()
         self.map_global_side_m = float(map_global_side_m)
@@ -121,6 +126,19 @@ class SwiftVLNDataset(Dataset):
             raise ValueError(f"num_overlap ({self.num_overlap}) must be < num_frames ({self.num_frames})")
         if self.memory_method not in ("history", "map"):
             raise ValueError(f"memory_method must be 'history' or 'map', got {self.memory_method}")
+        if self.navigation_prompt_style not in NAVIGATION_PROMPT_STYLES:
+            raise ValueError(
+                "navigation_prompt_style must be one of "
+                f"{NAVIGATION_PROMPT_STYLES}"
+            )
+        if self.navigation_prompt_style == "primitive" and self.env_type != "satnav":
+            raise ValueError(
+                "navigation_prompt_style='primitive' supports only satnav"
+            )
+        if self.navigation_prompt_style == "primitive" and self.num_future_steps != 1:
+            raise ValueError(
+                "navigation_prompt_style='primitive' requires num_future_steps=1"
+            )
         if self.memory_method == "map":
             if not self.environment_spec.supports_map_memory:
                 raise ValueError(
@@ -586,14 +604,21 @@ class SwiftVLNDataset(Dataset):
             raise ValueError(f"No images loaded for sample {i}")
         
         # Build conversation with the backend's dependency-free prompt semantics.
-        system_prompt = self.environment_spec.format_prompt(instruction)
+        system_prompt = self.environment_spec.format_prompt(
+            instruction,
+            self.navigation_prompt_style,
+        )
+        prompt_separator = (
+            "\n\n" if self.navigation_prompt_style == "primitive" else " "
+        )
         
         # Add initial view description if enabled
         # The initial view image uses standard <image> tag (uncompressed tokens)
         # It is placed BEFORE the history memory in the system prompt
         if self.system_prompt_setting == "initial":
             system_prompt += (
-                " This is your initial observation at the starting point of this journey: <image>."
+                f"{prompt_separator}This is your initial observation at the "
+                "starting point of this journey: <image>."
             )
         
         # Add history description with unified memory token.
@@ -603,13 +628,16 @@ class SwiftVLNDataset(Dataset):
         if has_history:
             if self.memory_method == "map":
                 system_prompt += (
-                    f" These are your explored map memories: "
+                    f"{prompt_separator}These are your explored map memories: "
                     f"<|vision_start|>{HISTORY_MEMORY_TOKEN}<|vision_end|>."
                 )
             else:
                 # Use unified <history_memory> token in vision wrapper
                 # Template will expand this to the correct number of tokens based on compression
-                system_prompt += f" These are your historical observations: <|vision_start|>{HISTORY_MEMORY_TOKEN}<|vision_end|>."
+                system_prompt += (
+                    f"{prompt_separator}These are your historical observations: "
+                    f"<|vision_start|>{HISTORY_MEMORY_TOKEN}<|vision_end|>."
+                )
         messages = [{'role': 'system', 'content': system_prompt}]
         
         # Calculate number of turns to mask

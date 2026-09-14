@@ -39,14 +39,28 @@ class PromptConstructionMixin:
         initial_token_count: int = 0,
     ) -> torch.Tensor:
         """Tokenize the system prompt and its unified memory block."""
-        system_prompt = self.environment_spec.format_prompt(instruction)
+        navigation_prompt_style = getattr(
+            self,
+            "navigation_prompt_style",
+            "standard",
+        )
+        if navigation_prompt_style == "standard":
+            system_prompt = self.environment_spec.format_prompt(instruction)
+        else:
+            system_prompt = self.environment_spec.format_prompt(
+                instruction,
+                navigation_prompt_style,
+            )
+        prompt_separator = (
+            "\n\n" if navigation_prompt_style == "primitive" else " "
+        )
         if initial_token_count > 0:
             initial_tokens = CURRENT_IMAGE_TOKEN * initial_token_count
             initial_str = (
                 f"<|vision_start|>{initial_tokens}<|vision_end|>"
             )
             system_prompt += (
-                " This is your initial observation at the starting point of "
+                f"{prompt_separator}This is your initial observation at the starting point of "
                 f"this journey: {initial_str}."
             )
 
@@ -59,11 +73,12 @@ class PromptConstructionMixin:
             )
             if self.memory_method == "map":
                 system_prompt += (
-                    f" These are your explored map memories: {history_str}."
+                    f"{prompt_separator}These are your explored map memories: "
+                    f"{history_str}."
                 )
             else:
                 system_prompt += (
-                    " These are your historical observations: "
+                    f"{prompt_separator}These are your historical observations: "
                     f"{history_str}."
                 )
 

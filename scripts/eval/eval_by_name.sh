@@ -145,6 +145,7 @@ print_swiftvln_params() {
         echo "USE_TOME:       ${USE_TOME:-false}"
     fi
     echo "SYSTEM_PROMPT:  ${SYSTEM_PROMPT_SETTING:-vanilla}"
+    echo "NAV_PROMPT:     ${NAVIGATION_PROMPT_STYLE:-standard}"
     echo "EMBEDDING_MODE: ${EMBEDDING_MODE:-none}"
 }
 
@@ -180,6 +181,9 @@ print_swiftvln_env_assignments() {
 
     if [ -n "${SYSTEM_PROMPT_SETTING:-}" ]; then
         echo "SYSTEM_PROMPT_SETTING=${SYSTEM_PROMPT_SETTING}"
+    fi
+    if [ -n "${NAVIGATION_PROMPT_STYLE:-}" ]; then
+        echo "NAVIGATION_PROMPT_STYLE=${NAVIGATION_PROMPT_STYLE}"
     fi
     if [ "$MODEL_ARCH" == "swiftvln" ]; then
         echo "EMBEDDING_MODE=${EMBEDDING_MODE:-none}"
@@ -543,6 +547,9 @@ fi
 # SwiftVLN system prompt setting
 if [ -n "$SYSTEM_PROMPT_SETTING" ]; then
     export SYSTEM_PROMPT_SETTING
+fi
+if [ -n "$NAVIGATION_PROMPT_STYLE" ]; then
+    export NAVIGATION_PROMPT_STYLE
 fi
 if [ "$MODEL_ARCH" == "swiftvln" ]; then
     export EMBEDDING_MODE="${EMBEDDING_MODE:-none}"

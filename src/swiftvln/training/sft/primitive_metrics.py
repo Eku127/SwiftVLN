@@ -67,6 +67,7 @@ class PrimitiveMetricConfig:
     use_random: bool
     use_tome: bool
     system_prompt_setting: str
+    navigation_prompt_style: str
     embedding_mode: str
     max_samples: int | None
     max_new_tokens: int
@@ -185,6 +186,7 @@ def _session_args(config: PrimitiveMetricConfig) -> SimpleNamespace:
         gtc_temperature=0.1,
         gtc_num_iterations=1,
         system_prompt_setting=config.system_prompt_setting,
+        navigation_prompt_style=config.navigation_prompt_style,
         memory_method="history",
         map_global_side_m=1000.0,
         map_local_side_m=400.0,
@@ -642,6 +644,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--system-prompt-setting", choices=("vanilla", "initial"), default="vanilla"
     )
     evaluate_parser.add_argument(
+        "--navigation-prompt-style",
+        choices=("standard", "primitive"),
+        default="standard",
+    )
+    evaluate_parser.add_argument(
         "--embedding-mode", choices=("none", "pose", "posefilm", "uav"), default="none"
     )
     evaluate_parser.add_argument("--max-samples", type=_positive_int)
@@ -677,6 +684,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             use_random=args.use_random,
             use_tome=args.use_tome,
             system_prompt_setting=args.system_prompt_setting,
+            navigation_prompt_style=args.navigation_prompt_style,
             embedding_mode=args.embedding_mode,
             max_samples=args.max_samples,
             max_new_tokens=args.max_new_tokens,

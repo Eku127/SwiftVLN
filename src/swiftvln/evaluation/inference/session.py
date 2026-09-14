@@ -151,6 +151,11 @@ class SwiftVLNInferenceSession(
             "system_prompt_setting",
             "vanilla",
         ).lower()
+        self.navigation_prompt_style = getattr(
+            self.args,
+            "navigation_prompt_style",
+            "standard",
+        ).lower()
         self.memory_method = getattr(
             self.args,
             "memory_method",
@@ -268,6 +273,7 @@ class SwiftVLNInferenceSession(
                 f"    Sampling: {sampling_type}, {self.num_history} frames"
             )
         print(f"  System Prompt: {self.system_prompt_setting}")
+        print(f"  Navigation Prompt Style: {self.navigation_prompt_style}")
         if self.system_prompt_setting == "initial":
             print(
                 "    [INITIAL] Initial view ENABLED: first frame "

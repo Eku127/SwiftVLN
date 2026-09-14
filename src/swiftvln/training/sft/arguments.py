@@ -6,7 +6,11 @@ from typing import Optional
 
 from swift.arguments import SftArguments as TrainArguments
 
-from swiftvln.experiment import EMBEDDING_MODES, SwiftVLNExperimentSpec
+from swiftvln.experiment import (
+    EMBEDDING_MODES,
+    NAVIGATION_PROMPT_STYLES,
+    SwiftVLNExperimentSpec,
+)
 
 
 @dataclass
@@ -154,6 +158,15 @@ class SwiftVLNTrainArguments(TrainArguments):
         },
     )
 
+    navigation_prompt_style: str = field(
+        default="standard",
+        metadata={
+            "help": "Navigation instruction prompt. 'standard' keeps the original "
+            "short prompt; 'primitive' uses the one-action primitive execution rules.",
+            "choices": NAVIGATION_PROMPT_STYLES,
+        },
+    )
+
     memory_method: str = field(
         default="history",
         metadata={
@@ -250,6 +263,7 @@ class SwiftVLNTrainArguments(TrainArguments):
             map_render_px=self.map_render_px,
             map_mask_method=self.map_mask_method,
             system_prompt_setting=self.system_prompt_setting,
+            navigation_prompt_style=self.navigation_prompt_style,
             embedding=self.embedding_mode,
         )
         super().__post_init__()

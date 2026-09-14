@@ -228,6 +228,7 @@ def _build_config(args: argparse.Namespace) -> PrimitiveMetricConfig:
         use_random=args.use_random,
         use_tome=args.use_tome,
         system_prompt_setting=args.system_prompt_setting,
+        navigation_prompt_style=args.navigation_prompt_style,
         embedding_mode=args.embedding_mode,
         max_samples=None,
         max_new_tokens=args.max_new_tokens,
@@ -369,6 +370,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--use-random", action="store_true")
     parser.add_argument("--use-tome", action="store_true")
     parser.add_argument("--system-prompt-setting", choices=("vanilla", "initial"), default="vanilla")
+    parser.add_argument(
+        "--navigation-prompt-style",
+        choices=("standard", "primitive"),
+        default="standard",
+    )
     parser.add_argument("--embedding-mode", choices=("none", "pose", "posefilm", "uav"), default="none")
     parser.add_argument("--max-new-tokens", type=_positive_int, default=16)
     parser.add_argument("--seed", type=int, default=42)

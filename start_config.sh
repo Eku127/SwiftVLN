@@ -7,6 +7,10 @@ conda activate swift-vln-train-update
 unset RESUME_FROM_CHECKPOINT
 unset RESUME_ONLY_MODEL
 
+# standard 原有prompt
+# primitive 加入更详尽描述
+export NAVIGATION_PROMPT_STYLE=primitive
+
 # 环境与 GPU
 export SWIFTVLN_TRAIN_CONDA_ENV=swift-vln-train-update
 export TRAIN_CUDA_DEVICES=1,2,3,4,5,6,7
@@ -35,7 +39,7 @@ export SYSTEM_PROMPT_SETTING=vanilla
 export EMBEDDING_MODE=none
 
 # 训练与优化
-export NUM_EPOCHS=15
+export NUM_EPOCHS=12
 export BATCH_SIZE=4
 export GRAD_ACCUM_STEPS=1
 export LEARNING_RATE=1e-5
@@ -57,6 +61,6 @@ export USE_SWANLAB=false
 export PRIMITIVE_METRICS_ENABLED=false
 
 # 与 Qwen3 实验完全隔离
-export OUTPUT_DIR_OVERRIDE=/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/swiftvln/primitive_along
+export OUTPUT_DIR_OVERRIDE=/mnt/data1/home/jiangjiajun/workspace/SwiftVLN/output/swiftvln/primitive_along_primitive_prompt
 
 bash scripts/train/train_swiftvln_qwen_vl.sh

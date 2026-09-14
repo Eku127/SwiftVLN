@@ -15,7 +15,10 @@ from dataclasses import asdict, dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Dict, Optional, Sequence
 
-from swiftvln.backends.specs import get_environment_spec
+from swiftvln.backends.specs import (
+    NAVIGATION_PROMPT_STYLES,
+    get_environment_spec,
+)
 
 
 MODEL_FAMILIES = ("qwen2_5_vl", "qwen3_vl")
@@ -143,6 +146,7 @@ class SwiftVLNExperimentSpec:
     map_mask_method: str = "dilate20"
 
     system_prompt_setting: str = "vanilla"
+    navigation_prompt_style: str = "standard"
     embedding: str = "none"
 
     effective_batch_size: Optional[int] = None
@@ -194,6 +198,20 @@ class SwiftVLNExperimentSpec:
             raise ExperimentNameError(
                 f"system_prompt_setting must be one of {SYSTEM_PROMPTS}"
             )
+        if self.navigation_prompt_style not in NAVIGATION_PROMPT_STYLES:
+            raise ExperimentNameError(
+                "navigation_prompt_style must be one of "
+                f"{NAVIGATION_PROMPT_STYLES}"
+            )
+        if self.navigation_prompt_style == "primitive":
+            if self.env_type != "satnav":
+                raise ExperimentNameError(
+                    "navigation_prompt_style='primitive' supports only SatNav"
+                )
+            if self.num_future_steps != 1:
+                raise ExperimentNameError(
+                    "navigation_prompt_style='primitive' requires num_future_steps=1"
+                )
         if self.memory_method == "map":
             if not get_environment_spec(self.env_type).supports_map_memory:
                 raise ExperimentNameError(
@@ -335,6 +353,8 @@ class SwiftVLNExperimentSpec:
         )
         if self.system_prompt_setting != "vanilla":
             name += f"-{self.system_prompt_setting}"
+        if self.navigation_prompt_style != "standard":
+            name += "-primitiveprompt"
         embedding_tag = "noembed" if self.embedding == "none" else self.embedding
         name += f"-{embedding_tag}"
         if style == "run":
@@ -399,6 +419,7 @@ class SwiftVLNExperimentSpec:
                 self.map_mask_method if self.memory_method == "map" else ""
             ),
             "SYSTEM_PROMPT_SETTING": self.system_prompt_setting,
+            "NAVIGATION_PROMPT_STYLE": self.navigation_prompt_style,
             "EMBEDDING_MODE": self.embedding,
             "BATCH_SIZE": (
                 str(self.effective_batch_size)
@@ -439,6 +460,11 @@ def parse_model_name(model_name: str) -> SwiftVLNExperimentSpec:
             )
         embedding = "none" if embedding_tag == "noembed" else embedding_tag
 
+    navigation_prompt_style = "standard"
+    if body.endswith("-primitiveprompt"):
+        body = body[: -len("-primitiveprompt")]
+        navigation_prompt_style = "primitive"
+
     system_prompt_setting = "vanilla"
     if body.endswith("-initial"):
         body = body[: -len("-initial")]
@@ -453,6 +479,7 @@ def parse_model_name(model_name: str) -> SwiftVLNExperimentSpec:
         "num_future_steps": int(prefix.group("future")),
         "num_overlap": int(prefix.group("overlap")),
         "system_prompt_setting": system_prompt_setting,
+        "navigation_prompt_style": navigation_prompt_style,
         "embedding": embedding,
         "effective_batch_size": effective_batch_size,
         "learning_rate": learning_rate,
@@ -532,6 +559,7 @@ def _build_spec(args: argparse.Namespace) -> SwiftVLNExperimentSpec:
         map_render_px=args.map_render_px,
         map_mask_method=args.map_mask_method,
         system_prompt_setting=args.system_prompt_setting,
+        navigation_prompt_style=args.navigation_prompt_style,
         embedding=args.embedding_mode,
         effective_batch_size=args.effective_batch_size,
         learning_rate=args.learning_rate,
@@ -576,6 +604,11 @@ def _create_parser() -> argparse.ArgumentParser:
     build_parser.add_argument("--map-mask-method", required=True)
     build_parser.add_argument(
         "--system-prompt-setting", required=True, choices=SYSTEM_PROMPTS
+    )
+    build_parser.add_argument(
+        "--navigation-prompt-style",
+        default="standard",
+        choices=NAVIGATION_PROMPT_STYLES,
     )
     build_parser.add_argument(
         "--embedding-mode", required=True, choices=EMBEDDING_MODES
