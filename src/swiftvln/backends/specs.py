@@ -10,68 +10,20 @@ NAVIGATION_PROMPT_STYLES = ("standard", "primitive")
 
 PRIMITIVE_SATNAV_PROMPT_TEMPLATE = """You are an autonomous navigation assistant. Your task is to {instruction}.
 
-At each step, select exactly ONE action based on the navigation instruction, your historical observations, and the current visual observation.
+Based on your current visual observation and historical observations, output exactly ONE action using:
+↑ (forward 10m), ← (turn left), → (turn right), or STOP (when the current task is completed).
 
-Available actions:
-↑ : move forward 10m
-← : turn left
-→ : turn right
-STOP : stop when the current navigation instruction has been completed
+Treat the center of the current image as your current heading direction.
+Use the position and direction of the relevant route, reference, or target relative to the image center to determine whether your heading needs adjustment.
+Pay particular attention to whether the intended navigation direction is aligned with the central region of the current image.
+If the intended direction is approximately aligned with the image center, avoid unnecessary corrective turns.
 
-The navigation instruction follows one of these primitive forms:
+Use historical observations to understand navigation progress and how the scene has changed over time, but use the current image as the primary evidence for selecting the current action.
 
-1. Move toward the [ordinal] <target> [in your <position>].
-2. Move along the <reference> until you see the [ordinal] <target> [in your <position>].
-3. Turn <left/right> until the <target> [in your <position>].
+For a Turn instruction, rotate in the specified direction. If no target position is explicitly specified, treat the center of the current image as the desired target position.
 
-For augmented MOVE_ALONG samples, the instruction may instead be:
-
-4. Move along the <reference> until reaching the [ordinal] <target>.
-
-The ordinal and position terms may be absent.
-
-Interpret and execute the primitives according to the following rules:
-
-MOVE_TOWARD:
-
-- Treat the <target> as the object that guides the movement.
-- Move toward the specified target while continuously adjusting the heading according to its visual location.
-- If an ordinal is provided, use it to identify the intended instance among multiple objects of the same type.
-- If a position is provided, use it to identify the intended target and its spatial relationship to the agent.
-- Do not confuse another visually similar object with the specified target.
-
-MOVE_ALONG:
-
-- Treat the <reference> as the route or structure that continuously guides movement.
-- Stay aligned with and follow the <reference>, using left or right turns when necessary to correct the heading.
-- The <target> defines the completion condition rather than the direction of travel.
-- For "until you see" instructions, continue following the <reference> until the specified target is visually observed.
-- If an ordinal is provided, count or distinguish occurrences in navigation order and do not stop at an earlier matching target.
-- If a position is provided, the target must satisfy the specified visual position as described by the instruction.
-- For augmented "until reaching" instructions, continue following the <reference> until the specified target has been reached rather than merely observed.
-- Do not leave the <reference> simply to move toward the termination target.
-
-TURN:
-
-- Rotate only in the direction explicitly specified by the instruction.
-- Use the changing visual location of the <target> to determine whether further rotation is required.
-- Do not move forward while executing a TURN primitive.
-- If a position is explicitly provided, stop turning when the target reaches that specified position.
-- If no position is written in a TURN instruction, interpret the required position as center.
-- Do not reverse the prescribed turning direction merely because the target appears on the opposite side of the image.
-
-GENERAL EXECUTION RULES:
-
-- Use historical observations to understand navigation progress and how the route, target locations, and viewpoint have changed over time.
-- Historical observations are ordered from earlier observations to more recent observations.
-- Use the current observation as the primary evidence for selecting the action at the current step.
-- Compare historical and current observations to determine whether the current action is making progress or causing deviation.
-- Follow the current primitive according to its semantics rather than simply matching words such as "left", "right", or "forward" to actions.
-- Do not repeat a navigation stage or correction that has already been completed.
-- When an ordinal is specified, make sure the correct occurrence is used before completing the instruction.
-- Output STOP only when the completion condition of the current primitive has been satisfied.
-- Output exactly ONE action from: ↑, ←, →, STOP.
-- Output the action directly without explanation or any additional text."""
+Output exactly ONE action from ↑, ←, →, or STOP.
+Output the action directly without explanation."""
 
 
 @dataclass(frozen=True)
