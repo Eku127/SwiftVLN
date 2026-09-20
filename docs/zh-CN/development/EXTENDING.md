@@ -111,7 +111,7 @@ Dataset 中增加环境分支。
   <a href="../../assets/workflows/processor-contract.zh-CN.svg"><img src="../../assets/workflows/processor-contract.zh-CN.svg" width="100%" alt="训练预留 token 占位，在线推理缓存 embedding；两条链路遵循相同的处理器输出约束。"></a>
 </p>
 
-*训练预留 token 占位，在线推理缓存 embedding；两条链路遵循相同的处理器输出约束。* · [draw.io 源文件](../../assets/workflows/processor-contract.zh-CN.drawio)
+*训练预留 token 占位，在线推理缓存 embedding；两条链路遵循相同的处理器输出约束。*
 
 训练侧的历史帧选择位于 `SwiftVLNDataset._sample_history_frames()`；在线侧的 cache 构建
 位于 `evaluation/inference/encoding.py`。如果新 processor 使用不同的帧采样或 cache

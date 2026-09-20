@@ -8,7 +8,7 @@ SwiftVLN performs supervised fine-tuning on offline expert trajectories. SatNav 
   <a href="../../assets/workflows/training-flow.en-US.svg"><img src="../../assets/workflows/training-flow.en-US.svg" width="100%" alt="Trajectory windows become multimodal conversations, then embeddings and supervised action labels."></a>
 </p>
 
-*Trajectory windows become multimodal conversations, then embeddings and supervised action labels.* · [Editable draw.io source](../../assets/workflows/training-flow.en-US.drawio)
+*Trajectory windows become multimodal conversations, then embeddings and supervised action labels.*
 
 `SwiftVLNDataset` packages images and expert action text into windowed conversations. The Template builds visual placeholders and labels; after visual encoding, history tokens are compressed and injected into those positions. Assistant action turns provide supervision, while retained overlap turns supply context with masked loss. See [dual memory and sliding windows](../concepts/PIPELINE.md) for the token layout and loss definition.
 

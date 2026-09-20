@@ -33,7 +33,7 @@ labels, and connectors remain individually editable in draw.io.
 | `input-enhancement` | Pose FiLM and UAV adapter paths before history compression |
 
 Open a `.drawio` file in draw.io, edit it, and export the corresponding `.svg`.
-The Wiki embeds SVGs and links their editable sources. Export with a white
+The Wiki embeds SVGs; editable sources are maintained in the repository. Export with a white
 background and light theme; keep the canvas dimensions and native text.
 The exports were produced with draw.io Desktop 31.4.5.
 

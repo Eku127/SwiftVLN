@@ -8,7 +8,7 @@ Map memory represents pre-window spatial experience with two north-up maps. A gl
   <a href="../../assets/concepts/diagrams/map-construction.en-US.svg"><img src="../../assets/concepts/diagrams/map-construction.en-US.svg" width="100%" alt="Map construction from footprint masks and global/local crops to visual encoding and the default 128-token memory."></a>
 </p>
 
-*The two maps share the vision encoder, are pooled separately, and are concatenated as historical memory.* · [Editable draw.io source](../../assets/concepts/diagrams/map-construction.en-US.drawio)
+*The two maps share the vision encoder, are pooled separately, and are concatenated as historical memory.*
 
 ## 1. Turning a trajectory into two maps
 

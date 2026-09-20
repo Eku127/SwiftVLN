@@ -8,7 +8,7 @@ Map memory 将窗前的空间经历表示为两张朝北的俯视地图：全局
   <a href="../../assets/concepts/diagrams/map-construction.zh-CN.svg"><img src="../../assets/concepts/diagrams/map-construction.zh-CN.svg" width="100%" alt="地图足迹掩码、全局局部裁剪、视觉编码和默认 128-token 记忆的构建过程。"></a>
 </p>
 
-*两张地图共享视觉编码器；每张分别池化后，再拼接为历史记忆。* · [draw.io 源文件](../../assets/concepts/diagrams/map-construction.zh-CN.drawio)
+*两张地图共享视觉编码器；每张分别池化后，再拼接为历史记忆。*
 
 ## 1. 从轨迹生成两张地图
 

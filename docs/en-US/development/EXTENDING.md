@@ -102,7 +102,7 @@ The result of `get_output_token_count()` must exactly match the first dimension 
   <a href="../../assets/workflows/processor-contract.en-US.svg"><img src="../../assets/workflows/processor-contract.en-US.svg" width="100%" alt="Training reserves token slots; online inference caches embeddings. Both paths use the same processor output contract."></a>
 </p>
 
-*Training reserves token slots; online inference caches embeddings. Both paths use the same processor output contract.* · [Editable draw.io source](../../assets/workflows/processor-contract.en-US.drawio)
+*Training reserves token slots; online inference caches embeddings. Both paths use the same processor output contract.*
 
 Training-side history selection is implemented in `SwiftVLNDataset._sample_history_frames()`. Online cache construction is implemented in `evaluation/inference/encoding.py`. If a processor changes sampling or caching, update both paths.
 

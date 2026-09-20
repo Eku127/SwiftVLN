@@ -12,7 +12,7 @@ trajectory，评测通过 Backend 连接 SatNav 或 Habitat；两条链路共享
   <a href="../../assets/workflows/architecture.zh-CN.svg"><img src="../../assets/workflows/architecture.zh-CN.svg" width="100%" alt="训练与评测调用共享建模组件；评测链路还通过 Backend 连接模拟器。"></a>
 </p>
 
-*训练与评测调用共享建模组件；评测链路还通过 Backend 连接模拟器。* · [draw.io 源文件](../../assets/workflows/architecture.zh-CN.drawio)
+*训练与评测调用共享建模组件；评测链路还通过 Backend 连接模拟器。*
 
 ## 1. 仓库结构
 
@@ -79,7 +79,7 @@ evaluation variables <── shell assignments <── parse-name
   <a href="../../assets/workflows/training-flow.zh-CN.svg"><img src="../../assets/workflows/training-flow.zh-CN.svg" width="100%" alt="轨迹窗口先转换为多模态对话，再构建 embedding 与动作监督标签。"></a>
 </p>
 
-*轨迹窗口先转换为多模态对话，再构建 embedding 与动作监督标签。* · [draw.io 源文件](../../assets/workflows/training-flow.zh-CN.drawio)
+*轨迹窗口先转换为多模态对话，再构建 embedding 与动作监督标签。*
 
 ### 3.1 Dataset
 
@@ -133,7 +133,7 @@ Runner 加载 checkpoint、分配 Episode，并记录已完成结果。单个 Ep
   <a href="../../assets/workflows/episode-loop.zh-CN.svg"><img src="../../assets/workflows/episode-loop.zh-CN.svg" width="100%" alt="动作队列为空时才触发模型查询；每次环境 step 执行队列中的一个动作。"></a>
 </p>
 
-*动作队列为空时才触发模型查询；每次环境 step 执行队列中的一个动作。* · [draw.io 源文件](../../assets/workflows/episode-loop.zh-CN.drawio)
+*动作队列为空时才触发模型查询；每次环境 step 执行队列中的一个动作。*
 
 评测不会创建训练 Template。`SwiftVLNInferenceSession` 直接构造 prompt token、编码视觉
 特征并注入 embedding，以保持在线窗口状态和 simulator step 一致。
@@ -216,7 +216,7 @@ safetensors 恢复 `embed_enhance.*` 权重。
   <a href="../../assets/workflows/backend-layers.zh-CN.svg"><img src="../../assets/workflows/backend-layers.zh-CN.svg" width="100%" alt="EnvironmentSpec 提供静态语义，Backend 创建模拟器，EnvWrapper 暴露统一接口。"></a>
 </p>
 
-*EnvironmentSpec 提供静态语义，Backend 创建模拟器，EnvWrapper 暴露统一接口。* · [draw.io 源文件](../../assets/workflows/backend-layers.zh-CN.drawio)
+*EnvironmentSpec 提供静态语义，Backend 创建模拟器，EnvWrapper 暴露统一接口。*
 
 `backends/factory.py` 在选定环境后才导入对应 Backend。模拟器依赖因此只在实际使用该
 环境时加载。
@@ -233,7 +233,7 @@ safetensors 恢复 `embed_enhance.*` 权重。
   <a href="../../assets/workflows/distributed-results.zh-CN.svg"><img src="../../assets/workflows/distributed-results.zh-CN.svg" width="100%" alt="各 rank 追加同一份 Episode 日志；rank 0 等待完成标记后生成最终结果。"></a>
 </p>
 
-*各 rank 追加同一份 Episode 日志；rank 0 等待完成标记后生成最终结果。* · [draw.io 源文件](../../assets/workflows/distributed-results.zh-CN.drawio)
+*各 rank 追加同一份 Episode 日志；rank 0 等待完成标记后生成最终结果。*
 
 训练由 `torchrun + DeepSpeed` 管理模型分片、optimizer 和 checkpoint，模型名称同时作为
 输出目录名。启用 SwanLab 时，训练脚本额外写入 `train_metadata.json`，记录 project、

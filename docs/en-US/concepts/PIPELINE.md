@@ -20,7 +20,7 @@ For example, `↑↑→↑` is parsed into forward, forward, right, forward. The
   <a href="../../assets/concepts/diagrams/dual-memory.en-US.svg"><img src="../../assets/concepts/diagrams/dual-memory.en-US.svg" width="100%" alt="Data flow connecting dual memory, current observations, prompt embeddings, and action execution."></a>
 </p>
 
-*Orange shows pre-window history, blue shows recent visual context, and green shows environment execution.* · [Editable draw.io source](../../assets/concepts/diagrams/dual-memory.en-US.drawio)
+*Orange shows pre-window history, blue shows recent visual context, and green shows environment execution.*
 
 Long-term memory appears in the system prompt. Short-term memory consists of user/assistant messages. Current images keep the full token sequence produced by the vision encoder; historical images undergo additional compression. With Qwen2.5-VL, 448 × 448 inputs, and the default compression stride of 2, each image produces 256 visual tokens and each sampled history frame is reduced to 64.
 
@@ -47,7 +47,7 @@ $W$ is `NUM_FRAMES` and $O$ is `NUM_OVERLAP`. $N_w$ is the number of turns per w
   <a href="../../assets/concepts/diagrams/sliding-window.en-US.svg"><img src="../../assets/concepts/diagrams/sliding-window.en-US.svg" width="100%" alt="Timeline of the history prefix, retained turns, and new window at query step 32."></a>
 </p>
 
-*Empty blue boxes mark later queries in the new window; the two purple turns remain full context.* · [Editable draw.io source](../../assets/concepts/diagrams/sliding-window.en-US.drawio)
+*Empty blue boxes mark later queries in the new window; the two purple turns remain full context.*
 
 With two overlapping turns, the first window queries at action steps `0,4,…,28`. At step 32, the new window starts at 24. It retains the images and responses from steps 24 and 28, builds long-term memory from observations before step 24, and uses the image at step 32 for the current query. Overlap preserves detailed context around the boundary while long-term memory carries earlier information.
 

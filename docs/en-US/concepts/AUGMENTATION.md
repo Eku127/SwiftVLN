@@ -49,7 +49,7 @@ Enhancement runs before history compression and applies to historical, initial, 
   <a href="../../assets/concepts/diagrams/input-enhancement.en-US.svg"><img src="../../assets/concepts/diagrams/input-enhancement.en-US.svg" width="100%" alt="FiLM pose enhancement and UAV token adaptation, both applied before history compression."></a>
 </p>
 
-*The colored branches are alternative enhancement modes. FiLM is shown with its default fusion strength of 1.* · [Editable draw.io source](../../assets/concepts/diagrams/input-enhancement.en-US.drawio)
+*The colored branches are alternative enhancement modes. FiLM is shown with its default fusion strength of 1.*
 
 Thus, features already carry pose information when a subsequent GTC operation combines tokens from multiple times.
 

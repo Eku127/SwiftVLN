@@ -39,7 +39,7 @@ and workflow diagrams live in `docs/assets/workflows/`. Edit the
 native `.drawio` sources and export the matching light-theme `.svg` files in
 both languages. The [asset notes](assets/concepts/README.md) list the diagrams
 and an export command; [workflow asset notes](assets/workflows/README.md) map
-the workflow figures to their code references. The Wiki displays SVGs and links the editable sources.
+the workflow figures to their code references. The Wiki displays SVGs; editable sources are maintained in the repository.
 
 Use `python scripts/export_diagrams.py --drawio /path/to/drawio` to export all
 diagrams as compact SVGs with native text. On Windows, pass the path to

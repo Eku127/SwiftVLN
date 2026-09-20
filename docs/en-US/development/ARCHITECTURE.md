@@ -10,7 +10,7 @@ SwiftVLN separates training, online evaluation, model extensions, and simulator 
   <a href="../../assets/workflows/architecture.en-US.svg"><img src="../../assets/workflows/architecture.en-US.svg" width="100%" alt="Training and evaluation call shared modeling components; the evaluation path also connects to simulator backends."></a>
 </p>
 
-*Training and evaluation call shared modeling components; the evaluation path also connects to simulator backends.* · [Editable draw.io source](../../assets/workflows/architecture.en-US.drawio)
+*Training and evaluation call shared modeling components; the evaluation path also connects to simulator backends.*
 
 ## 1. Repository structure
 
@@ -74,7 +74,7 @@ The training parameters and evaluation parameters are respectively defined in:
   <a href="../../assets/workflows/training-flow.en-US.svg"><img src="../../assets/workflows/training-flow.en-US.svg" width="100%" alt="Trajectory windows become multimodal conversations, then embeddings and supervised action labels."></a>
 </p>
 
-*Trajectory windows become multimodal conversations, then embeddings and supervised action labels.* · [Editable draw.io source](../../assets/workflows/training-flow.en-US.drawio)
+*Trajectory windows become multimodal conversations, then embeddings and supervised action labels.*
 
 ### 3.1 Dataset
 
@@ -121,7 +121,7 @@ The runner loads the checkpoint, assigns episodes, and records completed results
   <a href="../../assets/workflows/episode-loop.en-US.svg"><img src="../../assets/workflows/episode-loop.en-US.svg" width="100%" alt="Only an empty action queue triggers a model query; each environment step executes one queued action."></a>
 </p>
 
-*Only an empty action queue triggers a model query; each environment step executes one queued action.* · [Editable draw.io source](../../assets/workflows/episode-loop.en-US.drawio)
+*Only an empty action queue triggers a model query; each environment step executes one queued action.*
 
 `SwiftVLNInferenceSession` builds prompt tokens, encodes images, and injects embeddings directly. It maintains the online conversation window and memory cache as the simulator advances.
 
@@ -192,7 +192,7 @@ Core training, inference, and episode loops access environment capabilities thro
   <a href="../../assets/workflows/backend-layers.en-US.svg"><img src="../../assets/workflows/backend-layers.en-US.svg" width="100%" alt="EnvironmentSpec supplies static semantics, Backend creates the simulator, and EnvWrapper exposes a common interface."></a>
 </p>
 
-*EnvironmentSpec supplies static semantics, Backend creates the simulator, and EnvWrapper exposes a common interface.* · [Editable draw.io source](../../assets/workflows/backend-layers.en-US.drawio)
+*EnvironmentSpec supplies static semantics, Backend creates the simulator, and EnvWrapper exposes a common interface.*
 
 `backends/factory.py` imports a Backend only after its environment is selected, so simulator dependencies are loaded on demand.
 
@@ -208,7 +208,7 @@ The unified interfaces of `EnvWrapper` include:
   <a href="../../assets/workflows/distributed-results.en-US.svg"><img src="../../assets/workflows/distributed-results.en-US.svg" width="100%" alt="Ranks append to a shared episode log; rank 0 waits for completion markers before deriving the final results."></a>
 </p>
 
-*Ranks append to a shared episode log; rank 0 waits for completion markers before deriving the final results.* · [Editable draw.io source](../../assets/workflows/distributed-results.en-US.drawio)
+*Ranks append to a shared episode log; rank 0 waits for completion markers before deriving the final results.*
 
 Training is managed by `torchrun + DeepSpeed` model sharding, optimizer and checkpoint, and the model name is also used as Output directory name. When SwanLab is enabled, the training script additionally writes `train_metadata.json` to record project, experiment name and run URL.
 

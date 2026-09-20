@@ -49,7 +49,7 @@ $X_i\in\mathbb R^{n_i\times d}$ 是一张图像的视觉 token。相同的 $\gam
   <a href="../../assets/concepts/diagrams/input-enhancement.zh-CN.svg"><img src="../../assets/concepts/diagrams/input-enhancement.zh-CN.svg" width="100%" alt="FiLM 位姿增强和 UAV token 适配两种分支，均在历史压缩之前执行。"></a>
 </p>
 
-*两条彩色分支表示可选择的增强模式；图中的 FiLM 使用默认融合强度 1。* · [draw.io 源文件](../../assets/concepts/diagrams/input-enhancement.zh-CN.drawio)
+*两条彩色分支表示可选择的增强模式；图中的 FiLM 使用默认融合强度 1。*
 
 因此，即使后续 GTC 合并了多个时刻的 token，参与聚合的特征也已经携带位姿信号。
 

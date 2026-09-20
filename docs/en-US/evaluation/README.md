@@ -13,7 +13,7 @@ SwiftVLN provides one entry point for online evaluation on SatNav and Habitat. T
   <a href="../../assets/workflows/episode-loop.en-US.svg"><img src="../../assets/workflows/episode-loop.en-US.svg" width="100%" alt="Only an empty action queue triggers a model query; each environment step executes one queued action."></a>
 </p>
 
-*Only an empty action queue triggers a model query; each environment step executes one queued action.* · [Editable draw.io source](../../assets/workflows/episode-loop.en-US.drawio)
+*Only an empty action queue triggers a model query; each environment step executes one queued action.*
 
 At episode start, the loop resets the environment and inference session. Each step collects an RGB frame and the current pose. When the action queue is empty, the session initializes or advances the window, prepares memory and context, and predicts the next action sequence. The loop executes one action at a time and records its effect on pose. An empty parsed action sequence falls back to STOP. The episode finishes when the environment reports completion or reaches its step limit. See [the episode-loop implementation](../../../src/swiftvln/evaluation/episode_loop.py) and [window and memory updates](../concepts/PIPELINE.md).
 
@@ -375,7 +375,7 @@ bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
   <a href="../../assets/workflows/distributed-results.en-US.svg"><img src="../../assets/workflows/distributed-results.en-US.svg" width="100%" alt="Ranks append to a shared episode log; rank 0 waits for completion markers before deriving the final results."></a>
 </p>
 
-*Ranks append to a shared episode log; rank 0 waits for completion markers before deriving the final results.* · [Editable draw.io source](../../assets/workflows/distributed-results.en-US.drawio)
+*Ranks append to a shared episode log; rank 0 waits for completion markers before deriving the final results.*
 
 The runner groups episodes by scene, sorts scene names, and assigns the resulting sequence round-robin across ranks. On resume, each rank reads `result.jsonl` and skips recorded `scene_id::episode_id` keys. Each completed episode adds a row to this shared log. After all rank completion markers are present, rank 0 deduplicates the log by episode key and writes the final results and metric summary. See [runner.py](../../../src/swiftvln/evaluation/runner.py) and [results.py](../../../src/swiftvln/evaluation/results.py).
 
