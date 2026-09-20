@@ -1,0 +1,11 @@
+{% extends "!layout.html" %}
+{% block sidebartitle %}
+{{ super() }}
+<div class="swiftvln-links">
+  <a href="{{ swiftvln_language_url }}" lang="{{ 'en' if language == 'zh_CN' else 'zh-CN' }}">{{ swiftvln_other_language }}</a>
+  <span aria-hidden="true">·</span>
+  <a href="https://github.com/Eku127/SwiftVLN">GitHub</a>
+  <span aria-hidden="true">·</span>
+  <a href="https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo">Models</a>
+</div>
+{% endblock %}

@@ -51,3 +51,6 @@ models/
 
 # Virtual environments
 .venvs/
+
+# Generated bilingual documentation site
+/docs/_build/

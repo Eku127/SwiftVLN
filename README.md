@@ -21,7 +21,7 @@
 
 <p align="center">
   <a href="https://openreview.net/forum?id=hOEniyN6hl"><img src="https://img.shields.io/badge/Paper-OpenReview-B31B1B" alt="SatNav paper on OpenReview"></a>
-  <a href="docs/en-US/README.md"><img src="https://img.shields.io/badge/Docs-English-2878D0" alt="English documentation"></a>
+  <a href="https://eku127.github.io/SwiftVLN/wiki/en-US/index.html"><img src="https://img.shields.io/badge/Wiki-Documentation-2878D0" alt="SwiftVLN Wiki"></a>
   <a href="https://github.com/Eku127/SatNav"><img src="https://img.shields.io/badge/Benchmark-SatNav-43874A" alt="SatNav benchmark"></a>
   <a href="https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo"><img src="https://img.shields.io/badge/Models-Hugging%20Face-FFD21E" alt="SwiftVLN Model Zoo on Hugging Face"></a>
 </p>
