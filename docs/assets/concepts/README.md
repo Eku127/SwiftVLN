@@ -40,7 +40,7 @@ The exports were produced with draw.io Desktop 31.4.5.
 Example command from the repository root, with the draw.io executable on PATH:
 
 ```bash
-drawio --export --format svg --theme light --embed-diagram --border 0 --output docs/assets/concepts/diagrams/map-construction.en-US.svg docs/assets/concepts/diagrams/map-construction.en-US.drawio
+drawio --export --format svg --theme light --border 0 --output docs/assets/concepts/diagrams/map-construction.en-US.svg docs/assets/concepts/diagrams/map-construction.en-US.drawio
 ```
 
 On Windows, use `draw.io.exe` in place of `drawio` (or its full path). Export
@@ -50,3 +50,21 @@ together, then rebuild the documentation as described in `docs/BUILDING.md`.
 The diagrams explain the current implementation. Values in examples, such as
 the Qwen2.5-VL 448 × 448 token grid and window-overlap settings, are labeled on
 the canvas. The map pipeline uses compression stride 2 and `adaptive_start`.
+
+## Compact vector export
+
+Labels use `html=0;whiteSpace=nowrap;` and explicit newlines in the draw.io
+source. This produces native SVG text rather than HTML labels with embedded
+PNG fallbacks. Keep editable data in the separate `.drawio` file; omit
+`--embed-diagram` from SVG exports.
+
+Export and validate all diagrams from the repository root:
+
+```bash
+python scripts/export_diagrams.py --drawio /path/to/drawio
+```
+
+On Windows, pass the path to `draw.io.exe`. The script rejects raster images,
+HTML labels, and embedded diagram source. After changing label text, inspect
+both languages for line breaks and overflow, then rebuild the Wiki. Text uses
+Arial with the viewer's system fallback for Chinese characters.

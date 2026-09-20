@@ -16,9 +16,27 @@ The diagrams follow the implementation in `src/swiftvln/`.
 Export with draw.io Desktop (these exports use 31.4.5):
 
 ```bash
-drawio --export --format svg --theme light --embed-diagram --border 0 --output docs/assets/workflows/architecture.en-US.svg docs/assets/workflows/architecture.en-US.drawio
+drawio --export --format svg --theme light --border 0 --output docs/assets/workflows/architecture.en-US.svg docs/assets/workflows/architecture.en-US.drawio
 ```
 
 Use `draw.io.exe` on Windows. Keep the white background and native text. Update
 both languages, commit source and export together, then follow
 [the Wiki build instructions](../../BUILDING.md).
+
+## Compact vector export
+
+Labels use `html=0;whiteSpace=nowrap;` and explicit newlines in the draw.io
+source. This produces native SVG text rather than HTML labels with embedded
+PNG fallbacks. Keep editable data in the separate `.drawio` file; omit
+`--embed-diagram` from SVG exports.
+
+Export and validate all diagrams from the repository root:
+
+```bash
+python scripts/export_diagrams.py --drawio /path/to/drawio
+```
+
+On Windows, pass the path to `draw.io.exe`. The script rejects raster images,
+HTML labels, and embedded diagram source. After changing label text, inspect
+both languages for line breaks and overflow, then rebuild the Wiki. Text uses
+Arial with the viewer's system fallback for Chinese characters.

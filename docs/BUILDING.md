@@ -41,6 +41,11 @@ both languages. The [asset notes](assets/concepts/README.md) list the diagrams
 and an export command; [workflow asset notes](assets/workflows/README.md) map
 the workflow figures to their code references. The Wiki displays SVGs and links the editable sources.
 
+Use `python scripts/export_diagrams.py --drawio /path/to/drawio` to export all
+diagrams as compact SVGs with native text. On Windows, pass the path to
+`draw.io.exe`. Keep `html=0;whiteSpace=nowrap;` in label styles and set line
+breaks explicitly. Editable sources remain in the separate `.drawio` files.
+
 1. Edit the existing Markdown in the relevant language directory.
 2. For a new page, add its counterpart in the other language and register both
    pages in their language's `index.md` toctree.
