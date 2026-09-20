@@ -21,8 +21,8 @@
 
 <p align="center">
   <a href="https://openreview.net/forum?id=hOEniyN6hl"><img src="https://img.shields.io/badge/Paper-OpenReview-B31B1B" alt="SatNav paper on OpenReview"></a>
-  <a href="https://eku127.github.io/SwiftVLN/wiki/en-US/index.html"><img src="https://img.shields.io/badge/Wiki-Documentation-2878D0" alt="SwiftVLN Wiki"></a>
-  <a href="https://github.com/Eku127/SatNav"><img src="https://img.shields.io/badge/Benchmark-SatNav-43874A" alt="SatNav benchmark"></a>
+  <a href="https://eku127.github.io/SwiftVLN/wiki/en-US/index.html"><img src="https://img.shields.io/badge/Wiki-2878D0" alt="SwiftVLN Wiki"></a>
+  <a href="https://huggingface.co/datasets/Eku127/SatNav-Episodes-v0.1"><img src="https://img.shields.io/badge/Dataset-Hugging%20Face-FFD21E" alt="SatNav dataset on Hugging Face"></a>
   <a href="https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo"><img src="https://img.shields.io/badge/Models-Hugging%20Face-FFD21E" alt="SwiftVLN Model Zoo on Hugging Face"></a>
 </p>
 
@@ -142,18 +142,21 @@ The Satellite-to-UAV adapter maps UAV visual tokens into the satellite feature s
 
 Prepare the four source datasets with [SatDronePair generation](docs/en-US/data/SATDRONEPAIR.md), then follow [Satellite-to-UAV Stage-A training](docs/en-US/training/S2R_STAGE_A.md) to train and evaluate the adapter.
 
-## Documentation
+## Wiki
+
+Read the **[SwiftVLN Wiki](https://eku127.github.io/SwiftVLN/wiki/en-US/index.html)** for implementation principles, illustrated memory mechanisms, and training and evaluation guides.
 
 | I want to… | Guide |
 | --- | --- |
-| Install SwiftVLN and load a checkpoint | [Installation](docs/en-US/getting-started/INSTALLATION.md) · [Models and checkpoints](docs/en-US/getting-started/CHECKPOINTS.md) |
-| Prepare training or evaluation data | [SatNav](docs/en-US/data/TRAINING_DATA_SATNAV.md) · [Habitat](docs/en-US/data/TRAINING_DATA_HABITAT.md) · [Evaluation data](docs/en-US/data/EVALUATION_DATA.md) |
-| Train or evaluate a navigation model | [Training](docs/en-US/training/README.md) · [Evaluation](docs/en-US/evaluation/README.md) |
-| Compare memory designs | [Memory configuration](docs/en-US/training/MEMORY.md) |
-| Adapt satellite features to UAV observations | [SatDronePair](docs/en-US/data/SATDRONEPAIR.md) · [Stage-A training](docs/en-US/training/S2R_STAGE_A.md) |
-| Add a model, memory module, or environment | [Architecture](docs/en-US/development/ARCHITECTURE.md) · [Extending SwiftVLN](docs/en-US/development/EXTENDING.md) |
+| Understand the implementation | [Dual memory and windows](https://eku127.github.io/SwiftVLN/wiki/en-US/concepts/PIPELINE.html) · [Memory compression](https://eku127.github.io/SwiftVLN/wiki/en-US/concepts/MEMORY.html) · [Map memory](https://eku127.github.io/SwiftVLN/wiki/en-US/concepts/MAP_MEMORY.html) · [Input augmentation](https://eku127.github.io/SwiftVLN/wiki/en-US/concepts/AUGMENTATION.html) |
+| Install SwiftVLN and load a checkpoint | [Installation](https://eku127.github.io/SwiftVLN/wiki/en-US/getting-started/INSTALLATION.html) · [Models and checkpoints](https://eku127.github.io/SwiftVLN/wiki/en-US/getting-started/CHECKPOINTS.html) |
+| Prepare training or evaluation data | [SatNav](https://eku127.github.io/SwiftVLN/wiki/en-US/data/TRAINING_DATA_SATNAV.html) · [Habitat](https://eku127.github.io/SwiftVLN/wiki/en-US/data/TRAINING_DATA_HABITAT.html) · [Evaluation data](https://eku127.github.io/SwiftVLN/wiki/en-US/data/EVALUATION_DATA.html) |
+| Train or evaluate a navigation model | [Training](https://eku127.github.io/SwiftVLN/wiki/en-US/training/README.html) · [Evaluation](https://eku127.github.io/SwiftVLN/wiki/en-US/evaluation/README.html) |
+| Compare memory designs | [Memory configuration](https://eku127.github.io/SwiftVLN/wiki/en-US/training/MEMORY.html) |
+| Adapt satellite features to UAV observations | [SatDronePair](https://eku127.github.io/SwiftVLN/wiki/en-US/data/SATDRONEPAIR.html) · [Stage-A training](https://eku127.github.io/SwiftVLN/wiki/en-US/training/S2R_STAGE_A.html) |
+| Add a model, memory module, or environment | [Architecture](https://eku127.github.io/SwiftVLN/wiki/en-US/development/ARCHITECTURE.html) · [Extending SwiftVLN](https://eku127.github.io/SwiftVLN/wiki/en-US/development/EXTENDING.html) |
 
-Browse the complete documentation in [English](docs/en-US/README.md) or [简体中文](docs/zh-CN/README.md).
+Browse the complete Wiki in [English](https://eku127.github.io/SwiftVLN/wiki/en-US/index.html) or [简体中文](https://eku127.github.io/SwiftVLN/wiki/zh-CN/index.html).
 
 <details>
 <summary><strong>Repository structure</strong></summary>

@@ -21,8 +21,8 @@
 
 <p align="center">
   <a href="https://openreview.net/forum?id=hOEniyN6hl"><img src="https://img.shields.io/badge/Paper-OpenReview-B31B1B" alt="SatNav 论文 OpenReview 页面"></a>
-  <a href="https://eku127.github.io/SwiftVLN/wiki/zh-CN/index.html"><img src="https://img.shields.io/badge/Wiki-Documentation-2878D0" alt="SwiftVLN 在线文档"></a>
-  <a href="https://github.com/Eku127/SatNav"><img src="https://img.shields.io/badge/Benchmark-SatNav-43874A" alt="SatNav 基准"></a>
+  <a href="https://eku127.github.io/SwiftVLN/wiki/zh-CN/index.html"><img src="https://img.shields.io/badge/Wiki-2878D0" alt="SwiftVLN Wiki"></a>
+  <a href="https://huggingface.co/datasets/Eku127/SatNav-Episodes-v0.1"><img src="https://img.shields.io/badge/Dataset-Hugging%20Face-FFD21E" alt="Hugging Face 上的 SatNav 数据集"></a>
   <a href="https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo"><img src="https://img.shields.io/badge/Models-Hugging%20Face-FFD21E" alt="Hugging Face 上的 SwiftVLN Model Zoo"></a>
 </p>
 
@@ -142,18 +142,21 @@ Satellite-to-UAV adapter 将无人机视觉 token 映射到冻结视觉编码器
 
 按照 [SatDronePair 数据生成](docs/zh-CN/data/SATDRONEPAIR.md)准备四个来源的数据，再参考 [Satellite-to-UAV Stage-A 训练](docs/zh-CN/training/S2R_STAGE_A.md)完成 adapter 的训练与评测。
 
-## 文档导航
+## Wiki
+
+访问 **[SwiftVLN Wiki](https://eku127.github.io/SwiftVLN/wiki/zh-CN/index.html)**，阅读实现原理、记忆机制图解，以及训练和评测指南。
 
 | 我想要…… | 文档 |
 | --- | --- |
-| 安装 SwiftVLN 并加载 checkpoint | [安装](docs/zh-CN/getting-started/INSTALLATION.md) · [模型与 Checkpoint](docs/zh-CN/getting-started/CHECKPOINTS.md) |
-| 准备训练或评测数据 | [SatNav](docs/zh-CN/data/TRAINING_DATA_SATNAV.md) · [Habitat](docs/zh-CN/data/TRAINING_DATA_HABITAT.md) · [评测数据](docs/zh-CN/data/EVALUATION_DATA.md) |
-| 训练或评测导航模型 | [训练](docs/zh-CN/training/README.md) · [评测](docs/zh-CN/evaluation/README.md) |
-| 比较记忆机制 | [记忆配置](docs/zh-CN/training/MEMORY.md) |
-| 将卫星特征迁移到无人机观测 | [SatDronePair](docs/zh-CN/data/SATDRONEPAIR.md) · [Stage-A 训练](docs/zh-CN/training/S2R_STAGE_A.md) |
-| 增加模型、记忆模块或环境 | [代码架构](docs/zh-CN/development/ARCHITECTURE.md) · [扩展 SwiftVLN](docs/zh-CN/development/EXTENDING.md) |
+| 理解实现原理 | [双层记忆与滑窗](https://eku127.github.io/SwiftVLN/wiki/zh-CN/concepts/PIPELINE.html) · [记忆压缩](https://eku127.github.io/SwiftVLN/wiki/zh-CN/concepts/MEMORY.html) · [地图记忆](https://eku127.github.io/SwiftVLN/wiki/zh-CN/concepts/MAP_MEMORY.html) · [输入增强](https://eku127.github.io/SwiftVLN/wiki/zh-CN/concepts/AUGMENTATION.html) |
+| 安装 SwiftVLN 并加载 checkpoint | [安装](https://eku127.github.io/SwiftVLN/wiki/zh-CN/getting-started/INSTALLATION.html) · [模型与 Checkpoint](https://eku127.github.io/SwiftVLN/wiki/zh-CN/getting-started/CHECKPOINTS.html) |
+| 准备训练或评测数据 | [SatNav](https://eku127.github.io/SwiftVLN/wiki/zh-CN/data/TRAINING_DATA_SATNAV.html) · [Habitat](https://eku127.github.io/SwiftVLN/wiki/zh-CN/data/TRAINING_DATA_HABITAT.html) · [评测数据](https://eku127.github.io/SwiftVLN/wiki/zh-CN/data/EVALUATION_DATA.html) |
+| 训练或评测导航模型 | [训练](https://eku127.github.io/SwiftVLN/wiki/zh-CN/training/README.html) · [评测](https://eku127.github.io/SwiftVLN/wiki/zh-CN/evaluation/README.html) |
+| 比较记忆机制 | [记忆配置](https://eku127.github.io/SwiftVLN/wiki/zh-CN/training/MEMORY.html) |
+| 将卫星特征迁移到无人机观测 | [SatDronePair](https://eku127.github.io/SwiftVLN/wiki/zh-CN/data/SATDRONEPAIR.html) · [Stage-A 训练](https://eku127.github.io/SwiftVLN/wiki/zh-CN/training/S2R_STAGE_A.html) |
+| 增加模型、记忆模块或环境 | [代码架构](https://eku127.github.io/SwiftVLN/wiki/zh-CN/development/ARCHITECTURE.html) · [扩展 SwiftVLN](https://eku127.github.io/SwiftVLN/wiki/zh-CN/development/EXTENDING.html) |
 
-完整文档支持 [English](docs/en-US/README.md) 和[简体中文](docs/zh-CN/README.md)。
+完整 Wiki 支持 [English](https://eku127.github.io/SwiftVLN/wiki/en-US/index.html) 和[简体中文](https://eku127.github.io/SwiftVLN/wiki/zh-CN/index.html)。
 
 <details>
 <summary><strong>仓库结构</strong></summary>
