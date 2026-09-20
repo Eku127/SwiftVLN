@@ -5,21 +5,13 @@
 SwiftVLN 使用离线 expert trajectory 进行监督微调。SatNav 与 Habitat 共用训练入口，
 通过 `VLN_ENV_TYPE` 选择训练环境。
 
-```text
-trajectory annotations + RGB frames
-                  │
-                  ▼
-          SwiftVLNDataset
-                  │
-                  ▼
-       trajectory window + memory
-                  │
-                  ▼
-          ms-swift full SFT
-                  │
-                  ▼
-             checkpoint
-```
+<p align="center">
+  <a href="../../assets/workflows/training-flow.zh-CN.svg"><img src="../../assets/workflows/training-flow.zh-CN.svg" width="100%" alt="轨迹窗口先转换为多模态对话，再构建 embedding 与动作监督标签。"></a>
+</p>
+
+<p class="figure-caption" align="center">轨迹窗口先转换为多模态对话，再构建 embedding 与动作监督标签。</p>
+
+`SwiftVLNDataset` 将图像和专家动作文本组织为窗口内的多轮对话。Template 构造视觉占位与标签，视觉编码后的历史 token 经压缩后注入对应位置。Assistant 动作轮提供监督，保留的重叠轮提供上下文并屏蔽 loss。具体 token 布局与损失定义见[双层记忆与滑动窗口](../concepts/PIPELINE.md)。
 
 ## 1. 准备环境与数据
 

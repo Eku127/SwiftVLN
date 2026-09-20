@@ -2,6 +2,8 @@
 
 简体中文 | [English](../../en-US/training/MEMORY.md)
 
+计算原理见[历史记忆与 token 压缩](../concepts/MEMORY.md)、[地图记忆](../concepts/MAP_MEMORY.md)和[输入增强](../concepts/AUGMENTATION.md)。窗口更新过程见[双层记忆与滑动窗口](../concepts/PIPELINE.md)。
+
 SwiftVLN 将当前轨迹窗口之外的观测组织为 Memory。Memory 配置包括 history-frame
 sampling、input augmentation 和 long-term Memory compression。
 

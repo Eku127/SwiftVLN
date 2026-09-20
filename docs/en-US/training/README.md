@@ -4,21 +4,13 @@
 
 SwiftVLN performs supervised fine-tuning on offline expert trajectories. SatNav and Habitat share the same training entry point; select the environment with `VLN_ENV_TYPE`.
 
-```text
-trajectory annotations + RGB frames
-                  │
-                  ▼
-          SwiftVLNDataset
-                  │
-                  ▼
-       trajectory window + memory
-                  │
-                  ▼
-          ms-swift full SFT
-                  │
-                  ▼
-             checkpoint
-```
+<p align="center">
+  <a href="../../assets/workflows/training-flow.en-US.svg"><img src="../../assets/workflows/training-flow.en-US.svg" width="100%" alt="Trajectory windows become multimodal conversations, then embeddings and supervised action labels."></a>
+</p>
+
+<p class="figure-caption" align="center">Trajectory windows become multimodal conversations, then embeddings and supervised action labels.</p>
+
+`SwiftVLNDataset` packages images and expert action text into windowed conversations. The Template builds visual placeholders and labels; after visual encoding, history tokens are compressed and injected into those positions. Assistant action turns provide supervision, while retained overlap turns supply context with masked loss. See [dual memory and sliding windows](../concepts/PIPELINE.md) for the token layout and loss definition.
 
 ## 1. Prepare environment and data
 

@@ -10,6 +10,14 @@ SwiftVLN 使用统一入口在 SatNav 和 Habitat 中执行在线评测。评测
 | SatNav | `val_seen`、`val_unseen` | GeoTIFF | 500 |
 | Habitat | `val_unseen` | MP3D | 500 |
 
+<p align="center">
+  <a href="../../assets/workflows/episode-loop.zh-CN.svg"><img src="../../assets/workflows/episode-loop.zh-CN.svg" width="100%" alt="动作队列为空时才触发模型查询；每次环境 step 执行队列中的一个动作。"></a>
+</p>
+
+<p class="figure-caption" align="center">动作队列为空时才触发模型查询；每次环境 step 执行队列中的一个动作。</p>
+
+Episode 开始时重置环境和推理 session；每一步采集 RGB 与当前位姿。动作队列为空时，session 初始化或推进窗口，准备记忆和上下文，再预测下一组动作。循环逐个执行动作，并记录动作引起的位姿变化。解析得到空动作序列时使用 STOP。环境报告结束或达到步数上限后，本轮评测完成。实现见 [episode_loop.py](../../../src/swiftvln/evaluation/episode_loop.py)，窗口和记忆更新见[原理章节](../concepts/PIPELINE.md)。
+
 ## 1. 准备评测环境
 
 开始前完成：
@@ -367,6 +375,14 @@ bash scripts/eval/eval_by_name.sh "${MODEL_NAME}"
 ```
 
 ## 7. 结果与指标
+
+<p align="center">
+  <a href="../../assets/workflows/distributed-results.zh-CN.svg"><img src="../../assets/workflows/distributed-results.zh-CN.svg" width="100%" alt="各 rank 追加同一份 Episode 日志；rank 0 等待完成标记后生成最终结果。"></a>
+</p>
+
+<p class="figure-caption" align="center">各 rank 追加同一份 Episode 日志；rank 0 等待完成标记后生成最终结果。</p>
+
+Runner 先按 scene 分组并排序 scene 名称，再将得到的全局序列轮转分配给各 rank。恢复时，每个 rank 读取 `result.jsonl`，跳过已记录的 `scene_id::episode_id`。每完成一个 Episode，就向这份共享日志追加一行。全部 rank 写入完成标记后，rank 0 按 Episode 键去重，生成完整结果和指标汇总。实现见 [runner.py](../../../src/swiftvln/evaluation/runner.py) 与 [results.py](../../../src/swiftvln/evaluation/results.py)。
 
 每个 split 生成独立目录：
 

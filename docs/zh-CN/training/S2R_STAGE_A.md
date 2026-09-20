@@ -2,6 +2,8 @@
 
 简体中文 | [English](../../en-US/training/S2R_STAGE_A.md)
 
+适配器结构、两种损失的公式和导航接入过程见[输入增强与 UAV 适配原理](../concepts/AUGMENTATION.md)。
+
 Satellite-to-UAV Stage-A 使用 UAV–Satellite 配对图像训练 Satellite-to-UAV adapter。Qwen2.5-VL
 视觉塔在训练期间保持冻结，adapter 仅作用于 UAV 视觉 token，使其与对应的卫星图像
 特征对齐。

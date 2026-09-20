@@ -2,9 +2,17 @@
 
 简体中文 | [English](../../en-US/development/ARCHITECTURE.md)
 
+端到端的数据流与训练目标见[双层记忆与滑动窗口](../concepts/PIPELINE.md)，各记忆算法见[历史记忆与 token 压缩](../concepts/MEMORY.md)。
+
 SwiftVLN 将训练、在线评测、模型扩展和模拟器适配划分为独立模块。训练读取离线
 trajectory，评测通过 Backend 连接 SatNav 或 Habitat；两条链路共享模型、Memory
 处理、embedding enhancement 与实验配置。
+
+<p align="center">
+  <a href="../../assets/workflows/architecture.zh-CN.svg"><img src="../../assets/workflows/architecture.zh-CN.svg" width="100%" alt="训练与评测调用共享建模组件；评测链路还通过 Backend 连接模拟器。"></a>
+</p>
+
+<p class="figure-caption" align="center">训练与评测调用共享建模组件；评测链路还通过 Backend 连接模拟器。</p>
 
 ## 1. 仓库结构
 
@@ -67,21 +75,11 @@ evaluation variables <── shell assignments <── parse-name
 
 ## 3. 训练链路
 
-```text
-train_swiftvln_qwen_vl.sh
-        │
-        ├─ 加载本机路径、选择 GPU、生成模型名称
-        ▼
-SwiftVLNSft + SwiftVLNTrainArguments
-        │
-        ├─ SwiftVLNDataset：轨迹窗口、Memory、消息与 loss mask
-        ├─ SwiftVLNTemplate：视觉编码、token 压缩与 embedding 注入
-        └─ registered SwiftVLN model：Qwen-VL + embedding enhancement
-        ▼
-ms-swift Full SFT
-        ▼
-checkpoint + train metadata
-```
+<p align="center">
+  <a href="../../assets/workflows/training-flow.zh-CN.svg"><img src="../../assets/workflows/training-flow.zh-CN.svg" width="100%" alt="轨迹窗口先转换为多模态对话，再构建 embedding 与动作监督标签。"></a>
+</p>
+
+<p class="figure-caption" align="center">轨迹窗口先转换为多模态对话，再构建 embedding 与动作监督标签。</p>
 
 ### 3.1 Dataset
 
@@ -129,26 +127,13 @@ processor，并将 embedding enhancement 挂载到模型。模型参数、optimi
 
 ## 4. 评测链路
 
-```text
-eval_by_name.sh
-      │ 解析模型名、定位 checkpoint、选择 split
-      ▼
-evaluation.arguments
-      ▼
-SwiftVLNEvaluationRunner
-      ├─ 加载模型并初始化 rank
-      ├─ 创建 SwiftVLNEvaluator
-      ├─ 按 scene 排序并 round-robin 分配 Episode
-      └─ 追加结果、恢复进度、汇总 rank
-             │
-             ▼
-EnvironmentEpisodeLoop
-      ├─ SwiftVLNInferenceSession
-      └─ EvaluationBackend / EnvWrapper
-             │
-             ▼
-ResultRecorder
-```
+Runner 加载 checkpoint、分配 Episode，并记录已完成结果。单个 Episode 内部按照下图在模型查询与环境动作之间循环。
+
+<p align="center">
+  <a href="../../assets/workflows/episode-loop.zh-CN.svg"><img src="../../assets/workflows/episode-loop.zh-CN.svg" width="100%" alt="动作队列为空时才触发模型查询；每次环境 step 执行队列中的一个动作。"></a>
+</p>
+
+<p class="figure-caption" align="center">动作队列为空时才触发模型查询；每次环境 step 执行队列中的一个动作。</p>
 
 评测不会创建训练 Template。`SwiftVLNInferenceSession` 直接构造 prompt token、编码视觉
 特征并注入 embedding，以保持在线窗口状态和 simulator step 一致。
@@ -162,8 +147,8 @@ round-robin 分片。
 ### 4.2 Episode loop
 
 [`evaluation/episode_loop.py`](../../../src/swiftvln/evaluation/episode_loop.py) 只处理
-`reset → predict → step → metrics` 状态机。每个 Episode 使用一个独立的
-`SwiftVLNInferenceSession` 状态，并通过 Backend 读取 observation、执行动作和保存视频。
+`reset → predict → step → metrics` 状态机。每个 Episode 开始时调用
+`session.reset()` 清空推理状态，并通过 Backend 读取 observation、执行动作和保存视频。
 
 ### 4.3 Inference session
 
@@ -219,13 +204,19 @@ safetensors 恢复 `embed_enhance.*` 权重。
 
 ## 6. Backend 边界
 
-核心训练、推理和 Episode loop 不直接导入 SatNav 或 Habitat。Backend 由三层组成：
+核心训练、推理和 Episode loop 通过静态环境语义与统一接口使用环境能力。Backend 由三层组成：
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | 静态语义 | `backends/specs.py` | 动作符号、前进距离、转向角、prompt 和能力标记 |
 | Backend | `backends/<env>/backend.py` | 加载配置、创建 simulator、解析动作和视频 hook |
 | EnvWrapper | `backends/<env>/wrapper.py` | 统一 reset、step、observation、metrics 和 Episode 访问 |
+
+<p align="center">
+  <a href="../../assets/workflows/backend-layers.zh-CN.svg"><img src="../../assets/workflows/backend-layers.zh-CN.svg" width="100%" alt="EnvironmentSpec 提供静态语义，Backend 创建模拟器，EnvWrapper 暴露统一接口。"></a>
+</p>
+
+<p class="figure-caption" align="center">EnvironmentSpec 提供静态语义，Backend 创建模拟器，EnvWrapper 暴露统一接口。</p>
 
 `backends/factory.py` 在选定环境后才导入对应 Backend。模拟器依赖因此只在实际使用该
 环境时加载。
@@ -237,6 +228,12 @@ safetensors 恢复 `embed_enhance.*` 权重。
 - `episodes`、`episode_over`、`max_steps` 和 `env_type`。
 
 ## 7. 结果持久化与分布式
+
+<p align="center">
+  <a href="../../assets/workflows/distributed-results.zh-CN.svg"><img src="../../assets/workflows/distributed-results.zh-CN.svg" width="100%" alt="各 rank 追加同一份 Episode 日志；rank 0 等待完成标记后生成最终结果。"></a>
+</p>
+
+<p class="figure-caption" align="center">各 rank 追加同一份 Episode 日志；rank 0 等待完成标记后生成最终结果。</p>
 
 训练由 `torchrun + DeepSpeed` 管理模型分片、optimizer 和 checkpoint，模型名称同时作为
 输出目录名。启用 SwanLab 时，训练脚本额外写入 `train_metadata.json`，记录 project、
