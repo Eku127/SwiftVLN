@@ -5,6 +5,13 @@
 本页按照使用目标组织 SwiftVLN 文档。首次使用从“安装与首次运行”开始；已经具备
 环境和数据时，可直接进入训练或评测。
 
+## 实现原理
+
+- [双层记忆与滑动窗口](concepts/PIPELINE.md)：观测、动作块、窗口更新与训练监督。
+- [历史记忆与 token 压缩](concepts/MEMORY.md)：采样、池化、GridToMe、GTC 和 STC 的计算过程。
+- [地图记忆](concepts/MAP_MEMORY.md)：探索掩码、全局/局部图与 token 预算。
+- [输入增强与 UAV 适配](concepts/AUGMENTATION.md)：起始帧、位姿 FiLM 与 Stage-A 对齐目标。
+
 ## 1. 安装与首次运行
 
 1. [安装](getting-started/INSTALLATION.md)：分别准备训练环境与评测环境；

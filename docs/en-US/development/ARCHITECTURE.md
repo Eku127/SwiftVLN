@@ -2,6 +2,8 @@
 
 [简体中文](../../zh-CN/development/ARCHITECTURE.md) | English
 
+See [dual memory and sliding windows](../concepts/PIPELINE.md) for the end-to-end data flow and training objective, and [historical memory and token compression](../concepts/MEMORY.md) for the memory algorithms.
+
 SwiftVLN separates training, online evaluation, model extensions, and simulator adapters into independent modules. Training reads offline trajectories, while evaluation connects to SatNav or Habitat through a Backend. Both pipelines share the model, Memory processing, embedding enhancements, and experiment configuration.
 
 ## 1. Repository structure

@@ -2,6 +2,8 @@
 
 [简体中文](../../zh-CN/training/S2R_STAGE_A.md) | English
 
+For the adapter architecture, both loss formulas, and navigation integration, see [input augmentation and UAV adaptation](../concepts/AUGMENTATION.md).
+
 Satellite-to-UAV Stage-A trains an adapter on paired UAV–satellite images. The Qwen2.5-VL vision tower remains frozen, while the adapter transforms UAV visual tokens to align them with the corresponding satellite features.
 
 | Components | Role in Stage-A |

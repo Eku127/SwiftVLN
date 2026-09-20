@@ -10,6 +10,7 @@ SwiftVLN 将轨迹训练、记忆机制实验与在线评测整合到同一框�
 
 | 你的目标 | 使用指南 |
 | --- | --- |
+| 理解实现原理 | [双层记忆与滑窗](concepts/PIPELINE.md) · [历史记忆压缩](concepts/MEMORY.md) · [地图记忆](concepts/MAP_MEMORY.md) · [输入增强](concepts/AUGMENTATION.md) |
 | 评测已发布模型 | [安装](getting-started/INSTALLATION.md) · [模型与 Checkpoint](getting-started/CHECKPOINTS.md) · [评测](evaluation/README.md) |
 | 训练导航策略 | [SatNav 数据](data/TRAINING_DATA_SATNAV.md) · [Habitat 数据](data/TRAINING_DATA_HABITAT.md) · [训练](training/README.md) |
 | 比较记忆机制 | [记忆配置](training/MEMORY.md) |
@@ -37,6 +38,17 @@ SwiftVLN 将轨迹训练、记忆机制实验与在线评测整合到同一框�
 安装 <getting-started/INSTALLATION>
 模型与 Checkpoint <getting-started/CHECKPOINTS>
 使用流程 <README>
+```
+
+```{toctree}
+:hidden:
+:maxdepth: 2
+:caption: 实现原理
+
+双层记忆与滑动窗口 <concepts/PIPELINE>
+历史记忆与 token 压缩 <concepts/MEMORY>
+地图记忆 <concepts/MAP_MEMORY>
+输入增强与 UAV 适配 <concepts/AUGMENTATION>
 ```
 
 ```{toctree}

@@ -10,6 +10,7 @@ SwiftVLN brings trajectory-based training, memory experiments, and online evalua
 
 | Your goal | Guide |
 | --- | --- |
+| Understand the implementation | [Dual memory and windows](concepts/PIPELINE.md) · [History compression](concepts/MEMORY.md) · [Map memory](concepts/MAP_MEMORY.md) · [Input augmentation](concepts/AUGMENTATION.md) |
 | Evaluate a released model | [Installation](getting-started/INSTALLATION.md) · [Checkpoints](getting-started/CHECKPOINTS.md) · [Evaluation](evaluation/README.md) |
 | Train a navigation policy | [SatNav data](data/TRAINING_DATA_SATNAV.md) · [Habitat data](data/TRAINING_DATA_HABITAT.md) · [Training](training/README.md) |
 | Compare memory designs | [Memory configuration](training/MEMORY.md) |
@@ -37,6 +38,17 @@ The [workflow guide](README.md) connects the setup, data, training, evaluation, 
 Installation <getting-started/INSTALLATION>
 Models and checkpoints <getting-started/CHECKPOINTS>
 Workflow guide <README>
+```
+
+```{toctree}
+:hidden:
+:maxdepth: 2
+:caption: Implementation Principles
+
+Dual memory and sliding windows <concepts/PIPELINE>
+Historical memory and token compression <concepts/MEMORY>
+Map memory <concepts/MAP_MEMORY>
+Input augmentation and UAV adaptation <concepts/AUGMENTATION>
 ```
 
 ```{toctree}

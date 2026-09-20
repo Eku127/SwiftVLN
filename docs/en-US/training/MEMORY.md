@@ -2,6 +2,8 @@
 
 [简体中文](../../zh-CN/training/MEMORY.md) | English
 
+For the computations behind these settings, see [historical memory and token compression](../concepts/MEMORY.md), [map memory](../concepts/MAP_MEMORY.md), and [input augmentation](../concepts/AUGMENTATION.md). Window updates are explained in [dual memory and sliding windows](../concepts/PIPELINE.md).
+
 SwiftVLN organizes observations outside the current trajectory window as Memory. The configuration covers history-frame sampling, input augmentation, and long-term Memory compression.
 
 Before running the command, complete the environment, model and data settings in [SwiftVLN training](README.md).

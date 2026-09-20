@@ -2,6 +2,8 @@
 
 简体中文 | [English](../../en-US/development/ARCHITECTURE.md)
 
+端到端的数据流与训练目标见[双层记忆与滑动窗口](../concepts/PIPELINE.md)，各记忆算法见[历史记忆与 token 压缩](../concepts/MEMORY.md)。
+
 SwiftVLN 将训练、在线评测、模型扩展和模拟器适配划分为独立模块。训练读取离线
 trajectory，评测通过 Backend 连接 SatNav 或 Habitat；两条链路共享模型、Memory
 处理、embedding enhancement 与实验配置。

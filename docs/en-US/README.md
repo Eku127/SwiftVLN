@@ -4,6 +4,13 @@
 
 The SwiftVLN documentation is organized by research workflow. New users should begin with installation, model checkpoints, and data preparation. If your environment and data are already available, proceed directly to training or evaluation.
 
+## Implementation principles
+
+- [Dual memory and sliding windows](concepts/PIPELINE.md): observations, action chunks, window updates, and supervision.
+- [Historical memory and token compression](concepts/MEMORY.md): sampling, pooling, GridToMe, GTC, and STC computations.
+- [Map memory](concepts/MAP_MEMORY.md): explored masks, global/local views, and token budgets.
+- [Input augmentation and UAV adaptation](concepts/AUGMENTATION.md): initial views, pose FiLM, and Stage-A alignment objectives.
+
 ## 1. Installation and setup
 
 1. [Installation](getting-started/INSTALLATION.md): create the training and evaluation environments.
