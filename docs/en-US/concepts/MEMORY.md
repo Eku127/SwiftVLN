@@ -22,7 +22,7 @@ The counts below use the Qwen2.5-VL image grid produced by the code for 448 × 4
   <a href="../../assets/concepts/diagrams/memory-comparison.en-US.svg"><img src="../../assets/concepts/diagrams/memory-comparison.en-US.svg" width="100%" alt="Inputs, aggregation, and output structure of per-frame pooling, GTC, and STC."></a>
 </p>
 
-*Blocks illustrate image or token groups; the labels give the actual token budgets.*
+<p class="figure-caption" align="center">Blocks illustrate image or token groups; the labels give the actual token budgets.</p>
 
 ## 2. Selecting historical frames
 

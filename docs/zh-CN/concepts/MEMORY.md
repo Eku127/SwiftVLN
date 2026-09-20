@@ -22,7 +22,7 @@
   <a href="../../assets/concepts/diagrams/memory-comparison.zh-CN.svg"><img src="../../assets/concepts/diagrams/memory-comparison.zh-CN.svg" width="100%" alt="逐帧池化、GTC 和 STC 的输入、聚合方式与输出结构对比。"></a>
 </p>
 
-*方块表示图像或 token 分组，数量用于示意；图中数值给出实际预算。*
+<p class="figure-caption" align="center">方块表示图像或 token 分组，数量用于示意；图中数值给出实际预算。</p>
 
 ## 2. 历史帧怎样采样
 

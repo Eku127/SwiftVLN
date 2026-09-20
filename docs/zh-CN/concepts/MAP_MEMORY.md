@@ -8,7 +8,7 @@ Map memory 将窗前的空间经历表示为两张朝北的俯视地图：全局
   <a href="../../assets/concepts/diagrams/map-construction.zh-CN.svg"><img src="../../assets/concepts/diagrams/map-construction.zh-CN.svg" width="100%" alt="地图足迹掩码、全局局部裁剪、视觉编码和默认 128-token 记忆的构建过程。"></a>
 </p>
 
-*两张地图共享视觉编码器；每张分别池化后，再拼接为历史记忆。*
+<p class="figure-caption" align="center">两张地图共享视觉编码器；每张分别池化后，再拼接为历史记忆。</p>
 
 ## 1. 从轨迹生成两张地图
 
@@ -47,14 +47,14 @@ Map memory 将窗前的空间经历表示为两张朝北的俯视地图：全局
   <img src="../../assets/concepts/London-2_ann91376_local.png" width="38%" alt="London-2 局部地图记忆，放大当前位置附近的已探索区域。">
 </p>
 
-*London-2：左为全局图，右为局部图。蓝色为起点，黄色为窗口边界处的位置与朝向，红色为轨迹。图取自论文附录的 Map Memory 示例。*
+<p class="figure-caption" align="center">London-2：左为全局图，右为局部图。蓝色为起点，黄色为窗口边界处的位置与朝向，红色为轨迹。图取自论文附录的 Map Memory 示例。</p>
 
 <p align="center">
   <img src="../../assets/concepts/NewYork-1_ann99962_global.png" width="38%" alt="NewYork-1 global explored map">
   <img src="../../assets/concepts/NewYork-1_ann99962_local.png" width="38%" alt="NewYork-1 local explored map">
 </p>
 
-*NewYork-1：左为全局图，右为局部图。与上面的 London-2 一起展示不同路线下的探索范围。图片取自论文附录。*
+<p class="figure-caption" align="center">NewYork-1：左为全局图，右为局部图。与上面的 London-2 一起展示不同路线下的探索范围。图片取自论文附录。</p>
 
 地图把多次观测放到同一个地理坐标系中，因此路线形状、是否回到旧区域，以及起点与当前位置的关系能够在同一图像中表达。表示质量依赖动作积分、场景影像和地理配准；当前实现用于具有这些信息的 SatNav。
 

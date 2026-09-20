@@ -21,7 +21,7 @@ $$
   <a href="../../assets/concepts/diagrams/dual-memory.zh-CN.svg"><img src="../../assets/concepts/diagrams/dual-memory.zh-CN.svg" width="100%" alt="双层记忆、当前图像、提示词与动作执行之间的数据流。"></a>
 </p>
 
-*橙色为窗前历史，蓝色为近期视觉上下文，绿色为环境执行回路。*
+<p class="figure-caption" align="center">橙色为窗前历史，蓝色为近期视觉上下文，绿色为环境执行回路。</p>
 
 长期记忆放在 system prompt 中，短期记忆由 user / assistant 多轮消息表示。当前图像保持视觉编码器输出的完整 token 数，历史图像再经过额外压缩。使用 Qwen2.5-VL 和 448 × 448 输入时，每张图像编码为 256 个视觉 token；默认 stride 2 将每个采样历史帧进一步压缩为 64 个。
 
@@ -48,7 +48,7 @@ $$
   <a href="../../assets/concepts/diagrams/sliding-window.zh-CN.svg"><img src="../../assets/concepts/diagrams/sliding-window.zh-CN.svg" width="100%" alt="步 32 查询时，历史范围、重叠轮与新窗口的时间线。"></a>
 </p>
 
-*空白蓝框表示新窗口中后续查询的位置；紫色两轮作为完整上下文保留。*
+<p class="figure-caption" align="center">空白蓝框表示新窗口中后续查询的位置；紫色两轮作为完整上下文保留。</p>
 
 以重叠 2 轮为例，第一窗口在动作步 `0,4,…,28` 查询。到步 32 时，新窗口起点变成 24，保留步 24、28 的图像和回答，长期记忆由步 24 之前的观测构建，当前查询使用步 32 的图像。这样，窗口边界附近的细节由重叠对话保留，更早的内容由长期记忆承接。
 

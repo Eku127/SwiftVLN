@@ -8,7 +8,7 @@ Map memory represents pre-window spatial experience with two north-up maps. A gl
   <a href="../../assets/concepts/diagrams/map-construction.en-US.svg"><img src="../../assets/concepts/diagrams/map-construction.en-US.svg" width="100%" alt="Map construction from footprint masks and global/local crops to visual encoding and the default 128-token memory."></a>
 </p>
 
-*The two maps share the vision encoder, are pooled separately, and are concatenated as historical memory.*
+<p class="figure-caption" align="center">The two maps share the vision encoder, are pooled separately, and are concatenated as historical memory.</p>
 
 ## 1. Turning a trajectory into two maps
 
@@ -47,14 +47,14 @@ At the first window, $b=0$, there are no historical footprints. The background i
   <img src="../../assets/concepts/London-2_ann91376_local.png" width="38%" alt="London-2 local map memory showing explored space near the current position.">
 </p>
 
-*London-2: global view on the left, local view on the right. Blue marks the start, yellow marks position and heading at the window boundary, and red marks the trajectory. Images are from the paper's Map Memory appendix example.*
+<p class="figure-caption" align="center">London-2: global view on the left, local view on the right. Blue marks the start, yellow marks position and heading at the window boundary, and red marks the trajectory. Images are from the paper&#x27;s Map Memory appendix example.</p>
 
 <p align="center">
   <img src="../../assets/concepts/NewYork-1_ann99962_global.png" width="38%" alt="NewYork-1 global explored map">
   <img src="../../assets/concepts/NewYork-1_ann99962_local.png" width="38%" alt="NewYork-1 local explored map">
 </p>
 
-*NewYork-1: global map on the left and local map on the right. Together with London-2 above, this illustrates explored coverage along different routes. Images are from the paper appendix.*
+<p class="figure-caption" align="center">NewYork-1: global map on the left and local map on the right. Together with London-2 above, this illustrates explored coverage along different routes. Images are from the paper appendix.</p>
 
 A shared geographic frame brings route shape, revisited areas, and the relationship between start and current position into one image. Representation quality depends on action integration, scene imagery, and geographic alignment. The current implementation uses SatNav, which supplies these inputs.
 
