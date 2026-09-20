@@ -98,6 +98,12 @@ The result of `get_output_token_count()` must exactly match the first dimension 
 
 ### 3.3 Align training and online inference
 
+<p align="center">
+  <a href="../../assets/workflows/processor-contract.en-US.svg"><img src="../../assets/workflows/processor-contract.en-US.svg" width="100%" alt="Training reserves token slots; online inference caches embeddings. Both paths use the same processor output contract."></a>
+</p>
+
+*Training reserves token slots; online inference caches embeddings. Both paths use the same processor output contract.* · [Editable draw.io source](../../assets/workflows/processor-contract.en-US.drawio)
+
 Training-side history selection is implemented in `SwiftVLNDataset._sample_history_frames()`. Online cache construction is implemented in `evaluation/inference/encoding.py`. If a processor changes sampling or caching, update both paths.
 
 The Template calls `get_output_token_count()` to create `<history_memory>` placeholders, then calls `process()` to generate embeddings. The inference session writes the `process()` output directly to `history_cache`. Both paths must use the same frame order, processor parameters, and output-token count.

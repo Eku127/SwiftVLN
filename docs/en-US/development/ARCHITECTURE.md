@@ -6,6 +6,12 @@ See [dual memory and sliding windows](../concepts/PIPELINE.md) for the end-to-en
 
 SwiftVLN separates training, online evaluation, model extensions, and simulator adapters into independent modules. Training reads offline trajectories, while evaluation connects to SatNav or Habitat through a Backend. Both pipelines share the model, Memory processing, embedding enhancements, and experiment configuration.
 
+<p align="center">
+  <a href="../../assets/workflows/architecture.en-US.svg"><img src="../../assets/workflows/architecture.en-US.svg" width="100%" alt="Training and evaluation call shared modeling components; the evaluation path also connects to simulator backends."></a>
+</p>
+
+*Training and evaluation call shared modeling components; the evaluation path also connects to simulator backends.* · [Editable draw.io source](../../assets/workflows/architecture.en-US.drawio)
+
 ## 1. Repository structure
 
 ```text
@@ -64,21 +70,11 @@ The training parameters and evaluation parameters are respectively defined in:
 
 ## 3. Training pipeline
 
-```text
-train_swiftvln_qwen_vl.sh
-        │
-        ├─ load local paths, select GPUs, generate model name
-        ▼
-SwiftVLNSft + SwiftVLNTrainArguments
-        │
-        ├─ SwiftVLNDataset: trajectory windows, Memory, messages, and loss masks
-        ├─ SwiftVLNTemplate: visual encoding, token compression, and embedding injection
-        └─ registered SwiftVLN model: Qwen-VL + embedding enhancement
-        ▼
-ms-swift Full SFT
-        ▼
-checkpoint + train metadata
-```
+<p align="center">
+  <a href="../../assets/workflows/training-flow.en-US.svg"><img src="../../assets/workflows/training-flow.en-US.svg" width="100%" alt="Trajectory windows become multimodal conversations, then embeddings and supervised action labels."></a>
+</p>
+
+*Trajectory windows become multimodal conversations, then embeddings and supervised action labels.* · [Editable draw.io source](../../assets/workflows/training-flow.en-US.drawio)
 
 ### 3.1 Dataset
 
@@ -119,28 +115,15 @@ During encoding, the Template first computes the placeholder-token count. After 
 
 ## 4. Evaluation pipeline
 
-```text
-eval_by_name.sh
-      │ parse model name, locate checkpoint, select split
-      ▼
-evaluation.arguments
-      ▼
-SwiftVLNEvaluationRunner
-      ├─ load model and initialize ranks
-      ├─ create SwiftVLNEvaluator
-      ├─ sort by scene and distribute episodes round-robin
-      └─ append results, resume progress, aggregate ranks
-             │
-             ▼
-EnvironmentEpisodeLoop
-      ├─ SwiftVLNInferenceSession
-      └─ EvaluationBackend / EnvWrapper
-             │
-             ▼
-ResultRecorder
-```
+The runner loads the checkpoint, assigns episodes, and records completed results. Inside each episode, the loop below alternates between model queries and environment actions.
 
-Evaluation does not create a training template. `SwiftVLNInferenceSession` directly constructs prompt token and encoding vision Features and inject embedding to keep the online window state consistent with the simulator step.
+<p align="center">
+  <a href="../../assets/workflows/episode-loop.en-US.svg"><img src="../../assets/workflows/episode-loop.en-US.svg" width="100%" alt="Only an empty action queue triggers a model query; each environment step executes one queued action."></a>
+</p>
+
+*Only an empty action queue triggers a model query; each environment step executes one queued action.* · [Editable draw.io source](../../assets/workflows/episode-loop.en-US.drawio)
+
+`SwiftVLNInferenceSession` builds prompt tokens, encodes images, and injects embeddings directly. It maintains the online conversation window and memory cache as the simulator advances.
 
 ### 4.1 Runner
 
@@ -148,7 +131,7 @@ Evaluation does not create a training template. `SwiftVLNInferenceSession` direc
 
 ### 4.2 Episode loop
 
-[`evaluation/episode_loop.py`](../../../src/swiftvln/evaluation/episode_loop.py) handles only the `reset → predict → step → metrics` state machine. Each episode owns an independent `SwiftVLNInferenceSession`; the Backend supplies observations, executes actions, and saves video.
+[`evaluation/episode_loop.py`](../../../src/swiftvln/evaluation/episode_loop.py) handles only the `reset → predict → step → metrics` state machine. Each episode starts with `session.reset()` to clear inference state. The Backend supplies observations, executes actions, and saves video.
 
 ### 4.3 Inference session
 
@@ -197,13 +180,19 @@ Current implementations include per-frame pooling/GridToMe, GTC, and Segment-GTC
 
 ## 6. Backend boundary
 
-Core training, inference, and episode loops are not imported directly into SatNav or Habitat. Backend consists of three layers:
+Core training, inference, and episode loops access environment capabilities through static semantics and shared interfaces. The Backend is organized into three layers:
 
 | Level | Position | Responsibilities |
 | --- | --- | --- |
 | Static semantics |`backends/specs.py`| Action symbols, forward distance, steering angle, prompt and ability flags |
 | Backend |`backends/<env>/backend.py`| Load configuration, create simulator, parse actions and video hooks |
 | EnvWrapper |`backends/<env>/wrapper.py`| Unified reset, step, observation, metrics and Episode access |
+
+<p align="center">
+  <a href="../../assets/workflows/backend-layers.en-US.svg"><img src="../../assets/workflows/backend-layers.en-US.svg" width="100%" alt="EnvironmentSpec supplies static semantics, Backend creates the simulator, and EnvWrapper exposes a common interface."></a>
+</p>
+
+*EnvironmentSpec supplies static semantics, Backend creates the simulator, and EnvWrapper exposes a common interface.* · [Editable draw.io source](../../assets/workflows/backend-layers.en-US.drawio)
 
 `backends/factory.py` imports a Backend only after its environment is selected, so simulator dependencies are loaded on demand.
 
@@ -214,6 +203,12 @@ The unified interfaces of `EnvWrapper` include:
 - `episodes`, `episode_over`, `max_steps` and `env_type`.
 
 ## 7. Result persistence and distribution
+
+<p align="center">
+  <a href="../../assets/workflows/distributed-results.en-US.svg"><img src="../../assets/workflows/distributed-results.en-US.svg" width="100%" alt="Ranks append to a shared episode log; rank 0 waits for completion markers before deriving the final results."></a>
+</p>
+
+*Ranks append to a shared episode log; rank 0 waits for completion markers before deriving the final results.* · [Editable draw.io source](../../assets/workflows/distributed-results.en-US.drawio)
 
 Training is managed by `torchrun + DeepSpeed` model sharding, optimizer and checkpoint, and the model name is also used as Output directory name. When SwanLab is enabled, the training script additionally writes `train_metadata.json` to record project, experiment name and run URL.
 
