@@ -43,7 +43,7 @@ SwiftVLN 将轨迹训练、记忆机制实验与在线评测整合到同一框�
 ```{toctree}
 :hidden:
 :maxdepth: 2
-:caption: 实现原理
+:caption: 记忆实现原理
 
 双层记忆与滑动窗口 <concepts/PIPELINE>
 历史记忆与 token 压缩 <concepts/MEMORY>

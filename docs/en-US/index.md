@@ -43,7 +43,7 @@ Workflow guide <README>
 ```{toctree}
 :hidden:
 :maxdepth: 2
-:caption: Implementation Principles
+:caption: Memory Mechanisms
 
 Dual memory and sliding windows <concepts/PIPELINE>
 Historical memory and token compression <concepts/MEMORY>
