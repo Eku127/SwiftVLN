@@ -4,7 +4,7 @@
 
 SwiftVLN 把导航轨迹组织成多轮视觉对话：每轮输入当前位置的图像，输出一串导航动作。短期记忆保留最近几轮完整的图像与回答，长期记忆把窗口之前的观测压缩成视觉 token。两者与导航指令共同送入语言模型。
 
-本章对照论文附录 **Overall Pipeline / Prompt Construction** 与当前实现。接着可以阅读[历史记忆的采样与压缩](MEMORY.md)、[地图记忆](MAP_MEMORY.md)和[输入增强与跨域适配](AUGMENTATION.md)。运行参数见[训练指南](../training/README.md)。
+本章按当前代码解释查询、记忆更新和训练监督，论文附录提供方法背景。接着可以阅读[历史记忆的采样与压缩](MEMORY.md)、[地图记忆](MAP_MEMORY.md)和[输入增强与跨域适配](AUGMENTATION.md)。运行参数见[训练指南](../training/README.md)。
 
 ## 1. 一次查询包含什么
 
@@ -17,15 +17,13 @@ $$
 
 例如，模型生成 `↑↑→↑`，环境依次执行前进、前进、右转、前进。动作队列执行完后，再用新的观测发起查询。训练使用专家动作文本作为回答，在线评测使用模型生成的回答构建后续上下文。
 
-```text
-窗口之前的历史 → 视觉编码 → 记忆压缩 ─────────────┐
-指令 + 可选起始帧 ─────────────────────────────┤
-窗口内已完成的 [图像, 动作文本] ────────────────┼→ LLM → 动作文本 → 动作队列
-当前图像 → 视觉编码 ───────────────────────────┘                         │
-                         下一次查询 ← 新观测 ← 环境逐步执行 ←────────────┘
-```
+<p align="center">
+  <a href="../../assets/concepts/diagrams/dual-memory.zh-CN.svg"><img src="../../assets/concepts/diagrams/dual-memory.zh-CN.svg" width="100%" alt="双层记忆、当前图像、提示词与动作执行之间的数据流。"></a>
+</p>
 
-长期记忆放在 system prompt 中，短期记忆由 user / assistant 多轮消息表示。当前图像保持视觉编码器输出的完整 token 数，历史图像再经过额外压缩。论文参考设置下，448 × 448 图像由 Qwen2.5-VL 编码为 256 个视觉 token；每个采样历史帧进一步压缩为 64 个。
+*橙色为窗前历史，蓝色为近期视觉上下文，绿色为环境执行回路。* · [draw.io 源文件](../../assets/concepts/diagrams/dual-memory.zh-CN.drawio)
+
+长期记忆放在 system prompt 中，短期记忆由 user / assistant 多轮消息表示。当前图像保持视觉编码器输出的完整 token 数，历史图像再经过额外压缩。使用 Qwen2.5-VL 和 448 × 448 输入时，每张图像编码为 256 个视觉 token；默认 stride 2 将每个采样历史帧进一步压缩为 64 个。
 
 ## 2. 动作步数与查询轮次
 
@@ -41,14 +39,20 @@ $$
 
 | 设置 | 代码参数 | 对话含义 |
 | --- | --- | --- |
-| 论文参考窗口 | `NUM_FRAMES=32`, `NUM_FUTURE_STEPS=4` | 8 轮，每轮监督 4 个动作 |
-| 参考重叠 | `NUM_OVERLAP=0` | 每 32 个动作建立新窗口 |
+| 默认窗口 | `NUM_FRAMES=32`, `NUM_FUTURE_STEPS=4` | 8 轮，每轮监督 4 个动作 |
+| 默认重叠 | `NUM_OVERLAP=0` | 每 32 个动作建立新窗口 |
 | 重叠 2 轮 | `NUM_OVERLAP=8` | 保留末尾 2 轮，起点每次前移 24 步 |
 | 重叠 4 轮 | `NUM_OVERLAP=16` | 保留末尾 4 轮，起点每次前移 16 步 |
 
+<p align="center">
+  <a href="../../assets/concepts/diagrams/sliding-window.zh-CN.svg"><img src="../../assets/concepts/diagrams/sliding-window.zh-CN.svg" width="100%" alt="步 32 查询时，历史范围、重叠轮与新窗口的时间线。"></a>
+</p>
+
+*空白蓝框表示新窗口中后续查询的位置；紫色两轮作为完整上下文保留。* · [draw.io 源文件](../../assets/concepts/diagrams/sliding-window.zh-CN.drawio)
+
 以重叠 2 轮为例，第一窗口在动作步 `0,4,…,28` 查询。到步 32 时，新窗口起点变成 24，保留步 24、28 的图像和回答，长期记忆由步 24 之前的观测构建，当前查询使用步 32 的图像。这样，窗口边界附近的细节由重叠对话保留，更早的内容由长期记忆承接。
 
-在线代码按已经执行的动作步数判断边界，并在动作队列为空时滑窗。参考训练目标为每轮 4 个动作；实际执行长度取决于解析得到的动作序列和 Episode 的终止状态。
+在线代码按已经执行的动作步数判断边界，并在动作队列为空时滑窗。默认训练目标为每轮 4 个动作；实际执行长度取决于解析得到的动作序列和 Episode 的终止状态。
 
 ## 3. 长期记忆何时更新
 
@@ -82,7 +86,7 @@ $$
 1. `_encode()` 根据图像网格和记忆处理器计算输出长度，把 `<history_memory>` 展开成整个记忆块所需的占位 token，把每个 `<current_image>` 展开成对应图像的完整视觉 token 数。
 2. `_post_encode()` 调用视觉编码器，逐图像应用可选增强，再压缩历史特征，最后将这些向量写入占位位置的 `inputs_embeds`。
 
-因此，`<history_memory>` 在提示词源码中只出现一次，但它在 LLM 输入中可以占据 512 个向量位置。初始帧和当前帧使用 `<current_image>` 路径；论文中的 `<initial_image>` 在代码中由这一共享路径实现。
+因此，`<history_memory>` 在提示词源码中只出现一次，但它在 LLM 输入中可以占据 512 个向量位置。初始帧和当前帧使用 `<current_image>` 路径，起始帧通过这一共享路径注入。
 
 评测中的 `PromptConstructionMixin` 直接组装相同语义的 embedding 序列，再调用 `model.generate()`。每轮都会组装完整窗口；`generate(use_cache=True)` 使用本次生成过程的缓存，跨查询保存的是上表中的图像与对话状态。
 

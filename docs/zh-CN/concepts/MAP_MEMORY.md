@@ -4,6 +4,12 @@
 
 Map memory 将窗前的空间经历表示为两张朝北的俯视地图：全局图提供较大范围的路线关系，局部图提供窗口起点附近的细节。两张图通过与当前观测共享的视觉编码器转换成 token，放入 `<history_memory>`。其更新时机与[其他长期记忆](PIPELINE.md)一致。
 
+<p align="center">
+  <a href="../../assets/concepts/diagrams/map-construction.zh-CN.svg"><img src="../../assets/concepts/diagrams/map-construction.zh-CN.svg" width="100%" alt="地图足迹掩码、全局局部裁剪、视觉编码和默认 128-token 记忆的构建过程。"></a>
+</p>
+
+*两张地图共享视觉编码器；每张分别池化后，再拼接为历史记忆。* · [draw.io 源文件](../../assets/concepts/diagrams/map-construction.zh-CN.drawio)
+
 ## 1. 从轨迹生成两张地图
 
 构图需要 SatNav 场景正射影像、Episode 起始经纬度与航向、已经执行的动作，以及相机视场角和高度。实现流程为：
@@ -30,11 +36,11 @@ Map memory 将窗前的空间经历表示为两张朝北的俯视地图：全局
 
 膨胀通过像素最大值滤波实现，半径约为 `round(20 / side_m * render_px)`。因此，同样的 20 m 在全局图和局部图中对应不同像素半径。
 
-论文描述全局图以起点为中心；当前 `SatNavMapMemoryBuilder` 默认使用 `adaptive_start`：以起点为锚，当轨迹与观测覆盖范围接近边界时平移固定大小的裁剪区域。实现采用 10% 边缘余量和 25 m 的平移量化。类本身也支持固定的 `start` 模式。全局图与局部图均保持朝北，黄色箭头单独表达航向。
+当前 `SatNavMapMemoryBuilder` 默认使用 `adaptive_start`：以起点为锚，当轨迹与观测覆盖范围接近边界时平移固定大小的裁剪区域。实现采用 10% 边缘余量和 25 m 的平移量化。类本身也支持固定的 `start` 模式。全局图与局部图均保持朝北，黄色箭头单独表达航向。
 
 第一窗口 $b=0$ 时，历史足迹为空，地图背景为黑色，仍绘制起点和当前标记。后续窗口逐步积累已探索区域。
 
-## 3. 论文中的地图示例
+## 3. 全局图与局部图示例
 
 <p align="center">
   <img src="../../assets/concepts/London-2_ann91376_global.png" width="38%" alt="London-2 全局地图记忆，显示红色路线及掩码后的已探索区域。">
@@ -43,21 +49,27 @@ Map memory 将窗前的空间经历表示为两张朝北的俯视地图：全局
 
 *London-2：左为全局图，右为局部图。蓝色为起点，黄色为窗口边界处的位置与朝向，红色为轨迹。图取自论文附录的 Map Memory 示例。*
 
+<p align="center">
+  <img src="../../assets/concepts/NewYork-1_ann99962_global.png" width="38%" alt="NewYork-1 global explored map">
+  <img src="../../assets/concepts/NewYork-1_ann99962_local.png" width="38%" alt="NewYork-1 local explored map">
+</p>
+
+*NewYork-1：左为全局图，右为局部图。与上面的 London-2 一起展示不同路线下的探索范围。图片取自论文附录。*
+
 地图把多次观测放到同一个地理坐标系中，因此路线形状、是否回到旧区域，以及起点与当前位置的关系能够在同一图像中表达。表示质量依赖动作积分、场景影像和地理配准；当前实现用于具有这些信息的 SatNav。
 
 ## 4. 地图怎样变成记忆 token
 
 训练时 Dataset 调用构图器，将两张地图放在 `images` 的历史位置；评测时 `_compute_history_cache_map()` 渲染地图并编码。两条路径都会继续执行 per-frame 压缩，然后把全局图 token 与局部图 token 顺序拼接。
 
-论文与当前启动默认值的 token 预算需要分别理解：
+当前默认 `COMPRESS_STRIDE=2`。对 Qwen2.5-VL 的 448 × 448 输入，每张地图编码后有 256 个 token，经额外的二维池化得到 64 个，两张图按“全局、局部”的顺序组成 128-token 记忆块。
 
-| 设置 | 每张地图的视觉 token | 额外池化 | 两张图的记忆总数 |
+| 压缩设置 | 每张地图编码后 | 每张地图池化后 | 两张图合计 |
 | --- | --- | --- | --- |
-| 论文附录报告的 Map memory | 256 | 保留 256 | 512 |
-| 当前代码，参考 Qwen2.5-VL 网格，`COMPRESS_STRIDE=2` | 256 | $16\times16\to8\times8$ | 128 |
-| 同一网格，`COMPRESS_STRIDE=1` | 256 | 保持原网格 | 512 |
+| 默认 `COMPRESS_STRIDE=2` | $16\times16=256$ | $8\times8=64$ | 128 |
+| `COMPRESS_STRIDE=1` | $16\times16=256$ | 256 | 512 |
 
-因此，复现附录的地图 token 预算时，在相同骨干和图像网格下使用 stride 1；完整实验还需要匹配裁剪中心、掩码与训练设置。实际数量由图像处理器输出的网格决定。参数与启动示例见[Map memory 配置](../training/MEMORY.md)。
+图像大小或骨干改变后，数量从实际 `image_grid_thw` 与 `merge_size` 计算。stride 控制地图细节与 LLM 上下文开销：减小 stride 保留更密的视觉网格，也增加输入 token 数。参数与启动示例见[Map memory 配置](../training/MEMORY.md)。
 
 ## 5. 构图缓存与代码入口
 

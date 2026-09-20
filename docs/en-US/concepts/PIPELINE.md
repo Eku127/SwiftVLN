@@ -4,7 +4,7 @@
 
 SwiftVLN represents a navigation trajectory as a visual dialogue. Each query receives the current image and produces a sequence of navigation actions. Short-term memory retains recent image–response turns; long-term memory compresses observations before the window into visual tokens. The language model receives both memories together with the instruction.
 
-This chapter connects the paper's **Overall Pipeline / Prompt Construction** appendix to the implementation. Continue with [history sampling and compression](MEMORY.md), [map memory](MAP_MEMORY.md), and [input augmentation and domain adaptation](AUGMENTATION.md). Launch settings are covered in the [training guide](../training/README.md).
+This chapter explains queries, memory updates, and supervision from the current code, with the paper appendix as method background. Continue with [history sampling and compression](MEMORY.md), [map memory](MAP_MEMORY.md), and [input augmentation and domain adaptation](AUGMENTATION.md). Launch settings are covered in the [training guide](../training/README.md).
 
 ## 1. What enters one model query
 
@@ -16,15 +16,13 @@ $$
 
 For example, `↑↑→↑` is parsed into forward, forward, right, forward. The environment executes these actions in sequence and requests another prediction when the queue becomes empty. Training supplies expert action text; online evaluation adds the model's generated responses to subsequent context.
 
-```text
-Pre-window history → vision encoder → memory compression ─┐
-Instruction + optional initial image ─────────────────────┤
-Completed [image, action text] turns in the window ────────┼→ LLM → action text → queue
-Current image → vision encoder ───────────────────────────┘                       │
-                  next query ← new observation ← environment execution ←───────┘
-```
+<p align="center">
+  <a href="../../assets/concepts/diagrams/dual-memory.en-US.svg"><img src="../../assets/concepts/diagrams/dual-memory.en-US.svg" width="100%" alt="Data flow connecting dual memory, current observations, prompt embeddings, and action execution."></a>
+</p>
 
-Long-term memory appears in the system prompt. Short-term memory consists of user/assistant messages. Current images keep the full token sequence produced by the vision encoder; historical images undergo additional compression. In the paper's reference setting, a 448 × 448 image produces 256 Qwen2.5-VL visual tokens, and each sampled history frame is reduced to 64.
+*Orange shows pre-window history, blue shows recent visual context, and green shows environment execution.* · [Editable draw.io source](../../assets/concepts/diagrams/dual-memory.en-US.drawio)
+
+Long-term memory appears in the system prompt. Short-term memory consists of user/assistant messages. Current images keep the full token sequence produced by the vision encoder; historical images undergo additional compression. With Qwen2.5-VL, 448 × 448 inputs, and the default compression stride of 2, each image produces 256 visual tokens and each sampled history frame is reduced to 64.
 
 ## 2. Action steps versus query rounds
 
@@ -40,14 +38,20 @@ $W$ is `NUM_FRAMES` and $O$ is `NUM_OVERLAP`. $N_w$ is the number of turns per w
 
 | Setting | Code parameters | Dialogue interpretation |
 | --- | --- | --- |
-| Paper reference window | `NUM_FRAMES=32`, `NUM_FUTURE_STEPS=4` | 8 turns, each supervising 4 actions |
-| Reference overlap | `NUM_OVERLAP=0` | Start a new window every 32 actions |
+| Default window | `NUM_FRAMES=32`, `NUM_FUTURE_STEPS=4` | 8 turns, each supervising 4 actions |
+| Default overlap | `NUM_OVERLAP=0` | Start a new window every 32 actions |
 | Two overlapping turns | `NUM_OVERLAP=8` | Retain 2 turns; advance the start by 24 steps |
 | Four overlapping turns | `NUM_OVERLAP=16` | Retain 4 turns; advance the start by 16 steps |
 
+<p align="center">
+  <a href="../../assets/concepts/diagrams/sliding-window.en-US.svg"><img src="../../assets/concepts/diagrams/sliding-window.en-US.svg" width="100%" alt="Timeline of the history prefix, retained turns, and new window at query step 32."></a>
+</p>
+
+*Empty blue boxes mark later queries in the new window; the two purple turns remain full context.* · [Editable draw.io source](../../assets/concepts/diagrams/sliding-window.en-US.drawio)
+
 With two overlapping turns, the first window queries at action steps `0,4,…,28`. At step 32, the new window starts at 24. It retains the images and responses from steps 24 and 28, builds long-term memory from observations before step 24, and uses the image at step 32 for the current query. Overlap preserves detailed context around the boundary while long-term memory carries earlier information.
 
-Online evaluation checks boundaries against executed action steps and slides when the action queue is empty. The reference training target contains four actions per turn; actual execution length follows the parsed response and episode termination.
+Online evaluation checks boundaries against executed action steps and slides when the action queue is empty. The default training target contains four actions per turn; actual execution length follows the parsed response and episode termination.
 
 ## 3. When long-term memory changes
 
@@ -79,7 +83,7 @@ The template handles visual inputs in two stages:
 1. `_encode()` computes output lengths from image grids and the history processor. It expands `<history_memory>` to the number of placeholders required by the memory block and each `<current_image>` to that image's full visual token count.
 2. `_post_encode()` runs the vision encoder, applies optional per-image enhancement, compresses history features, and writes the resulting vectors into the placeholder positions in `inputs_embeds`.
 
-Thus, one `<history_memory>` marker in the prompt source can represent 512 embedding positions in the LLM input. Initial and current images share the `<current_image>` path; the paper's `<initial_image>` notation is implemented through that path.
+Thus, one `<history_memory>` marker in the prompt source can represent 512 embedding positions in the LLM input. Initial and current images share the `<current_image>` path; the initial view is injected through this shared path.
 
 During evaluation, `PromptConstructionMixin` directly assembles an embedding sequence with the same semantic roles before calling `model.generate()`. The complete window is assembled for every query. `generate(use_cache=True)` enables caching within that generation call; persistent state across queries consists of the image and dialogue data listed above.
 

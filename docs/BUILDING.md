@@ -34,6 +34,11 @@ search index, navigation, and copy buttons for code blocks.
 
 ## Update the Wiki
 
+Implementation diagrams live in `docs/assets/concepts/diagrams/`. Edit the
+native `.drawio` sources and export the matching light-theme `.svg` files in
+both languages. The [asset notes](assets/concepts/README.md) list the diagrams
+and an export command. The Wiki displays SVGs and links the editable sources.
+
 1. Edit the existing Markdown in the relevant language directory.
 2. For a new page, add its counterpart in the other language and register both
    pages in their language's `index.md` toctree.

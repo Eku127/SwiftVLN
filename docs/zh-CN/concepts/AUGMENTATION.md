@@ -8,7 +8,7 @@
 
 `SYSTEM_PROMPT_SETTING=initial` 在每个窗口的 system prompt 中添加 Episode 第一张图像。它使用完整的视觉 token 序列；参考 Qwen2.5-VL 设置下为 256 个 token。历史采样仍独立进行，因此起始图像也可能同时出现在压缩历史中。
 
-起始帧持续提供出发场景的细节，帮助模型将当前视野与旅程起点关联。在线实现只在 Episode 开始时编码并保存 `initial_features`，后续窗口继续注入。论文用 `<initial_image>` 描述这个位置，代码沿用 `<image>` → `<current_image>` 的完整图像路径。
+起始帧持续提供出发场景的细节，帮助模型将当前视野与旅程起点关联。在线实现只在 Episode 开始时编码并保存 `initial_features`，后续窗口继续注入。模板沿用 `<image>` → `<current_image>` 的完整图像路径。
 
 ## 2. 相对位姿怎样产生
 
@@ -32,7 +32,7 @@ $$
 
 ## 3. FiLM 怎样改变视觉 token
 
-论文的位姿增强对应 `EMBEDDING_MODE=posefilm`。两层 MLP 为 `Linear(4,256) → GELU → Linear(256,2d)`，输出逐通道的缩放与偏置：
+`EMBEDDING_MODE=posefilm` 选择 FiLM 位姿增强。两层 MLP 为 `Linear(4,256) → GELU → Linear(256,2d)`，输出逐通道的缩放与偏置：
 
 $$
 [\gamma_i,\beta_i]=\operatorname{MLP}(p_i),\qquad
@@ -45,10 +45,11 @@ $X_i\in\mathbb R^{n_i\times d}$ 是一张图像的视觉 token。相同的 $\gam
 
 增强发生在历史压缩之前，并作用于历史、起始及当前图像：
 
-```text
-RGB → 视觉编码器 → 逐图像位姿增强 ┬→ 历史压缩 → <history_memory>
-                                └→ 完整图像 token → <current_image>
-```
+<p align="center">
+  <a href="../../assets/concepts/diagrams/input-enhancement.zh-CN.svg"><img src="../../assets/concepts/diagrams/input-enhancement.zh-CN.svg" width="100%" alt="FiLM 位姿增强和 UAV token 适配两种分支，均在历史压缩之前执行。"></a>
+</p>
+
+*两条彩色分支表示可选择的增强模式；图中的 FiLM 使用默认融合强度 1。* · [draw.io 源文件](../../assets/concepts/diagrams/input-enhancement.zh-CN.drawio)
 
 因此，即使后续 GTC 合并了多个时刻的 token，参与聚合的特征也已经携带位姿信号。
 

@@ -6,7 +6,7 @@
 
 ## 1. 几种机制的输入与输出
 
-以下 token 数以论文参考的 Qwen2.5-VL、448 × 448 图像为例：视觉编码器及其原生空间合并后，每帧为 $16\times16=256$ 个 token。
+以下 token 数按代码的 Qwen2.5-VL、448 × 448 图像网格计算：视觉编码器及其原生空间合并后，每帧为 $16\times16=256$ 个 token。
 
 | 机制 | 历史输入 | 输出如何组织 | 典型预算 |
 | --- | --- | --- | --- |
@@ -17,6 +17,12 @@
 | STC / Segment-GTC | 所有窗前查询帧 | 分成 8 个时间段，段内聚类，按段拼接 | 最多 512 |
 
 `NUM_HISTORY` 控制 per-frame 的采样数量。GTC / STC 在训练时取 `0,k,2k,…<b` 的图像，其中 $k$ 为动作预测间隔、$b$ 为窗口起点；评测时读取实际查询时缓存的窗前特征。逐帧采样的候选集合则包含窗前每个动作步的 RGB 观测。
+
+<p align="center">
+  <a href="../../assets/concepts/diagrams/memory-comparison.zh-CN.svg"><img src="../../assets/concepts/diagrams/memory-comparison.zh-CN.svg" width="100%" alt="逐帧池化、GTC 和 STC 的输入、聚合方式与输出结构对比。"></a>
+</p>
+
+*方块表示图像或 token 分组，数量用于示意；图中数值给出实际预算。* · [draw.io 源文件](../../assets/concepts/diagrams/memory-comparison.zh-CN.drawio)
 
 ## 2. 历史帧怎样采样
 
@@ -81,7 +87,7 @@ $$
 
 ## 5. STC：在时间段内部做 GTC
 
-论文中的 STC 在代码中名为 `SegmentGTC`，配置值为 `segment_gtc`。历史帧多于 8 张时，按帧数切成 8 个连续、尽量等长的片段，每段独立执行上述 GTC，再将结果从早到晚拼接：
+STC 由 `SegmentGTC` 实现，配置值为 `segment_gtc`。历史帧多于 8 张时，按帧数切成 8 个连续、尽量等长的片段，每段独立执行上述 GTC，再将结果从早到晚拼接：
 
 $$
 L=[\operatorname{GTC}(X^{(0)});\ldots;\operatorname{GTC}(X^{(7)})].

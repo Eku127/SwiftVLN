@@ -8,7 +8,7 @@ Memory compression determines how much historical information is retained. Input
 
 `SYSTEM_PROMPT_SETTING=initial` adds the episode's first image to every window's system prompt. It retains the full visual token sequence: 256 tokens in the reference Qwen2.5-VL setting. History sampling runs independently, so the initial image can also appear in compressed history.
 
-The initial view preserves starting-scene detail that helps connect the current view to the departure point. Online inference encodes it once at episode start as `initial_features` and injects it again in later windows. The paper calls this location `<initial_image>`; the code uses the full-image `<image>` → `<current_image>` path.
+The initial view preserves starting-scene detail that helps connect the current view to the departure point. Online inference encodes it once at episode start as `initial_features` and injects it again in later windows. The template uses the full-image `<image>` → `<current_image>` path.
 
 ## 2. Constructing relative pose
 
@@ -32,7 +32,7 @@ Translation normalization bounds the input values. Sine and cosine provide a con
 
 ## 3. How FiLM modifies visual tokens
 
-The paper's pose augmentation corresponds to `EMBEDDING_MODE=posefilm`. A two-layer MLP, `Linear(4,256) → GELU → Linear(256,2d)`, produces channel-wise scale and bias:
+`EMBEDDING_MODE=posefilm` selects FiLM pose enhancement. A two-layer MLP, `Linear(4,256) → GELU → Linear(256,2d)`, produces channel-wise scale and bias:
 
 $$
 [\gamma_i,\beta_i]=\operatorname{MLP}(p_i),\qquad
@@ -45,10 +45,11 @@ The code also supports `EMBEDDING_MODE=pose`, which predicts a $d$-dimensional v
 
 Enhancement runs before history compression and applies to historical, initial, and current images:
 
-```text
-RGB → vision encoder → per-image pose enhancement ┬→ history compression → <history_memory>
-                                                 └→ full image tokens → <current_image>
-```
+<p align="center">
+  <a href="../../assets/concepts/diagrams/input-enhancement.en-US.svg"><img src="../../assets/concepts/diagrams/input-enhancement.en-US.svg" width="100%" alt="FiLM pose enhancement and UAV token adaptation, both applied before history compression."></a>
+</p>
+
+*The colored branches are alternative enhancement modes. FiLM is shown with its default fusion strength of 1.* · [Editable draw.io source](../../assets/concepts/diagrams/input-enhancement.en-US.drawio)
 
 Thus, features already carry pose information when a subsequent GTC operation combines tokens from multiple times.
 

@@ -6,7 +6,7 @@ Historical memory turns observations before the current window into a compact fe
 
 ## 1. Inputs and outputs
 
-The counts below use the paper's reference Qwen2.5-VL setting with 448 × 448 images: each frame has $16\times16=256$ tokens after the vision encoder and its native spatial merge.
+The counts below use the Qwen2.5-VL image grid produced by the code for 448 × 448 inputs: each frame has $16\times16=256$ tokens after the vision encoder and its native spatial merge.
 
 | Mechanism | Historical input | Output organization | Typical budget |
 | --- | --- | --- | --- |
@@ -17,6 +17,12 @@ The counts below use the paper's reference Qwen2.5-VL setting with 448 × 448 im
 | STC / Segment-GTC | All pre-window query frames | Cluster within 8 temporal segments; concatenate segments | At most 512 |
 
 `NUM_HISTORY` controls per-frame sampling. GTC/STC training reads frames at `0,k,2k,…<b`, where $k$ is the action-prediction interval and $b$ the window start. Evaluation uses cached features from actual queries before the boundary. Per-frame sampling instead draws from RGB observations at every pre-window action step.
+
+<p align="center">
+  <a href="../../assets/concepts/diagrams/memory-comparison.en-US.svg"><img src="../../assets/concepts/diagrams/memory-comparison.en-US.svg" width="100%" alt="Inputs, aggregation, and output structure of per-frame pooling, GTC, and STC."></a>
+</p>
+
+*Blocks illustrate image or token groups; the labels give the actual token budgets.* · [Editable draw.io source](../../assets/concepts/diagrams/memory-comparison.en-US.drawio)
 
 ## 2. Selecting historical frames
 
@@ -81,7 +87,7 @@ Clustering introduces no learned centroid parameters. Centers are initialized fr
 
 ## 5. STC: GTC within temporal segments
 
-The paper's STC is implemented as `SegmentGTC`, selected by `segment_gtc`. With more than eight history frames, it divides the sequence into eight contiguous segments of approximately equal frame count. Each segment runs GTC independently, and outputs are concatenated from early to late:
+STC is implemented as `SegmentGTC`, selected by `segment_gtc`. With more than eight history frames, it divides the sequence into eight contiguous segments of approximately equal frame count. Each segment runs GTC independently, and outputs are concatenated from early to late:
 
 $$
 L=[\operatorname{GTC}(X^{(0)});\ldots;\operatorname{GTC}(X^{(7)})].

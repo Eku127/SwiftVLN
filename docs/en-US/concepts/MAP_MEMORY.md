@@ -4,6 +4,12 @@
 
 Map memory represents pre-window spatial experience with two north-up maps. A global map provides large-scale route context; a local map shows detail around the window start. Both pass through the same vision encoder as current observations and populate `<history_memory>`. They follow the same [window-boundary update schedule](PIPELINE.md) as other long-term memories.
 
+<p align="center">
+  <a href="../../assets/concepts/diagrams/map-construction.en-US.svg"><img src="../../assets/concepts/diagrams/map-construction.en-US.svg" width="100%" alt="Map construction from footprint masks and global/local crops to visual encoding and the default 128-token memory."></a>
+</p>
+
+*The two maps share the vision encoder, are pooled separately, and are concatenated as historical memory.* · [Editable draw.io source](../../assets/concepts/diagrams/map-construction.en-US.drawio)
+
 ## 1. Turning a trajectory into two maps
 
 Rendering uses the SatNav scene orthophoto, episode start coordinates and heading, executed actions, camera field of view, and altitude:
@@ -30,11 +36,11 @@ The current position in this memory is the new window's starting position. The m
 
 Dilation uses a pixel maximum filter with radius approximately `round(20 / side_m * render_px)`. The same 20 m therefore corresponds to different pixel radii in global and local views.
 
-The paper describes a start-centered global map. The current `SatNavMapMemoryBuilder` defaults to `adaptive_start`: it anchors the view at the start and shifts the fixed-size crop as trajectory and observation bounds approach its edges. It uses a 10% edge margin and 25 m shift quantization. The class also supports a fixed `start` mode. Both maps remain north-up; the yellow arrow expresses heading separately.
+The current `SatNavMapMemoryBuilder` defaults to `adaptive_start`: it anchors the view at the start and shifts the fixed-size crop as trajectory and observation bounds approach its edges. It uses a 10% edge margin and 25 m shift quantization. The class also supports a fixed `start` mode. Both maps remain north-up; the yellow arrow expresses heading separately.
 
 At the first window, $b=0$, there are no historical footprints. The background is black and start/current markers are still drawn. Later windows accumulate explored space.
 
-## 3. Example from the paper
+## 3. Global and local map examples
 
 <p align="center">
   <img src="../../assets/concepts/London-2_ann91376_global.png" width="38%" alt="London-2 global map memory with a red trajectory and masked explored region.">
@@ -43,21 +49,27 @@ At the first window, $b=0$, there are no historical footprints. The background i
 
 *London-2: global view on the left, local view on the right. Blue marks the start, yellow marks position and heading at the window boundary, and red marks the trajectory. Images are from the paper's Map Memory appendix example.*
 
+<p align="center">
+  <img src="../../assets/concepts/NewYork-1_ann99962_global.png" width="38%" alt="NewYork-1 global explored map">
+  <img src="../../assets/concepts/NewYork-1_ann99962_local.png" width="38%" alt="NewYork-1 local explored map">
+</p>
+
+*NewYork-1: global map on the left and local map on the right. Together with London-2 above, this illustrates explored coverage along different routes. Images are from the paper appendix.*
+
 A shared geographic frame brings route shape, revisited areas, and the relationship between start and current position into one image. Representation quality depends on action integration, scene imagery, and geographic alignment. The current implementation uses SatNav, which supplies these inputs.
 
 ## 4. How maps become memory tokens
 
 During training, the dataset renders maps and places them in the history portion of `images`. During evaluation, `_compute_history_cache_map()` renders and encodes them. Both paths then apply per-frame compression and concatenate global-map tokens followed by local-map tokens.
 
-The paper's token budget and current launcher defaults differ:
+The current default is `COMPRESS_STRIDE=2`. For Qwen2.5-VL with 448 × 448 inputs, each map produces 256 visual tokens and is further pooled to 64. Concatenating the global map followed by the local map produces a 128-token memory block.
 
-| Setting | Visual tokens per map | Additional pooling | Total for two maps |
+| Compression setting | Encoded tokens per map | Pooled tokens per map | Total for two maps |
 | --- | --- | --- | --- |
-| Map memory reported in the appendix | 256 | Retain 256 | 512 |
-| Current code, reference Qwen2.5-VL grid, `COMPRESS_STRIDE=2` | 256 | $16\times16\to8\times8$ | 128 |
-| Same grid, `COMPRESS_STRIDE=1` | 256 | Keep original grid | 512 |
+| Default `COMPRESS_STRIDE=2` | $16\times16=256$ | $8\times8=64$ | 128 |
+| `COMPRESS_STRIDE=1` | $16\times16=256$ | 256 | 512 |
 
-To match the appendix's map-token budget with the same backbone and image grid, use stride 1. Matching the full experiment also requires matching crop-center behavior, masks, and training settings. Actual counts follow the image processor's output grid. See [memory configuration](../training/MEMORY.md) for launch parameters.
+For other image sizes or backbones, counts follow the actual `image_grid_thw` and `merge_size`. Stride controls the tradeoff between map detail and LLM context cost: a smaller stride retains a denser visual grid and more input tokens. See [memory configuration](../training/MEMORY.md) for launch parameters.
 
 ## 5. Rendering caches and code entry points
 
