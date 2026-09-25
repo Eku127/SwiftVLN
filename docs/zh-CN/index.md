@@ -1,7 +1,5 @@
 # SwiftVLN 文档
 
-**[SatNav 论文](https://openreview.net/forum?id=hOEniyN6hl)已被 NeurIPS 2026 Evaluations & Datasets Track 录取，展示形式为 Poster。**
-
 SwiftVLN 将轨迹训练、记忆机制实验与在线评测整合到同一框架中，支持 Qwen2.5-VL 和 Qwen3-VL，可用于 SatNav 航空导航与 Habitat 室内导航。
 
 <p align="center">
