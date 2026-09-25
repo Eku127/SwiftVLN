@@ -1,5 +1,7 @@
 # SwiftVLN Documentation
 
+**[SatNav](https://openreview.net/forum?id=hOEniyN6hl) is accepted at NeurIPS 2026, Evaluations & Datasets Track (Poster).**
+
 SwiftVLN brings trajectory-based training, memory experiments, and online evaluation into one framework. It supports Qwen2.5-VL and Qwen3-VL for SatNav aerial navigation and Habitat indoor navigation.
 
 <p align="center">
