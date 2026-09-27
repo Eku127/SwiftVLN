@@ -107,12 +107,13 @@ The reference configuration uses **32-action windows**, **4 actions per predicti
 
 ## Dataset & Model Zoo
 
-Use [SatNav-Episodes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Episodes-v0.1) for satellite-image navigation, or prepare Habitat trajectories for indoor navigation. Training consumes offline RGB observations and expert actions; online evaluation uses episodes, scenes, and a model checkpoint.
+Use [SatNav-Episodes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Episodes-v0.1) for satellite-image navigation, or prepare Habitat trajectories for indoor navigation. Obtain the GeoTIFF scenes by [requesting prepared files](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) or using your own API credentials with the SatNav downloader. Training consumes offline RGB observations and expert actions; online evaluation uses episodes, scenes, and a model checkpoint.
 
 | Resource | Where to start |
 | --- | --- |
 | SatNav episodes and splits | [Download on Hugging Face](https://huggingface.co/datasets/Eku127/SatNav-Episodes-v0.1) |
-| SatNav scenes and training trajectories | [SatNav data preparation](docs/en-US/data/TRAINING_DATA_SATNAV.md) |
+| SatNav GeoTIFF scenes | [Request prepared scenes](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) · [Generate with your own API credentials](docs/en-US/data/TRAINING_DATA_SATNAV.md#3-prepare-geotiff-scenes) |
+| SatNav training trajectories | [Generate offline trajectories](docs/en-US/data/TRAINING_DATA_SATNAV.md#4-generate-offline-trajectories) |
 | Habitat R2R, RxR, and EnvDrop training trajectories | [Habitat data preparation](docs/en-US/data/TRAINING_DATA_HABITAT.md) |
 | SatNav and Habitat evaluation resources | [Evaluation data](docs/en-US/data/EVALUATION_DATA.md) |
 | Memory ablation checkpoints | [SwiftVLN SatNav Ablation Model Zoo](https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo) |

@@ -34,7 +34,7 @@ export SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/datase
 ### 2.1 下载 Episode
 
 按照 SatNav 的
-[Episode 数据下载](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/zh-CN/dataset/DATA_DOWNLOAD.md)
+[Episode 数据下载](https://github.com/Eku127/SatNav/blob/master/docs/zh-CN/dataset/DATA_DOWNLOAD.md)
 下载并校验 SatNav-Episodes-v0.1。评测使用：
 
 | Split | Episodes |
@@ -44,9 +44,20 @@ export SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/datase
 
 ### 2.2 准备 GeoTIFF 场景
 
-按照 SatNav 的
-[卫星场景下载](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/zh-CN/applications/MAP_DOWNLOAD.md)
-根据 `SatNav-v0.1/scenes_list.yaml` 准备 59 个 GeoTIFF 场景。
+选择以下任一种方式准备 59 个场景：
+
+- **下载现成场景：** 在 [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) 填写申请表并同意条款，自动获批后使用同一账号下载。
+- **通过 API 生成：** 注册地图服务并配置自己的凭据，按照 [SatNav 卫星场景下载](https://github.com/Eku127/SatNav/blob/master/docs/zh-CN/applications/MAP_DOWNLOAD.md)运行脚本。
+
+下载现成场景的命令：
+
+```bash
+pip install -U huggingface_hub
+hf auth login
+hf download Eku127/SatNav-Scenes-v0.1 --repo-type dataset \
+  --include "scenes/*.tif" --include SHA256SUMS \
+  --local-dir /path/to/satnav_datasets
+```
 
 评测数据目录如下：
 

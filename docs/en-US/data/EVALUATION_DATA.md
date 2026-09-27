@@ -31,7 +31,7 @@ If these resources are already configured, proceed directly to [SwiftVLN evaluat
 
 ### 2.1 Download episodes
 
-Follow SatNav’s [Episode data download](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/en-US/dataset/DATA_DOWNLOAD.md) Download and verify SatNav-Episodes-v0.1. Evaluation uses:
+Follow SatNav’s [Episode data download](https://github.com/Eku127/SatNav/blob/master/docs/en-US/dataset/DATA_DOWNLOAD.md) Download and verify SatNav-Episodes-v0.1. Evaluation uses:
 
 | Split | Episodes |
 | --- | ---: |
@@ -40,7 +40,20 @@ Follow SatNav’s [Episode data download](https://github.com/Eku127/SatNav/blob/
 
 ### 2.2 Prepare GeoTIFF scenes
 
-Follow SatNav’s [Satellite scene download](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/en-US/applications/MAP_DOWNLOAD.md) Prepare 59 GeoTIFF scenes based on `SatNav-v0.1/scenes_list.yaml`.
+Choose either option to prepare the 59 scenes:
+
+- **Download prepared scenes:** complete the [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) access form, accept the terms, and download with the same account after automatic approval.
+- **Generate through an API:** register for an imagery service and configure your credentials using the [SatNav scene download guide](https://github.com/Eku127/SatNav/blob/master/docs/en-US/applications/MAP_DOWNLOAD.md).
+
+To download prepared scenes:
+
+```bash
+pip install -U huggingface_hub
+hf auth login
+hf download Eku127/SatNav-Scenes-v0.1 --repo-type dataset \
+  --include "scenes/*.tif" --include SHA256SUMS \
+  --local-dir /path/to/satnav_datasets
+```
 
 The evaluation data directory is as follows:
 

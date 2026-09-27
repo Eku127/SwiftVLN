@@ -33,7 +33,7 @@ python -m pip install -e '.[applications]'
 
 ## 2. Download episodes
 
-Follow SatNav’s [Episode data download](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/en-US/dataset/DATA_DOWNLOAD.md) Download SatNav-Episodes-v0.1 and save the decompressed directory as:
+Follow SatNav’s [Episode data download](https://github.com/Eku127/SatNav/blob/master/docs/en-US/dataset/DATA_DOWNLOAD.md) Download SatNav-Episodes-v0.1 and save the decompressed directory as:
 
 ```text
 /path/to/satnav_datasets/SatNav-v0.1
@@ -56,7 +56,31 @@ Each data division includes:
 
 ## 3. Prepare GeoTIFF scenes
 
-SatNav-v0.1 includes scene range and does not include satellite images. Follow SatNav’s [Satellite scene download](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/en-US/applications/MAP_DOWNLOAD.md) Configure map service credentials and use an image source that allows downloading, storage, and model training.
+Both options place the 59 GeoTIFFs in `/path/to/satnav_datasets/scenes`.
+
+### Option 1: Request and download prepared scenes
+
+Open [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1), sign in, complete the access form, and accept the terms. After automatic approval, download with the same Hugging Face account:
+
+```bash
+pip install -U huggingface_hub
+hf auth login
+hf download Eku127/SatNav-Scenes-v0.1 --repo-type dataset \
+  --include "scenes/*.tif" --include SHA256SUMS \
+  --local-dir /path/to/satnav_datasets
+```
+
+Verify the downloaded scene files:
+
+```bash
+(cd /path/to/satnav_datasets && sha256sum -c SHA256SUMS)
+```
+
+Continue with "Validate scenes" below, then generate offline trajectories.
+
+### Option 2: Generate scenes with your own API credentials
+
+Register for an imagery service and configure your API credentials using SatNav's [Satellite Scene Download](https://github.com/Eku127/SatNav/blob/master/docs/en-US/applications/MAP_DOWNLOAD.md) guide.
 
 The following command uses the Google Map Tiles API to batch generate 59 scenes. Run dry run first:
 
@@ -79,7 +103,13 @@ python -m applications.map_downloader google \
   --output-dir /path/to/satnav_datasets/scenes
 ```
 
-Verify Episode and GeoTIFF:
+### Validate scenes
+
+After either option, validate the episodes and GeoTIFFs from the SatNav directory:
+
+```bash
+cd "${SWIFTVLN_ROOT}/third_party/SatNav"
+```
 
 ```bash
 SATNAV_DATA_ROOT=/path/to/satnav_datasets/SatNav-v0.1 \
@@ -118,7 +148,7 @@ python -m applications.trajectory_generation.generate_parallel \
 
 The complete data takes up approximately 233 GB. By default, the generator selects workers based on the number of scenes and the number of CPU cores; it can also be `--num_workers N` specifies the number of parallelism. After the task is interrupted, re-execute the command using the same output directory to continue.
 
-For detailed parameters, see SatNav [Trajectory data generation](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/en-US/applications/TRAJECTORY_GENERATION.md).
+For detailed parameters, see SatNav [Trajectory data generation](https://github.com/Eku127/SatNav/blob/master/docs/en-US/applications/TRAJECTORY_GENERATION.md).
 
 ## 5. Trajectory format
 
@@ -176,7 +206,7 @@ Each trajectory satisfies:
 JPEG count = len(actions) = steps + 1
 ```
 
-For complete field definitions, see SatNav's [Data format](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/en-US/dataset/DATASET_FORMAT.md#6-offline-trajectories).
+For complete field definitions, see SatNav's [Data format](https://github.com/Eku127/SatNav/blob/master/docs/en-US/dataset/DATASET_FORMAT.md#6-offline-trajectories).
 
 ## 6. Validate the complete dataset
 
