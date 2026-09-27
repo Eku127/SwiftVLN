@@ -60,7 +60,7 @@ Both options place the 59 GeoTIFFs in `/path/to/satnav_datasets/scenes`.
 
 ### Option 1: Request and download prepared scenes
 
-Open [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1), sign in, complete the access form, and accept the terms. After automatic approval, download with the same Hugging Face account:
+Open [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1), sign in, complete the access form, and accept the terms. Once your request passes the system checks, download with the same Hugging Face account:
 
 ```bash
 pip install -U huggingface_hub

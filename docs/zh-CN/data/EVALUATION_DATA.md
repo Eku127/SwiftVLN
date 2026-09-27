@@ -46,7 +46,7 @@ export SWIFTVLN_HABITAT_R2R_EVAL_DATA_PATH="${SWIFTVLN_HABITAT_DATA_ROOT}/datase
 
 选择以下任一种方式准备 59 个场景：
 
-- **下载现成场景：** 在 [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) 填写申请表并同意条款，自动获批后使用同一账号下载。
+- **下载现成场景：** 在 [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) 填写申请表并同意条款，申请通过系统检查后使用同一账号下载。
 - **通过 API 生成：** 注册地图服务并配置自己的凭据，按照 [SatNav 卫星场景下载](https://github.com/Eku127/SatNav/blob/master/docs/zh-CN/applications/MAP_DOWNLOAD.md)运行脚本。
 
 下载现成场景的命令：

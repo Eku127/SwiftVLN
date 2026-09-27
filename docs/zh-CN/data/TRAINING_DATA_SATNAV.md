@@ -62,7 +62,7 @@ sha256sum -c SHA256SUMS
 
 ### 方式一：申请并下载现成场景
 
-打开 [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1)，登录并填写申请表、勾选声明。自动获批后，使用同一 Hugging Face 账号下载：
+打开 [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1)，登录并填写申请表、勾选声明。申请通过系统检查后，使用同一 Hugging Face 账号下载：
 
 ```bash
 pip install -U huggingface_hub

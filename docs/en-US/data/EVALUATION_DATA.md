@@ -42,7 +42,7 @@ Follow SatNav’s [Episode data download](https://github.com/Eku127/SatNav/blob/
 
 Choose either option to prepare the 59 scenes:
 
-- **Download prepared scenes:** complete the [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) access form, accept the terms, and download with the same account after automatic approval.
+- **Download prepared scenes:** complete the [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) access form, accept the terms, and download with the same account after your request passes the system checks.
 - **Generate through an API:** register for an imagery service and configure your credentials using the [SatNav scene download guide](https://github.com/Eku127/SatNav/blob/master/docs/en-US/applications/MAP_DOWNLOAD.md).
 
 To download prepared scenes:
