@@ -24,6 +24,7 @@
 <p align="center">
   <a href="https://arxiv.org/abs/2609.31507"><img src="https://img.shields.io/badge/Paper-arXiv-B31B1B" alt="SatNav 论文 arXiv 页面"></a>
   <a href="https://openreview.net/forum?id=hOEniyN6hl"><img src="https://img.shields.io/badge/Paper-OpenReview-8C1B13" alt="SatNav 论文 OpenReview 页面"></a>
+  <a href="https://eku127.github.io/SatNav/"><img src="https://img.shields.io/badge/Website-Project%20Page-2A8C82" alt="SatNav 与 SwiftVLN 项目网站"></a>
   <a href="https://eku127.github.io/SwiftVLN/wiki/zh-CN/index.html"><img src="https://img.shields.io/badge/Wiki-Documentation-2878D0" alt="SwiftVLN Wiki"></a>
   <a href="https://huggingface.co/datasets/Eku127/SatNav-Episodes-v0.1"><img src="https://img.shields.io/badge/Dataset-Hugging%20Face-FFD21E" alt="Hugging Face 上的 SatNav 数据集"></a>
   <a href="https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo"><img src="https://img.shields.io/badge/Models-Hugging%20Face-FFD21E" alt="Hugging Face 上的 SwiftVLN Model Zoo"></a>
