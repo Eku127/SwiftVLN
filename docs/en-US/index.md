@@ -25,7 +25,7 @@ The [workflow guide](README.md) connects the setup, data, training, evaluation, 
 
 ## Project resources
 
-- [Paper](https://openreview.net/forum?id=hOEniyN6hl): *SatNav: A Scalable Benchmark for Long-Horizon UAV Vision-Language Navigation from Satellite Imagery*.
+- [Paper](https://arxiv.org/abs/2609.31507): *SatNav: A Scalable Benchmark for Long-Horizon UAV Vision-Language Navigation from Satellite Imagery*.
 - [SwiftVLN Model Zoo](https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo): reference and memory ablation checkpoints.
 - [SatNav Wiki](https://eku127.github.io/SatNav/wiki/): simulator, episodes, satellite scenes, and baseline documentation.
 - [Source code](https://github.com/Eku127/SwiftVLN): models, scripts, configuration, and documentation sources.

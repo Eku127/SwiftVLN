@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="https://openreview.net/forum?id=hOEniyN6hl"><img src="https://img.shields.io/badge/Paper-OpenReview-B31B1B" alt="SatNav paper on OpenReview"></a>
+  <a href="https://arxiv.org/abs/2609.31507"><img src="https://img.shields.io/badge/Paper-arXiv-B31B1B" alt="SatNav paper on arXiv"></a>
   <a href="https://eku127.github.io/SwiftVLN/wiki/en-US/index.html"><img src="https://img.shields.io/badge/Wiki-Documentation-2878D0" alt="SwiftVLN Wiki"></a>
   <a href="https://huggingface.co/datasets/Eku127/SatNav-Episodes-v0.1"><img src="https://img.shields.io/badge/Dataset-Hugging%20Face-FFD21E" alt="SatNav dataset on Hugging Face"></a>
   <a href="https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo"><img src="https://img.shields.io/badge/Models-Hugging%20Face-FFD21E" alt="SwiftVLN Model Zoo on Hugging Face"></a>
@@ -44,7 +44,7 @@
 
 SwiftVLN brings trajectory-based training, memory experiments, and online evaluation into one framework. Built on **ms-swift**, it supports **Qwen2.5-VL and Qwen3-VL** for aerial navigation with **SatNav** and indoor navigation with **Habitat**.
 
-Introduced in [*SatNav: A Scalable Benchmark for Long-Horizon UAV Vision-Language Navigation from Satellite Imagery*](https://openreview.net/forum?id=hOEniyN6hl), SwiftVLN provides a shared training and evaluation pipeline for studying how visual history, spatial cues, and memory compression affect navigation.
+Introduced in [*SatNav: A Scalable Benchmark for Long-Horizon UAV Vision-Language Navigation from Satellite Imagery*](https://arxiv.org/abs/2609.31507), SwiftVLN provides a shared training and evaluation pipeline for studying how visual history, spatial cues, and memory compression affect navigation.
 
 ## Quick Start
 
@@ -174,6 +174,21 @@ docs/         English and Chinese documentation, with shared figures
 ```
 
 </details>
+
+## Citation
+
+If you use SwiftVLN in your research, please cite the SatNav paper:
+
+```bibtex
+@inproceedings{jiang2026satnav,
+  title = {{SatNav}: A Scalable Benchmark for Long-Horizon {UAV} Vision-Language Navigation from Satellite Imagery},
+  author = {Jiang, Jiajun and Hua, Chunliang and Chen, Zichun and Wu, Yanxing and Yang, Zeyuan and Song, Jie and Hu, Xiao},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year = {2026},
+  note = {Track on Evaluations and Datasets; accepted, to appear},
+  url = {https://arxiv.org/abs/2609.31507}
+}
+```
 
 ## Acknowledgements
 

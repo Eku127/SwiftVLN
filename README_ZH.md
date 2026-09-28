@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="https://openreview.net/forum?id=hOEniyN6hl"><img src="https://img.shields.io/badge/Paper-OpenReview-B31B1B" alt="SatNav 论文 OpenReview 页面"></a>
+  <a href="https://arxiv.org/abs/2609.31507"><img src="https://img.shields.io/badge/Paper-arXiv-B31B1B" alt="SatNav 论文 arXiv 页面"></a>
   <a href="https://eku127.github.io/SwiftVLN/wiki/zh-CN/index.html"><img src="https://img.shields.io/badge/Wiki-Documentation-2878D0" alt="SwiftVLN Wiki"></a>
   <a href="https://huggingface.co/datasets/Eku127/SatNav-Episodes-v0.1"><img src="https://img.shields.io/badge/Dataset-Hugging%20Face-FFD21E" alt="Hugging Face 上的 SatNav 数据集"></a>
   <a href="https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo"><img src="https://img.shields.io/badge/Models-Hugging%20Face-FFD21E" alt="Hugging Face 上的 SwiftVLN Model Zoo"></a>
@@ -44,7 +44,7 @@
 
 SwiftVLN 将轨迹训练、记忆机制实验与在线评测整合到同一框架中。它基于 **ms-swift**，支持 **Qwen2.5-VL 和 Qwen3-VL**，可用于 **SatNav 航空导航**与 **Habitat 室内导航**。
 
-SwiftVLN 随论文 [*SatNav: A Scalable Benchmark for Long-Horizon UAV Vision-Language Navigation from Satellite Imagery*](https://openreview.net/forum?id=hOEniyN6hl) 提出，通过统一的训练与评测流程，研究视觉历史、空间线索和记忆压缩对导航行为的影响。
+SwiftVLN 随论文 [*SatNav: A Scalable Benchmark for Long-Horizon UAV Vision-Language Navigation from Satellite Imagery*](https://arxiv.org/abs/2609.31507) 提出，通过统一的训练与评测流程，研究视觉历史、空间线索和记忆压缩对导航行为的影响。
 
 ## 快速开始
 
@@ -173,6 +173,21 @@ docs/         中英文文档与共享配图
 ```
 
 </details>
+
+## 引用
+
+如果在研究中使用 SwiftVLN，请引用 SatNav 论文：
+
+```bibtex
+@inproceedings{jiang2026satnav,
+  title = {{SatNav}: A Scalable Benchmark for Long-Horizon {UAV} Vision-Language Navigation from Satellite Imagery},
+  author = {Jiang, Jiajun and Hua, Chunliang and Chen, Zichun and Wu, Yanxing and Yang, Zeyuan and Song, Jie and Hu, Xiao},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year = {2026},
+  note = {Track on Evaluations and Datasets; accepted, to appear},
+  url = {https://arxiv.org/abs/2609.31507}
+}
+```
 
 ## 致谢
 

@@ -114,4 +114,4 @@ $$
 | 如何组装完整上下文？ | [`PromptConstructionMixin`](../../../src/swiftvln/evaluation/inference/prompt.py) |
 | 如何生成动作并保存查询帧？ | [`SwiftVLNInferenceSession.predict`](../../../src/swiftvln/evaluation/inference/session.py) |
 
-论文依据：[SatNav 论文](https://openreview.net/forum?id=hOEniyN6hl)，附录 **SwiftVLN Framework Details → Overall Pipeline / Prompt Construction**。本组原理文档核对的代码版本为 [`7984ed6`](https://github.com/Eku127/SwiftVLN/tree/7984ed6fa053e8cba1648c16d0ae7944c8eba25d)。
+论文依据：[SatNav 论文](https://arxiv.org/abs/2609.31507)，附录 **SwiftVLN Framework Details → Overall Pipeline / Prompt Construction**。本组原理文档核对的代码版本为 [`7984ed6`](https://github.com/Eku127/SwiftVLN/tree/7984ed6fa053e8cba1648c16d0ae7944c8eba25d)。

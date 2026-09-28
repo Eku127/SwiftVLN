@@ -110,4 +110,4 @@ $$
 | Stage-A 优化流程 | [`tools/s2r/trainer.py`](../../../tools/s2r/trainer.py) |
 | 导航 checkpoint 接入 | [`UAVAdapterEnhancement`](../../../src/swiftvln/modeling/embeddings/uav_adapter.py) |
 
-论文依据：[SatNav 论文](https://openreview.net/forum?id=hOEniyN6hl)，附录 **Memory Design Details → Initial Frame Prompting / Pose Encoding** 与 **Satellite-to-UAV Adapter Details**。
+论文依据：[SatNav 论文](https://arxiv.org/abs/2609.31507)，附录 **Memory Design Details → Initial Frame Prompting / Pose Encoding** 与 **Satellite-to-UAV Adapter Details**。

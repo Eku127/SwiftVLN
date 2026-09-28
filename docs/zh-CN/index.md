@@ -25,7 +25,7 @@ SwiftVLN 将轨迹训练、记忆机制实验与在线评测整合到同一框�
 
 ## 项目资源
 
-- [论文](https://openreview.net/forum?id=hOEniyN6hl)：*SatNav: A Scalable Benchmark for Long-Horizon UAV Vision-Language Navigation from Satellite Imagery*。
+- [论文](https://arxiv.org/abs/2609.31507)：*SatNav: A Scalable Benchmark for Long-Horizon UAV Vision-Language Navigation from Satellite Imagery*。
 - [SwiftVLN Model Zoo](https://huggingface.co/collections/Eku127/swiftvln-satnav-ablation-model-zoo)：参考模型与记忆消融实验 checkpoint。
 - [SatNav Wiki](https://eku127.github.io/SatNav/wiki/)：模拟器、Episode、卫星场景与基线文档。
 - [源代码](https://github.com/Eku127/SwiftVLN)：模型、脚本、配置与文档源文件。

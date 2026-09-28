@@ -128,4 +128,4 @@ $$
 | 训练历史帧来源 | [`SwiftVLNDataset._sample_history_frames`](../../../src/swiftvln/training/sft/dataset.py) |
 | 评测采样、特征复用和聚类 | [`VisualEncodingMixin`](../../../src/swiftvln/evaluation/inference/encoding.py) |
 
-论文依据：[SatNav 论文](https://openreview.net/forum?id=hOEniyN6hl)，附录 **Memory Design Details** 中的 **History Frame Sampling / GTC / STC**。GridToMe 的计算与 STC 的边界行为依据当前代码补充。
+论文依据：[SatNav 论文](https://arxiv.org/abs/2609.31507)，附录 **Memory Design Details** 中的 **History Frame Sampling / GTC / STC**。GridToMe 的计算与 STC 的边界行为依据当前代码补充。
