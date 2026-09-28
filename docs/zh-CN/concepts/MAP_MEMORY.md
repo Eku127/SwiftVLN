@@ -84,4 +84,4 @@ Map memory 将窗前的空间经历表示为两张朝北的俯视地图：全局
 | 磁盘图像缓存 | [`MapCacheMixin`](../../../src/swiftvln/modeling/memory/cache.py) |
 | 在线编码和池化 | [`_compute_history_cache_map`](../../../src/swiftvln/evaluation/inference/encoding.py) |
 
-论文依据：[SatNav 论文](https://openreview.net/forum?id=hOEniyN6hl)，附录 **Memory Design Details → Map Memory**；示例图片来源见[素材说明](https://github.com/Eku127/SwiftVLN/blob/master/docs/assets/concepts/README.md)。
+论文依据：[SatNav 论文](https://arxiv.org/abs/2609.31507)，附录 **Memory Design Details → Map Memory**；示例图片来源见[素材说明](https://github.com/Eku127/SwiftVLN/blob/master/docs/assets/concepts/README.md)。

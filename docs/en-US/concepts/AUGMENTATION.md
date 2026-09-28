@@ -110,4 +110,4 @@ The current `UAVAdapterEnhancement` supports `apply_scope=all_images`. When sele
 | Stage-A optimization | [`tools/s2r/trainer.py`](../../../tools/s2r/trainer.py) |
 | Navigation checkpoint integration | [`UAVAdapterEnhancement`](../../../src/swiftvln/modeling/embeddings/uav_adapter.py) |
 
-Paper source: [SatNav paper](https://openreview.net/forum?id=hOEniyN6hl), **Memory Design Details → Initial Frame Prompting / Pose Encoding** and **Satellite-to-UAV Adapter Details**.
+Paper source: [SatNav paper](https://arxiv.org/abs/2609.31507), **Memory Design Details → Initial Frame Prompting / Pose Encoding** and **Satellite-to-UAV Adapter Details**.

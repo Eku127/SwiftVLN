@@ -128,4 +128,4 @@ For other image sizes or visual backbones, compute token counts from the actual 
 | Training history source | [`SwiftVLNDataset._sample_history_frames`](../../../src/swiftvln/training/sft/dataset.py) |
 | Evaluation sampling, feature reuse, and clustering | [`VisualEncodingMixin`](../../../src/swiftvln/evaluation/inference/encoding.py) |
 
-Paper source: [SatNav paper](https://openreview.net/forum?id=hOEniyN6hl), **Memory Design Details → History Frame Sampling / GTC / STC**. The GridToMe computation and STC boundary behavior are documented from the current code.
+Paper source: [SatNav paper](https://arxiv.org/abs/2609.31507), **Memory Design Details → History Frame Sampling / GTC / STC**. The GridToMe computation and STC boundary behavior are documented from the current code.

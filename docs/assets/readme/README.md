@@ -2,7 +2,7 @@
 
 These figures are shared by the English and Chinese repository READMEs. They
 come from the manuscript *SatNav: A Scalable Benchmark for Long-Horizon UAV
-Vision-Language Navigation from Satellite Imagery* ([paper](https://openreview.net/forum?id=hOEniyN6hl)).
+Vision-Language Navigation from Satellite Imagery* ([paper](https://arxiv.org/abs/2609.31507)).
 
 | Asset | Manuscript source | Content |
 | --- | --- | --- |

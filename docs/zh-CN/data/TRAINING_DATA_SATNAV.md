@@ -34,7 +34,7 @@ python -m pip install -e '.[applications]'
 ## 2. 下载 Episode
 
 按照 SatNav 的
-[Episode 数据下载](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/zh-CN/dataset/DATA_DOWNLOAD.md)
+[Episode 数据下载](https://github.com/Eku127/SatNav/blob/master/docs/zh-CN/dataset/DATA_DOWNLOAD.md)
 下载 SatNav-Episodes-v0.1，并将解压目录保存为：
 
 ```text
@@ -58,9 +58,31 @@ sha256sum -c SHA256SUMS
 
 ## 3. 准备 GeoTIFF 场景
 
-SatNav-v0.1 包含场景范围，不包含卫星影像。按照 SatNav 的
-[卫星场景下载](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/zh-CN/applications/MAP_DOWNLOAD.md)
-配置地图服务凭据，并使用允许下载、存储和模型训练的影像来源。
+下面两种方式均将 59 个 GeoTIFF 保存到 `/path/to/satnav_datasets/scenes`。
+
+### 方式一：申请并下载现成场景
+
+打开 [SatNav-Scenes-v0.1](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1)，登录并填写申请表、勾选声明。申请通过系统检查后，使用同一 Hugging Face 账号下载：
+
+```bash
+pip install -U huggingface_hub
+hf auth login
+hf download Eku127/SatNav-Scenes-v0.1 --repo-type dataset \
+  --include "scenes/*.tif" --include SHA256SUMS \
+  --local-dir /path/to/satnav_datasets
+```
+
+校验下载的场景：
+
+```bash
+(cd /path/to/satnav_datasets && sha256sum -c SHA256SUMS)
+```
+
+随后进入下方“验证场景”，再生成离线轨迹。
+
+### 方式二：使用自己的 API 凭据生成
+
+按照 SatNav 的 [卫星场景下载](https://github.com/Eku127/SatNav/blob/master/docs/zh-CN/applications/MAP_DOWNLOAD.md)注册地图服务并配置 API 凭据。
 
 以下命令使用 Google Map Tiles API 批量生成 59 个场景。先运行 dry run：
 
@@ -83,7 +105,13 @@ python -m applications.map_downloader google \
   --output-dir /path/to/satnav_datasets/scenes
 ```
 
-验证 Episode 和 GeoTIFF：
+### 验证场景
+
+在两种方式中的任一种完成后，验证 Episode 和 GeoTIFF：
+
+```bash
+cd "${SWIFTVLN_ROOT}/third_party/SatNav"
+```
 
 ```bash
 SATNAV_DATA_ROOT=/path/to/satnav_datasets/SatNav-v0.1 \
@@ -124,7 +152,7 @@ python -m applications.trajectory_generation.generate_parallel \
 `--num_workers N` 指定并行数。任务中断后，使用相同输出目录重新执行命令即可继续。
 
 详细参数见 SatNav 的
-[轨迹数据生成](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/zh-CN/applications/TRAJECTORY_GENERATION.md)。
+[轨迹数据生成](https://github.com/Eku127/SatNav/blob/master/docs/zh-CN/applications/TRAJECTORY_GENERATION.md)。
 
 ## 5. 轨迹格式
 
@@ -183,7 +211,7 @@ JPEG 数量 = len(actions) = steps + 1
 ```
 
 完整字段定义见 SatNav 的
-[数据格式](https://github.com/Eku127/SatNav/blob/4bd6652c875af00236a09730d76c4b391046e6a4/docs/zh-CN/dataset/DATASET_FORMAT.md#6-离线-trajectory)。
+[数据格式](https://github.com/Eku127/SatNav/blob/master/docs/zh-CN/dataset/DATASET_FORMAT.md#6-离线-trajectory)。
 
 ## 6. 校验完整数据
 

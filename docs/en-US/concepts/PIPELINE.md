@@ -111,4 +111,4 @@ where $\mathcal T_{\mathrm{new}}$ contains supervised tokens from new responses.
 | How is the complete context assembled? | [`PromptConstructionMixin`](../../../src/swiftvln/evaluation/inference/prompt.py) |
 | How are predictions and query frames saved? | [`SwiftVLNInferenceSession.predict`](../../../src/swiftvln/evaluation/inference/session.py) |
 
-Paper source: [SatNav paper](https://openreview.net/forum?id=hOEniyN6hl), **SwiftVLN Framework Details → Overall Pipeline / Prompt Construction**. This implementation guide was checked against code revision [`7984ed6`](https://github.com/Eku127/SwiftVLN/tree/7984ed6fa053e8cba1648c16d0ae7944c8eba25d).
+Paper source: [SatNav paper](https://arxiv.org/abs/2609.31507), **SwiftVLN Framework Details → Overall Pipeline / Prompt Construction**. This implementation guide was checked against code revision [`7984ed6`](https://github.com/Eku127/SwiftVLN/tree/7984ed6fa053e8cba1648c16d0ae7944c8eba25d).

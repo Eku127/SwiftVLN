@@ -5,6 +5,8 @@
 本页按照使用目标组织 SwiftVLN 文档。首次使用从“安装与首次运行”开始；已经具备
 环境和数据时，可直接进入训练或评测。
 
+SatNav 场景支持[申请下载现成 GeoTIFF](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1)，或[使用自己的 API 凭据生成](data/TRAINING_DATA_SATNAV.md)。
+
 ## 实现原理
 
 - [双层记忆与滑动窗口](concepts/PIPELINE.md)：观测、动作块、窗口更新与训练监督。

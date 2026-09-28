@@ -4,6 +4,8 @@
 
 The SwiftVLN documentation is organized by research workflow. New users should begin with installation, model checkpoints, and data preparation. If your environment and data are already available, proceed directly to training or evaluation.
 
+For SatNav scenes, [request prepared GeoTIFFs](https://huggingface.co/datasets/Eku127/SatNav-Scenes-v0.1) or [generate them with your own API credentials](data/TRAINING_DATA_SATNAV.md).
+
 ## Implementation principles
 
 - [Dual memory and sliding windows](concepts/PIPELINE.md): observations, action chunks, window updates, and supervision.

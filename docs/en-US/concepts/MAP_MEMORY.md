@@ -84,4 +84,4 @@ A disk cache can reuse rendered maps for the same trajectory prefix and renderin
 | Disk image cache | [`MapCacheMixin`](../../../src/swiftvln/modeling/memory/cache.py) |
 | Online encoding and pooling | [`_compute_history_cache_map`](../../../src/swiftvln/evaluation/inference/encoding.py) |
 
-Paper source: [SatNav paper](https://openreview.net/forum?id=hOEniyN6hl), **Memory Design Details → Map Memory**. Image provenance is recorded in the [asset notes](https://github.com/Eku127/SwiftVLN/blob/master/docs/assets/concepts/README.md).
+Paper source: [SatNav paper](https://arxiv.org/abs/2609.31507), **Memory Design Details → Map Memory**. Image provenance is recorded in the [asset notes](https://github.com/Eku127/SwiftVLN/blob/master/docs/assets/concepts/README.md).
